@@ -552,7 +552,7 @@ export default function GameBoard({ roomId = '', isHost = true }: GameBoardProps
       localStorage.setItem('reality_active_deck_id', chosen.id);
       setActiveDeckId(chosen.id);
 
-      const cards = [...CHARACTER_SAMPLE_CARDS];
+      const cards: AvatarCard[] = [...CHARACTER_SAMPLE_CARDS];
       for (const entry of entries.filter((e) => e.cardType === 'coordinate')) {
         const archetype = (entry.archetype as Archetype) || 'マッスル型';
         const fallback = cards.find((c) => c.id === entry.id);

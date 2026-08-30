@@ -495,7 +495,7 @@ export default function SupportCardGenerator({ selectedEmotion, onBackToHub }: S
         ) : (
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
             {filteredEntries.map((entry) => {
-              const isOwner = myTokens.includes(entry.ownerToken);
+              const isOwner = Boolean(entry.ownerToken && myTokens.includes(entry.ownerToken));
               const emotionInfo = EMOTION_PRESETS.find((e) => e.id === entry.presetId);
 
               return (
