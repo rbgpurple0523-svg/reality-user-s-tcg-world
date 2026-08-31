@@ -87,7 +87,12 @@ interface DeckBuilderProps {
   battleButtonLabel?: string;
 }
 
-export default function DeckBuilder({ onGoToCpuBattle, onGoToBattle, initialDeckId = null, battleButtonLabel = '⚔️ CPU対戦へ' }: DeckBuilderProps) {
+export default function DeckBuilder({
+  onGoToCpuBattle,
+  onGoToBattle,
+  initialDeckId = null,
+  battleButtonLabel = '⚔ CPU対戦へ'
+}: DeckBuilderProps) {
   // 既存の呼び出し側が onGoToCpuBattle / onGoToBattle のどちらでも動くよう互換性を維持します。
   const goToCpuBattle = onGoToCpuBattle ?? onGoToBattle;
   const [cards, setCards] = useState<AvatarCard[]>([]);
@@ -823,6 +828,8 @@ export default function DeckBuilder({ onGoToCpuBattle, onGoToBattle, initialDeck
     charm: card.charm ?? 20,
   });
 
+  type DistributionGroup = string[] & { __value?: number };
+
   const getArchetypeDistribution = (card: AvatarCard) => {
     const stats = getCharacterStats(card);
     const labels: Array<[string, number]> = [
@@ -832,13 +839,13 @@ export default function DeckBuilder({ onGoToCpuBattle, onGoToBattle, initialDeck
       ['特技', stats.charm],
     ];
     const sorted = [...labels].sort((a, b) => b[1] - a[1]);
-    const groups: string[][] = [];
+    const groups: DistributionGroup[] = [];
     sorted.forEach(([label, value]) => {
       const last = groups[groups.length - 1];
       if (last && last.__value === value) {
         last.push(label);
       } else {
-        const group = [label] as string[] & { __value?: number };
+        const group = [label] as DistributionGroup;
         group.__value = value;
         groups.push(group);
       }
@@ -1651,7 +1658,7 @@ export default function DeckBuilder({ onGoToCpuBattle, onGoToBattle, initialDeck
                 title={hasUnsavedChanges ? '未保存の変更があります。保存してからCPU対戦へ進んでください。' : '保存済みデッキでCPU対戦を開始'}
                 className="px-4 py-2 bg-emerald-600 hover:bg-emerald-700 disabled:bg-gray-300 disabled:hover:bg-gray-300 disabled:text-gray-500 disabled:cursor-not-allowed text-white text-sm font-black rounded-lg shadow cursor-pointer"
               >
-                {battleButtonLabel}
+                ⚔️ CPU対戦へ
               </button>
             )}
           </div>

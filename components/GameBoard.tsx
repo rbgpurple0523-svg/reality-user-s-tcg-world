@@ -152,6 +152,7 @@ type EntryRecordWithSkills = {
 type GameBoardProps = {
   roomId?: string;
   isHost?: boolean;
+  onEditDeck?: (deckId: string) => void;
 };
 
 // ===== デフォルトアバター =====
@@ -431,7 +432,7 @@ function OutdoorStageBackground({ season }: { season: Season }) {
   );
 }
 
-export default function GameBoard({ roomId = '', isHost = true }: GameBoardProps) {
+export default function GameBoard({ roomId = '', isHost = true, onEditDeck }: GameBoardProps) {
   // ===== 対戦モード判定 =====
   // roomId がある場合だけ Firebase のオンライン対戦。
   // roomId がない場合も、オンライン対戦と同じ準備フェイズから開始します。
