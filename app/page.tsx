@@ -20,6 +20,28 @@ type CurrentView =
 
 export default function Home() {
   const [currentView, setCurrentView] = useState<CurrentView>('menu');
+  const [editingDeckId, setEditingDeckId] = useState<string | null>(null);
+  const [deckBuilderReturnView, setDeckBuilderReturnView] = useState<CurrentView>('menu');
+
+  // ===== CPU対戦への共通遷移 =====
+  // DeckBuilderからもメニューと同じ遷移先を使います。
+  const handleStartCpuBattle = () => {
+    setEditingDeckId(null);
+    setCurrentView('gameBoard');
+  };
+
+  // ===== 対戦準備画面からデッキ編集へ =====
+  // 編集対象のデッキIDを保持し、GameBoardへ戻ったときに同じ対戦画面へ復帰します。
+  const handleEditDeck = (deckId: string) => {
+    setEditingDeckId(deckId);
+    setDeckBuilderReturnView(currentView === 'friendGameBoard' ? 'friendGameBoard' : 'gameBoard');
+    setCurrentView('deckBuilder');
+  };
+
+  const handleReturnFromDeckBuilder = () => {
+    setCurrentView(deckBuilderReturnView);
+    setEditingDeckId(null);
+  };
 
   // ===== Firebase対戦用のルーム情報 =====
   const [activeRoomId, setActiveRoomId] = useState<string | null>(null);
@@ -36,6 +58,8 @@ export default function Home() {
   const handleReturnToMenu = () => {
     setActiveRoomId(null);
     setIsHostPlayer(false);
+    setEditingDeckId(null);
+    setDeckBuilderReturnView('menu');
     setCurrentView('menu');
   };
 
@@ -131,7 +155,7 @@ export default function Home() {
                 </div>
                 <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
                   <button
-                    onClick={() => setCurrentView('gameBoard')}
+                    onClick={handleStartCpuBattle}
                     className="p-4 bg-emerald-50 hover:bg-emerald-100 border border-emerald-200 rounded-xl transition text-left space-y-1 cursor-pointer"
                   >
                     <div className="font-bold text-emerald-900 text-sm">CPUと対戦する</div>
@@ -163,8 +187,14 @@ export default function Home() {
         {currentView === 'cardGen' && <CardGenerator />}
         {currentView === 'supportGen' && <SupportCardGenerator />}
         {currentView === 'entryHub' && <EntryHub />}
-        {currentView === 'deckBuilder' && <DeckBuilder />}
-        {currentView === 'gameBoard' && <GameBoard />}
+        {currentView === 'deckBuilder' && (
+          <DeckBuilder
+            initialDeckId={editingDeckId}
+            onGoToCpuBattle={editingDeckId ? handleReturnFromDeckBuilder : handleStartCpuBattle}
+            battleButtonLabel={editingDeckId ? '⚔️ 対戦へ戻る' : '⚔️ CPU対戦へ'}
+          />
+        )}
+        {currentView === 'gameBoard' && <GameBoard onEditDeck={handleEditDeck} />}
 
         {/* 友達対戦：セットアップ画面 */}
         {currentView === 'friendMatchSetup' && (
@@ -179,6 +209,7 @@ export default function Home() {
           <GameBoard
             roomId={activeRoomId}
             isHost={isHostPlayer}
+            onEditDeck={handleEditDeck}
           />
         )}
       </div>

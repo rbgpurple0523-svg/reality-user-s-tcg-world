@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useEffect, useMemo, useRef, useState } from 'react';
-import { db } from '@/lib/firebase';
+import { db, ensureAnonymousAuth } from '@/lib/firebase';
 import {
   doc,
   getDoc,
@@ -436,6 +436,26 @@ export default function GameBoard({ roomId = '', isHost = true }: GameBoardProps
   // roomId がある場合だけ Firebase のオンライン対戦。
   // roomId がない場合も、オンライン対戦と同じ準備フェイズから開始します。
   const isOnline = Boolean(roomId);
+  const [authReady, setAuthReady] = useState(!isOnline);
+
+  // オンライン対戦では、Firebase Authentication のuidを取得してから
+  // Firestoreの監視・書き込みを開始する。
+  useEffect(() => {
+    if (!isOnline) {
+      setAuthReady(true);
+      return;
+    }
+    let cancelled = false;
+    void ensureAnonymousAuth()
+      .then(() => {
+        if (!cancelled) setAuthReady(true);
+      })
+      .catch((error) => {
+        console.error('Firebase Authentication 初期化エラー:', error);
+        if (!cancelled) setAuthReady(false);
+      });
+    return () => { cancelled = true; };
+  }, [isOnline]);
 
   // ===== ローカル表示状態 =====
   const [playerRole] = useState<PlayerRole>(isHost ? 'host' : 'guest');
@@ -480,6 +500,9 @@ export default function GameBoard({ roomId = '', isHost = true }: GameBoardProps
   } | null>(null);
   const [readyHost, setReadyHost] = useState(false);
   const [readyGuest, setReadyGuest] = useState(false);
+  // 相手の手札・山札枚数。オンラインではFirebaseから同期し、CPU戦ではCPUのローカル状態を表示する。
+  const [opponentHandCount, setOpponentHandCount] = useState(0);
+  const [opponentDeckCount, setOpponentDeckCount] = useState(0);
   const lastActionRef = useRef<string>('');
   const lastSkillActionRef = useRef<string>('');
   const lastObservedBattlePhaseRef = useRef<string>('');
@@ -725,14 +748,18 @@ export default function GameBoard({ roomId = '', isHost = true }: GameBoardProps
       selectedDeck = null;
     }
     resetLocalSupportDeck(selectedDeck);
+    // 保存済みデッキがあれば、入場直後から「このデッキではじめる」を押せる状態にする。
+    setMyDeckReady(Boolean(selectedDeck));
+    setDeckConfirmed(false);
+
     if (!isOnline) {
       buildCpuDeck();
-      setMyDeckReady(Boolean(selectedDeck));
-      setDeckConfirmed(false);
-      setPreparationMessage('CPU対戦の準備をしています。デッキを確認して「このデッキではじめる」を押してください。');
+      setPreparationMessage('デッキを確認して「このデッキではじめる」を押してください。');
+      setOpponentHandCount(INITIAL_HAND_SIZE);
+      setOpponentDeckCount(Math.max(0, BATTLE_DECK_SIZE - INITIAL_HAND_SIZE));
     }
 
-    if (!roomId || initializedRef.current) return;
+    if (!roomId || !authReady || initializedRef.current) return;
     initializedRef.current = true;
 
     const roomRef = doc(db, 'rooms', roomId);
@@ -746,12 +773,12 @@ export default function GameBoard({ roomId = '', isHost = true }: GameBoardProps
         console.error('自分のアバター公開エラー:', error);
       }
     })();
-  }, [roomId, playerRole]);
+  }, [roomId, playerRole, authReady]);
 
   // ===== ステージ在席確認（ハートビート） =====
   // ブラウザを閉じて放置された古いステージを、次回作成時に再利用できるようにします。
   useEffect(() => {
-    if (!roomId) return;
+    if (!roomId || !authReady) return;
     const roomRef = doc(db, 'rooms', roomId);
     const field = playerRole === 'host' ? 'hostLastSeenAt' : 'guestLastSeenAt';
     const writeHeartbeat = () => {
@@ -760,11 +787,11 @@ export default function GameBoard({ roomId = '', isHost = true }: GameBoardProps
     writeHeartbeat();
     const timer = window.setInterval(writeHeartbeat, 10000);
     return () => window.clearInterval(timer);
-  }, [roomId, playerRole]);
+  }, [roomId, playerRole, authReady]);
 
   // ===== Firebaseのゲーム状態を常時監視 =====
   useEffect(() => {
-    if (!roomId) return;
+    if (!roomId || !authReady) return;
 
     const roomRef = doc(db, 'rooms', roomId);
     const unsubscribe = onSnapshot(roomRef, async (snapshot) => {
@@ -774,6 +801,17 @@ export default function GameBoard({ roomId = '', isHost = true }: GameBoardProps
         return;
       }
       const data = snapshot.data();
+
+      // 新しいルームでは hostUid / guestUid と Firebase Authentication のuidを照合する。
+      // 旧形式のルームは移行期間中のため、uidがまだ無い場合のみ読み込みを許可する。
+      const expectedUid = playerRole === 'host' ? data.hostUid : data.guestUid;
+      const currentUid = authReady ? (await ensureAnonymousAuth()).uid : null;
+      if (expectedUid && currentUid && expectedUid !== currentUid) {
+        setBattlePhase('waiting');
+        setWaitingMessage('このルームの参加者として認証できませんでした。');
+        return;
+      }
+
       const observedPhase = (data.battlePhase as string) || 'setup';
       const observedYear = Number(data.currentYear || 1);
 
@@ -825,6 +863,8 @@ export default function GameBoard({ roomId = '', isHost = true }: GameBoardProps
       setGuestTotalScore(data.guestTotalScore ?? 0);
       setReadyHost(Boolean(data.readyHost));
       setReadyGuest(Boolean(data.readyGuest));
+      setOpponentHandCount(Number(data[playerRole === 'host' ? 'guestHandCount' : 'hostHandCount'] ?? 0));
+      setOpponentDeckCount(Number(data[playerRole === 'host' ? 'guestDeckCount' : 'hostDeckCount'] ?? 0));
 
       const classScores = playerRole === 'host' ? data.hostClassScores : data.guestClassScores;
       const opponentScores = playerRole === 'host' ? data.guestClassScores : data.hostClassScores;
@@ -885,17 +925,17 @@ export default function GameBoard({ roomId = '', isHost = true }: GameBoardProps
         const rematcher: PlayerRole = data.rematchHost ? 'host' : 'guest';
         if (rematcher === playerRole) {
           setBattlePhase('waiting');
-          setWaitingMessage(`現在対戦相手がいません。${playerRole === 'host' ? 'ホスト' : 'ホストとして'}待機中です。合言葉は「${roomId}」です。`);
+          setWaitingMessage(`現在対戦相手がいません。あなたとして待機中です。合言葉は「${roomId}」です。`);
         }
       }
     });
 
     return () => unsubscribe();
-  }, [roomId, playerRole]);
+  }, [roomId, playerRole, authReady]);
 
   // ===== 初回ルーム状態の作成 =====
   useEffect(() => {
-    if (!roomId || !isHost) return;
+    if (!roomId || !isHost || !authReady) return;
 
     const roomRef = doc(db, 'rooms', roomId);
     void getDoc(roomRef).then((snapshot) => {
@@ -923,9 +963,13 @@ export default function GameBoard({ roomId = '', isHost = true }: GameBoardProps
         exitGuest: false,
         readyHost: false,
         readyGuest: false,
+        hostHandCount: 0,
+        guestHandCount: 0,
+        hostDeckCount: 0,
+        guestDeckCount: 0,
       });
     });
-  }, [roomId, isHost]);
+  }, [roomId, isHost, authReady]);
 
   // ===== 現在の季節・手番・出場キャラ =====
   const currentSeasonIdx = startSeasonIdx === null ? 0 : (startSeasonIdx + Math.floor(turnIndex / 2)) % 4;
@@ -972,9 +1016,22 @@ export default function GameBoard({ roomId = '', isHost = true }: GameBoardProps
     }
   }, [battlePhase, myTurn, currentYear, turnIndex, playerRole, myHand.length, myDeck]);
 
+  // ===== オンライン対戦：手札・山札枚数を相手へ公開 =====
+  useEffect(() => {
+    if (!isOnline || !roomId || battlePhase === 'finished') return;
+    const roomRef = doc(db, 'rooms', roomId);
+    const handField = playerRole === 'host' ? 'hostHandCount' : 'guestHandCount';
+    const deckField = playerRole === 'host' ? 'hostDeckCount' : 'guestDeckCount';
+    void updateDoc(roomRef, {
+      [handField]: myHand.length,
+      [deckField]: myDeck.length,
+    }).catch(() => undefined);
+  }, [isOnline, roomId, playerRole, battlePhase, myHand.length, myDeck.length]);
+
   // ===== Firebaseへアクションを書き込む =====
   const sendAction = async (action: Record<string, unknown>) => {
-    if (!isOnline || !roomId) return;
+    if (!isOnline || !roomId || !authReady) return;
+    await ensureAnonymousAuth();
     const roomRef = doc(db, 'rooms', roomId);
     const field = playerRole === 'host' ? 'hostAction' : 'guestAction';
     await updateDoc(roomRef, {
@@ -1016,7 +1073,7 @@ export default function GameBoard({ roomId = '', isHost = true }: GameBoardProps
 
   // ===== 先手・後手を決定（デッキ確定後のみ） =====
   const decideFirstPlayer = async () => {
-    if (battlePhase !== 'setup' || isCoinTossing || !deckConfirmed) return;
+    if (battlePhase !== 'setup' || isCoinTossing || !deckConfirmed || (isOnline && !authReady)) return;
     // オンラインでは両者がデッキ確定してから、ホストだけがコイントスを行う。
     if (isOnline && !isHost) return;
     if (isOnline && currentYear === 1 && (!readyHost || !readyGuest)) return;
@@ -1027,23 +1084,26 @@ export default function GameBoard({ roomId = '', isHost = true }: GameBoardProps
 
     if (!isOnline) {
       setFirstPlayer(result);
-      if (result === 'guest') {
-        const season = Math.floor(Math.random() * SEASONS.length);
-        setStartSeasonIdx(season);
-        setPreparationMessage(`コイントス結果：CPUが先手です。\nCPUがスタート季節「${SEASONS[season]}」を選択しました。`);
-      } else {
-        setStartSeasonIdx(null);
-        setPreparationMessage('コイントス結果：あなたが先手です。\nスタート季節を選択してください。');
-      }
+      setStartSeasonIdx(0);
+      setPreparationMessage(
+        `コイントス結果：${result === 'host' ? 'あなた' : 'CPU'}が先手です。\n春から${ROLE_NAMES[currentYear - 1]}戦を開始します。`,
+      );
       addLog(`🪙 コイントス結果：${result === 'host' ? 'あなた' : 'CPU'}が先手です。`);
+      setBattlePhase('battle');
+      setTurnIndex(0);
       setIsCoinTossing(false);
       return;
     }
 
     try {
-      await updateDoc(doc(db, 'rooms', roomId), { firstPlayer: result, startSeasonIdx: null });
-      setPreparationMessage('');
-      addLog(`🪙 コイントス結果：${result === 'host' ? 'ホスト' : 'ゲスト'}が先手です。`);
+      await updateDoc(doc(db, 'rooms', roomId), {
+        firstPlayer: result,
+        startSeasonIdx: 0,
+        turnIndex: 0,
+        battlePhase: 'battle',
+      });
+      setPreparationMessage(`🪙 コイントス結果：${result === playerRole ? 'あなた' : '相手'}が先手です。春から${ROLE_NAMES[currentYear - 1]}戦を開始します。`);
+      addLog(`🪙 コイントス結果：${result === playerRole ? 'あなた' : '相手'}が先手です。`);
     } catch (error) {
       console.error('コイントス結果の同期エラー:', error);
       addLog('⚠️ 先手決定に失敗しました。');
@@ -1052,27 +1112,9 @@ export default function GameBoard({ roomId = '', isHost = true }: GameBoardProps
     }
   };
 
-  // ===== スタート季節を先手が決定 =====
-  const chooseStartSeason = async (season: number) => {
-    if (battlePhase !== 'setup' || !firstPlayer || firstPlayer !== playerRole) return;
-    if (!isOnline) {
-      // 現在準備しているクラスをそのまま開始する。
-      // ここを 1 固定にすると、中堅戦・大将戦で季節を選んだ瞬間に先鋒戦へ巻き戻る。
-      setStartSeasonIdx(season);
-      setPreparationMessage(`スタート季節を「${SEASONS[season]}」に決定しました。\n${ROLE_NAMES[currentYear - 1]}戦を開始します。`);
-      addLog(`スタート季節を「${SEASONS[season]}」に決定しました。`);
-      setCurrentYear((year) => year);
-      setTurnIndex(0);
-      setBattlePhase('battle');
-      return;
-    }
-    await updateDoc(doc(db, 'rooms', roomId), { startSeasonIdx: season });
-    addLog(`スタート季節を「${SEASONS[season]}」に決定しました。`);
-  };
-
   // ===== 選択デッキを確定（ここではまだ対戦を開始しない） =====
   const startBattleWithDeck = async () => {
-    if (battlePhase !== 'setup' || !myDeckReady || deckConfirmed) return;
+    if (battlePhase !== 'setup' || !myDeckReady || deckConfirmed || (isOnline && !authReady)) return;
     // 中堅戦・大将戦ではデッキ変更・再確定を行わない。
     if (currentYear > 1) return;
 
@@ -1105,24 +1147,6 @@ export default function GameBoard({ roomId = '', isHost = true }: GameBoardProps
     });
   }, [isOnline, isHost, battlePhase, firstPlayer, startSeasonIdx, readyHost, readyGuest, roomId]);
 
-  // ===== CPUの季節選択後に自動で次クラスの対戦へ =====
-  // CPU対戦ではCPU側（guest）の季節選択を画面上で待つ必要がありません。
-  // コイントスでCPUが先手になった場合、decideFirstPlayer() が startSeasonIdx を
-  // 決定した時点で、そのまま次のクラスのバトルへ移行します。
-  // 先鋒戦だけでなく、中堅戦・大将戦の準備フェイズにも同じ流れを適用します。
-  useEffect(() => {
-    if (isOnline || battlePhase !== 'setup') return;
-    if (firstPlayer !== 'guest' || startSeasonIdx === null) return;
-
-    setPreparationMessage(
-      `コイントス結果：CPUが先手です。\nCPUがスタート季節「${SEASONS[startSeasonIdx]}」を選択しました。\n${ROLE_NAMES[currentYear - 1]}戦を開始します。`,
-    );
-    setCurrentYear((year) => year);
-    setTurnIndex(0);
-    setBattlePhase('battle');
-    addLog(`CPUがスタート季節「${SEASONS[startSeasonIdx]}」を選択しました。`);
-  }, [isOnline, battlePhase, firstPlayer, startSeasonIdx, currentYear]);
-
   // ===== クラス終了リザルト =====
   const showClassResult = (
     completedYear: number,
@@ -1141,7 +1165,7 @@ export default function GameBoard({ roomId = '', isHost = true }: GameBoardProps
   };
 
   const continueAfterClassResult = () => {
-    if (!classResult) return;
+    if (!classResult || (isOnline && !authReady)) return;
 
     const completedYear = classResult.completedYear;
     setClassResult(null);
@@ -1334,7 +1358,7 @@ export default function GameBoard({ roomId = '', isHost = true }: GameBoardProps
       setMyAvatars(nextMyAvatars);
       setOppAvatars(nextOppAvatars);
       setUsedSkillsByClass(nextUsed);
-      addLog(`「${skill.name}」発動！ +${gainedScore}pt`);
+      addLog(`「${skill.name}」発動！ +${gainedScore}スコア`);
       if (Object.keys(debuffs).length > 0 && !oppActiveAvatar.debuffImmune) {
         const detail = Object.entries(debuffs)
           .map(([key, value]) => `${STAT_LABELS[key as StatKey]} -${value}`)
@@ -1453,7 +1477,7 @@ export default function GameBoard({ roomId = '', isHost = true }: GameBoardProps
     }
 
     setUsedSkillsByClass(nextUsed);
-    addLog(`「${skill.name}」発動！ +${gainedScore}pt`);
+    addLog(`「${skill.name}」発動！ +${gainedScore}スコア`);
     if (Object.keys(debuffs).length > 0 && !oppActiveAvatar.debuffImmune) {
       const detail = Object.entries(debuffs).map(([key, value]) => `${STAT_LABELS[key as StatKey]} -${value}`).join(' / ');
       addLog(`相手へのデバフ：${detail}`);
@@ -1732,7 +1756,7 @@ export default function GameBoard({ roomId = '', isHost = true }: GameBoardProps
         return nextScores;
       });
       setGuestTotalScore((prev) => prev + gainedScore);
-      addLog(`CPU「${skill.name}」発動！ +${gainedScore}pt`);
+      addLog(`CPU「${skill.name}」発動！ +${gainedScore}スコア`);
 
       const next = getNextTurnState();
       const finalMyScore = next.nextPhase === 'setup' || next.nextPhase === 'finished'
@@ -1855,7 +1879,7 @@ export default function GameBoard({ roomId = '', isHost = true }: GameBoardProps
   // ===== 勝敗後の再戦・退出選択 =====
   // 先に選んだ側は待機、後から選んだ側は「新しいゲームを始めます」と案内します。
   const chooseRematch = async (choice: 'rematch' | 'exit') => {
-    if (rematchChoice) return;
+    if (rematchChoice || (isOnline && !authReady)) return;
 
     // CPU対戦はFirebaseを使わず、この画面内で新しい準備フェイズを開始します。
     if (!isOnline) {
@@ -1922,7 +1946,7 @@ export default function GameBoard({ roomId = '', isHost = true }: GameBoardProps
       if (result.otherChoice) {
         const message = playerRole === 'host'
           ? '新しいゲームを始めます。\n先手・後手を決めるコイントスを行います。'
-          : '新しいゲームを始めます。\nホストのコイントスをお待ちください。';
+          : '新しいゲームを始めます。\nコイントスの結果をお待ちください。';
         setPreparationMessage(message);
         addLog(message.replace('\n', ' '));
       } else {
@@ -2056,9 +2080,9 @@ export default function GameBoard({ roomId = '', isHost = true }: GameBoardProps
     <div className="relative min-h-[calc(100vh-120px)] overflow-hidden text-slate-900">
       <OutdoorStageBackground season={currentSeason} />
 
-      <div className="relative z-10 mx-auto max-w-7xl p-3 md:p-5">
+      <div className="relative z-10 mx-auto w-full max-w-7xl p-2 sm:p-3 md:p-5">
         {/* ===== ヘッダー：ここで完全に閉じる ===== */}
-        <header className="rounded-2xl border border-white/50 bg-white/65 p-3 shadow-lg backdrop-blur-md">
+        <header className="w-full rounded-2xl border border-white/50 bg-white/65 p-2.5 shadow-lg backdrop-blur-md sm:p-3">
           <div className="flex flex-wrap items-center justify-between gap-3">
             <div>
               <div className="text-xs font-black opacity-60">REALITY LIVE BATTLE</div>
@@ -2068,25 +2092,25 @@ export default function GameBoard({ roomId = '', isHost = true }: GameBoardProps
               </div>
             </div>
 
-            <div className="flex items-center gap-2 rounded-xl bg-slate-950/85 px-4 py-2 text-white shadow">
+            <div className="flex items-center gap-2 rounded-xl bg-slate-950/85 px-3 py-2 text-white shadow sm:px-4">
               <div className="text-center">
                 <div className="text-[10px] opacity-60">あなた</div>
                 <div className="text-2xl font-black">
-                  {myTotalScore}<span className="text-xs">pt</span>
+                  {myTotalScore}<span className="text-xs">スコア</span>
                 </div>
               </div>
               <div className="px-2 text-xs font-black opacity-50">VS</div>
               <div className="text-center">
                 <div className="text-[10px] opacity-60">相手</div>
                 <div className="text-2xl font-black">
-                  {opponentTotalScore}<span className="text-xs">pt</span>
+                  {opponentTotalScore}<span className="text-xs">スコア</span>
                 </div>
               </div>
             </div>
 
             <div className="flex items-center gap-2">
               <span className="rounded-full bg-white/80 px-3 py-1 text-xs font-black">
-                {playerRole === 'host' ? 'ホスト' : 'ゲスト'}
+                あなた
               </span>
               {battlePhase === 'battle' && (
                 <span
@@ -2109,18 +2133,18 @@ export default function GameBoard({ roomId = '', isHost = true }: GameBoardProps
             <div className="mt-5 grid grid-cols-2 gap-3">
               <div className="rounded-2xl border border-indigo-200 bg-indigo-50 p-4">
                 <div className="text-sm font-black text-indigo-700">あなた</div>
-                <div className="mt-1 text-3xl font-black">{classResult.myScore}<span className="text-sm">pt</span></div>
+                <div className="mt-1 text-3xl font-black">{classResult.myScore}<span className="text-sm">スコア</span></div>
               </div>
               <div className="rounded-2xl border border-rose-200 bg-rose-50 p-4">
                 <div className="text-sm font-black text-rose-700">相手</div>
-                <div className="mt-1 text-3xl font-black">{classResult.opponentScore}<span className="text-sm">pt</span></div>
+                <div className="mt-1 text-3xl font-black">{classResult.opponentScore}<span className="text-sm">スコア</span></div>
               </div>
             </div>
             <div className="mt-4 text-xl font-black">
               {classResult.myScore > classResult.opponentScore ? 'このクラスはあなたの勝利！' : classResult.myScore < classResult.opponentScore ? 'このクラスは相手の勝利。' : 'このクラスは引き分け。'}
             </div>
             <div className="mt-2 text-sm font-bold opacity-60">
-              累計　{classResult.myTotal}pt　VS　{classResult.opponentTotal}pt
+              累計　{classResult.myTotal}スコア　VS　{classResult.opponentTotal}スコア
             </div>
             <button
               onClick={continueAfterClassResult}
@@ -2227,7 +2251,7 @@ export default function GameBoard({ roomId = '', isHost = true }: GameBoardProps
                 <button
                   onClick={() => void startBattleWithDeck()}
                   disabled={!myDeckReady || deckConfirmed || currentYear !== 1 || (isOnline && (playerRole === 'host' ? readyHost : readyGuest))}
-                  className="w-full rounded-xl bg-indigo-600 px-4 py-2.5 text-sm font-black text-white shadow-lg disabled:cursor-not-allowed disabled:opacity-40"
+                  className="w-full rounded-xl bg-emerald-600 px-4 py-3 text-sm font-black text-white shadow-lg transition hover:bg-emerald-700 disabled:cursor-not-allowed disabled:opacity-40"
                 >
                   このデッキではじめる
                 </button>
@@ -2236,8 +2260,8 @@ export default function GameBoard({ roomId = '', isHost = true }: GameBoardProps
               <div className="mt-2 text-xs font-bold opacity-50">
                 {currentYear === 1
                   ? (isOnline
-                    ? '両者のデッキ確定後にコイントス、続いて先手が季節を選びます。'
-                    : 'デッキを確定するとコイントス、続いて先手が季節を選びます。')
+                    ? '両者のデッキ確定後にコイントスを行い、春から開始します。'
+                    : 'デッキを確定するとコイントスを行い、春から開始します。')
                   : 'この対戦ではデッキ変更できません。前のクラスと同じデッキを継続使用します。'}
               </div>
             </div>
@@ -2254,7 +2278,7 @@ export default function GameBoard({ roomId = '', isHost = true }: GameBoardProps
                     </button>
                   ) : (
                     <div className="mt-4 rounded-xl bg-white/10 p-3 text-sm font-bold">
-                      {currentYear > 1 ? '前のクラスと同じデッキを使用します。ホストがコイントスを行います。' : '両者のデッキ確定後、ホストがコイントスを行います。'}
+                      {currentYear > 1 ? '前のクラスと同じデッキを使用します。コイントスで先手を決めます。' : '両者のデッキ確定後、コイントスで先手を決めます。'}
                     </div>
                   )
                 ) : (
@@ -2268,27 +2292,11 @@ export default function GameBoard({ roomId = '', isHost = true }: GameBoardProps
                 )
               ) : (
                 <div className="mt-4 rounded-xl bg-white/10 p-3 text-lg font-black text-amber-300">
-                  {isOnline ? (firstPlayer === 'host' ? 'ホスト' : 'ゲスト') : (firstPlayer === 'host' ? 'あなた' : 'CPU')} が先手
+                  {firstPlayer === playerRole ? 'あなた' : '相手'} が先手
                 </div>
               )}
             </div>
 
-            {/* STEP 3：コイントス後、先手プレイヤーがスタート季節を選択。 */}
-            <div className="mt-4 rounded-2xl border border-white/50 bg-white/70 p-4">
-              <div className="text-xs font-black opacity-50">STEP 3</div>
-              <div className="mt-1 text-lg font-black">スタート季節</div>
-              {firstPlayer && startSeasonIdx === null && firstPlayer === playerRole ? (
-                <div className="mt-3 grid grid-cols-2 gap-2 sm:grid-cols-4">
-                  {SEASONS.map((season, index) => (
-                    <button key={season} onClick={() => void chooseStartSeason(index)} className="rounded-xl border bg-white p-3 font-black hover:bg-slate-50">{season}</button>
-                  ))}
-                </div>
-              ) : firstPlayer && startSeasonIdx !== null ? (
-                <div className="mt-3 rounded-xl bg-slate-100 p-3 text-center font-black">スタート季節：{SEASONS[startSeasonIdx]}</div>
-              ) : (
-                <div className="mt-3 text-sm font-bold opacity-50">先にコイントスを行ってください。</div>
-              )}
-            </div>
           </section>
         )}
 
@@ -2317,11 +2325,11 @@ export default function GameBoard({ roomId = '', isHost = true }: GameBoardProps
             {/* ===== ① 待機キャラ6枚：現在対戦中キャラの上 ===== */}
             <div className="rounded-3xl border border-white/60 bg-white/35 p-3 shadow-xl backdrop-blur-md">
               <div className="mb-3 grid grid-cols-2 gap-3 text-center text-xs font-black">
-                <div className="rounded-full bg-slate-950/80 px-3 py-1.5 text-white">ホスト</div>
-                <div className="rounded-full bg-slate-950/80 px-3 py-1.5 text-white">ゲスト</div>
+                <div className="rounded-full bg-slate-950/80 px-3 py-1.5 text-white">あなた</div>
+                <div className="rounded-full bg-slate-950/80 px-3 py-1.5 text-white">相手</div>
               </div>
 
-              <div className="grid grid-cols-6 gap-2">
+              <div className="grid grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-6">
                 {/* ホスト：大将 → 中堅 → 先鋒 */}
                 {hostWaitingIndexes.map((index) => {
                   const avatar = myAvatars[index] || DEFAULT_MY_AVATARS[index];
@@ -2402,7 +2410,7 @@ export default function GameBoard({ roomId = '', isHost = true }: GameBoardProps
                     自分　{mySideActiveAvatar.roleName}
                   </div>
 
-                  <div className="mt-2 flex items-center gap-3">
+                  <div className="mt-2 flex flex-col items-center gap-3 sm:flex-row sm:items-start">
                     <div className="min-w-0 flex-1">
                       <img
                         src={mySideActiveAvatar.card.imageDataUrl}
@@ -2418,7 +2426,7 @@ export default function GameBoard({ roomId = '', isHost = true }: GameBoardProps
                       <div className="mt-3 rounded-xl bg-indigo-50 p-2 text-center">
                         <div className="text-[10px] font-black opacity-50">このクラスの得点</div>
                         <div className="text-xl font-black text-indigo-700">
-                          {mySideActiveClassScore}pt
+                          {mySideActiveClassScore}スコア
                         </div>
                       </div>
                     </div>
@@ -2436,7 +2444,7 @@ export default function GameBoard({ roomId = '', isHost = true }: GameBoardProps
                     相手　{opponentSideActiveAvatar.roleName}
                   </div>
 
-                  <div className="mt-2 flex items-center gap-3">
+                  <div className="mt-2 flex flex-col items-center gap-3 sm:flex-row sm:items-start">
                     <div className="min-w-0 flex-1">
                       <img
                         src={opponentSideActiveAvatar.card.imageDataUrl}
@@ -2452,7 +2460,7 @@ export default function GameBoard({ roomId = '', isHost = true }: GameBoardProps
                       <div className="mt-3 rounded-xl bg-rose-50 p-2 text-center">
                         <div className="text-[10px] font-black opacity-50">このクラスの得点</div>
                         <div className="text-xl font-black text-rose-700">
-                          {opponentSideActiveClassScore}pt
+                          {opponentSideActiveClassScore}スコア
                         </div>
                       </div>
                     </div>
@@ -2487,11 +2495,12 @@ export default function GameBoard({ roomId = '', isHost = true }: GameBoardProps
             <section className="rounded-2xl border border-white/60 bg-white/75 p-3 shadow-lg backdrop-blur-md">
               <div className="flex items-center justify-between">
                 <div className="text-sm font-black">🃏 サポートカード</div>
-                <div className="text-xs font-bold opacity-50">
-                  手札 {myHand.length}/{MAX_HAND}　山札 {myDeck.length}
+                <div className="text-right text-[10px] font-bold leading-relaxed opacity-60 sm:text-xs">
+                  <div>あなた：手札 {myHand.length}/{MAX_HAND}　山札 {myDeck.length}</div>
+                  <div>相手：手札 {isOnline ? opponentHandCount : cpuHand.length}/{MAX_HAND}　山札 {isOnline ? opponentDeckCount : cpuDeck.length}</div>
                 </div>
               </div>
-              <div className="mt-2 flex gap-2 overflow-x-auto pb-1">
+              <div className="mt-2 grid grid-cols-1 gap-2 min-[420px]:grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 pb-1">
                 {myHand.length === 0 ? (
                   <div className="py-4 text-xs font-bold opacity-40">手札がありません。</div>
                 ) : (
@@ -2500,7 +2509,7 @@ export default function GameBoard({ roomId = '', isHost = true }: GameBoardProps
                       key={`${card.id}_${index}`}
                       disabled={!myTurn}
                       onClick={() => void handleUseSupportCard(card, index)}
-                      className={`w-40 shrink-0 rounded-xl border bg-white p-3 text-left shadow ${
+                      className={`min-w-0 w-full rounded-xl border bg-white p-3 text-left shadow ${
                         myTurn ? 'hover:border-indigo-400' : 'cursor-not-allowed opacity-50'
                       }`}
                     >
@@ -2514,7 +2523,7 @@ export default function GameBoard({ roomId = '', isHost = true }: GameBoardProps
                         ) : null}
                         <div className="min-w-0">
                           <div className="text-xs font-black leading-tight">{card.name}</div>
-                          <div className="mt-1 line-clamp-3 text-[11px] leading-relaxed opacity-70">
+                          <div className="mt-1 whitespace-normal break-words text-[11px] leading-relaxed opacity-70">
                             {card.description}
                           </div>
                         </div>
@@ -2592,8 +2601,8 @@ export default function GameBoard({ roomId = '', isHost = true }: GameBoardProps
                   : 'DRAW'}
             </h2>
             <div className="mt-4 text-3xl font-black">
-              {myTotalScore} <span className="text-sm">pt</span>　VS　{opponentTotalScore}{' '}
-              <span className="text-sm">pt</span>
+              {myTotalScore} <span className="text-sm">スコア</span>　VS　{opponentTotalScore}{' '}
+              <span className="text-sm">スコア</span>
             </div>
 
             <div className="mx-auto mt-5 grid max-w-md grid-cols-3 gap-2 text-xs">
