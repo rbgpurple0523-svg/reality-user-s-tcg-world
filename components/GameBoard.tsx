@@ -737,211 +737,833 @@ export default function GameBoard({ roomId = '', isHost = true, onEditDeck }: Ga
     }
   };
 
-  // ===== 自分のアバターをFirebaseへ公開 =====
+  // =========================================================
+  // ===== Firebase Player 構造 =====
+  // =========================================================
+  //
+  // Room:
+  //   rooms/{roomId}
+  //     → 試合全体の状態
+  //
+  // Player:
+  //   rooms/{roomId}/players/host
+  //   rooms/{roomId}/players/guest
+  //     → 各プレイヤー固有の状態
+  //
+  // =========================================================
+
+  const myPlayerRef = useMemo(
+    () =>
+      isOnline && roomId
+        ? doc(db, 'rooms', roomId, 'players', playerRole)
+        : null,
+    [isOnline, roomId, playerRole],
+  );
+
+  const opponentRole: PlayerRole =
+    playerRole === 'host' ? 'guest' : 'host';
+
+  const opponentPlayerRef = useMemo(
+    () =>
+      isOnline && roomId
+        ? doc(db, 'rooms', roomId, 'players', opponentRole)
+        : null,
+    [isOnline, roomId, opponentRole],
+  );
+
+  // =========================================================
+  // ===== 自分のアバター・デッキをPlayerへ公開 =====
+  // =========================================================
+  //
+  // 現行：
+  //   rooms/{roomId}.hostAvatars / guestAvatars
+  //
+  // 今回：
+  //   rooms/{roomId}/players/{playerRole}.avatars
+  //
+  // 既存のローカル状態生成はそのまま残し、
+  // Firebaseへの公開先だけPlayerへ変更する。
+  // =========================================================
+
   useEffect(() => {
     const loaded = loadDeckAndAvatars(activeDeckId);
+
     let selectedDeck: Deck | null = null;
+
     try {
       const raw = localStorage.getItem('reality_decks');
       const decks: Deck[] = raw ? JSON.parse(raw) : [];
-      selectedDeck = decks.find((deck) => deck.id === activeDeckId) || decks[0] || null;
+
+      selectedDeck =
+        decks.find((deck) => deck.id === activeDeckId) ||
+        decks[0] ||
+        null;
     } catch {
       selectedDeck = null;
     }
+
     resetLocalSupportDeck(selectedDeck);
-    // 保存済みデッキがあれば、入場直後から「このデッキではじめる」を押せる状態にする。
+
+    // 保存済みデッキがあれば、
+    // 入場直後から「このデッキではじめる」を押せる状態にする。
     setMyDeckReady(Boolean(selectedDeck));
     setDeckConfirmed(false);
 
+    // -------------------------------------------------------
+    // CPU戦
+    // -------------------------------------------------------
+
     if (!isOnline) {
       buildCpuDeck();
-      setPreparationMessage('デッキを確認して「このデッキではじめる」を押してください。');
+
+      setPreparationMessage(
+        'デッキを確認して「このデッキではじめる」を押してください。',
+      );
+
       setOpponentHandCount(INITIAL_HAND_SIZE);
-      setOpponentDeckCount(Math.max(0, BATTLE_DECK_SIZE - INITIAL_HAND_SIZE));
+
+      setOpponentDeckCount(
+        Math.max(0, BATTLE_DECK_SIZE - INITIAL_HAND_SIZE),
+      );
+
+      return;
     }
 
-    if (!roomId || !authReady || initializedRef.current) return;
-    initializedRef.current = true;
+    // -------------------------------------------------------
+    // オンライン戦
+    // -------------------------------------------------------
 
-    const roomRef = doc(db, 'rooms', roomId);
+    if (!myPlayerRef || !authReady) return;
+
+    let cancelled = false;
+
     void (async () => {
       try {
-        await updateDoc(roomRef, {
-          [playerRole === 'host' ? 'hostAvatars' : 'guestAvatars']: loaded,
-          [playerRole === 'host' ? 'hostDeckId' : 'guestDeckId']: activeDeckId || null,
+        const currentUser = await ensureAnonymousAuth();
+
+        if (cancelled) return;
+
+        await updateDoc(myPlayerRef, {
+          uid: currentUser.uid,
+          role: playerRole,
+          joined: true,
+
+          // Player固有データ
+          avatars: loaded,
+          deck: selectedDeck || null,
+
+          // 初期状態
+          hand: [],
+          usedSkills: {},
+
+          // 後続処理で実際のデッキ状態を同期する。
+          handCount: 0,
+          deckCount: 0,
+
+          lastSeenAt: Date.now(),
         });
       } catch (error) {
-        console.error('自分のアバター公開エラー:', error);
-      }
-    })();
-  }, [roomId, playerRole, authReady]);
-
-  // ===== ステージ在席確認（ハートビート） =====
-  // ブラウザを閉じて放置された古いステージを、次回作成時に再利用できるようにします。
-  useEffect(() => {
-    if (!roomId || !authReady) return;
-    const roomRef = doc(db, 'rooms', roomId);
-    const field = playerRole === 'host' ? 'hostLastSeenAt' : 'guestLastSeenAt';
-    const writeHeartbeat = () => {
-      void updateDoc(roomRef, { [field]: Date.now() }).catch(() => undefined);
-    };
-    writeHeartbeat();
-    const timer = window.setInterval(writeHeartbeat, 10000);
-    return () => window.clearInterval(timer);
-  }, [roomId, playerRole, authReady]);
-
-  // ===== Firebaseのゲーム状態を常時監視 =====
-  useEffect(() => {
-    if (!roomId || !authReady) return;
-
-    const roomRef = doc(db, 'rooms', roomId);
-    const unsubscribe = onSnapshot(roomRef, async (snapshot) => {
-      if (!snapshot.exists()) {
-        setBattlePhase('waiting');
-        setWaitingMessage('このステージは終了しました。合言葉は解放されています。');
-        return;
-      }
-      const data = snapshot.data();
-
-      // 新しいルームでは hostUid / guestUid と Firebase Authentication のuidを照合する。
-      // 旧形式のルームは移行期間中のため、uidがまだ無い場合のみ読み込みを許可する。
-      const expectedUid = playerRole === 'host' ? data.hostUid : data.guestUid;
-      const currentUid = authReady ? (await ensureAnonymousAuth()).uid : null;
-      if (expectedUid && currentUid && expectedUid !== currentUid) {
-        setBattlePhase('waiting');
-        setWaitingMessage('このルームの参加者として認証できませんでした。');
-        return;
-      }
-
-      const observedPhase = (data.battlePhase as string) || 'setup';
-      const observedYear = Number(data.currentYear || 1);
-
-      // オンライン対戦では、最後の技を自分が使わなかった側にも
-      // クラス終了リザルトを表示する。setupへの遷移時は年が1つ進み、
-      // 最終クラスはbattle→finishedになるため、その両方を検知する。
-      const wasBattle = lastObservedBattlePhaseRef.current === 'battle';
-      const completedIndex = observedPhase === 'setup'
-        ? observedYear - 2
-        : observedYear - 1;
-      if (
-        wasBattle &&
-        ((observedPhase === 'setup' && observedYear > lastObservedYearRef.current) || observedPhase === 'finished') &&
-        completedIndex >= 0 && completedIndex < 3
-      ) {
-        const hostScores = Array.isArray(data.hostClassScores) ? data.hostClassScores : [0, 0, 0];
-        const guestScores = Array.isArray(data.guestClassScores) ? data.guestClassScores : [0, 0, 0];
-        const myScores = playerRole === 'host' ? hostScores : guestScores;
-        const opponentScores = playerRole === 'host' ? guestScores : hostScores;
-        const myTotal = myScores.reduce((sum: number, score: number) => sum + score, 0);
-        const opponentTotal = opponentScores.reduce((sum: number, score: number) => sum + score, 0);
-        showClassResult(
-          completedIndex + 1,
-          Number(myScores[completedIndex] || 0),
-          Number(opponentScores[completedIndex] || 0),
-          myTotal,
-          opponentTotal,
+        console.error(
+          '自分のPlayerデータ公開エラー:',
+          error,
         );
       }
-      lastObservedBattlePhaseRef.current = observedPhase;
-      lastObservedYearRef.current = observedYear;
+    })();
 
-      const opponentAvatars = data[playerRole === 'host' ? 'guestAvatars' : 'hostAvatars'];
-      if (Array.isArray(opponentAvatars)) {
-        setOppAvatars((opponentAvatars as BattleAvatar[]).map((avatar) => ({
-          ...avatar,
-          baseStats: avatar.baseStats || { ...avatar.card.stats },
-          currentDebuff: avatar.currentDebuff || { hp: 0, intellect: 0, dexterity: 0, charm: 0 },
-          statBoost: avatar.statBoost || {},
-        })));
+    return () => {
+      cancelled = true;
+    };
+  }, [
+    roomId,
+    playerRole,
+    authReady,
+    isOnline,
+    activeDeckId,
+    myPlayerRef,
+  ]);
+
+  // =========================================================
+  // ===== ステージ在席確認（ハートビート） =====
+  // =========================================================
+  //
+  // 現行：
+  //   rooms/{roomId}.hostLastSeenAt / guestLastSeenAt
+  //
+  // 今回：
+  //   rooms/{roomId}/players/{playerRole}.lastSeenAt
+  //
+  // Room本体の所有権情報は変更せず、
+  // 「現在このプレイヤーが生きている」という情報だけ
+  // Playerへ移す。
+  // =========================================================
+
+  useEffect(() => {
+    if (!roomId || !authReady || !myPlayerRef) return;
+
+    const writeHeartbeat = () => {
+      void updateDoc(myPlayerRef, {
+        lastSeenAt: Date.now(),
+        joined: true,
+      }).catch(() => undefined);
+    };
+
+    writeHeartbeat();
+
+    const timer = window.setInterval(
+      writeHeartbeat,
+      10000,
+    );
+
+    return () => {
+      window.clearInterval(timer);
+    };
+  }, [
+    roomId,
+    authReady,
+    myPlayerRef,
+  ]);
+
+  // =========================================================
+  // ===== Firebaseのゲーム状態を常時監視 =====
+  // =========================================================
+  //
+  // Room購読：
+  //   battlePhase
+  //   currentYear
+  //   turnIndex
+  //   firstPlayer
+  //   startSeasonIdx
+  //   スコア
+  //   rematch / exit
+  //
+  // Player購読：
+  //   自分のavatars / hand / deck / usedSkills
+  //   相手のavatars / hand / deck / usedSkills
+  //
+  // という責務分離にする。
+  // =========================================================
+
+  useEffect(() => {
+    if (!roomId || !authReady || !isOnline) return;
+
+    const roomRef = doc(db, 'rooms', roomId);
+    const myRef = doc(
+      db,
+      'rooms',
+      roomId,
+      'players',
+      playerRole,
+    );
+    const opponentRef = doc(
+      db,
+      'rooms',
+      roomId,
+      'players',
+      opponentRole,
+    );
+
+    let currentRoomData: Record<string, any> | null = null;
+    let currentMyPlayerData: Record<string, any> | null = null;
+    let currentOpponentPlayerData: Record<string, any> | null = null;
+
+    const applyPlayerData = () => {
+      // =====================================================
+      // 自分のPlayer
+      // =====================================================
+
+      if (currentMyPlayerData) {
+        const avatars = currentMyPlayerData.avatars;
+
+        if (Array.isArray(avatars) && avatars.length === 3) {
+          setMyAvatars(
+            (avatars as BattleAvatar[]).map((avatar) => ({
+              ...avatar,
+              baseStats:
+                avatar.baseStats || {
+                  ...avatar.card.stats,
+                },
+              currentDebuff:
+                avatar.currentDebuff || {
+                  hp: 0,
+                  intellect: 0,
+                  dexterity: 0,
+                  charm: 0,
+                },
+              statBoost:
+                avatar.statBoost || {},
+            })),
+          );
+        }
+
+        const playerHand = currentMyPlayerData.hand;
+
+        if (Array.isArray(playerHand)) {
+          setMyHand(playerHand as SupportCard[]);
+        }
+
+        const playerDeck = currentMyPlayerData.deck;
+
+        if (Array.isArray(playerDeck)) {
+          setMyDeck(playerDeck as SupportCard[]);
+        }
+
+        const usedSkills =
+          currentMyPlayerData.usedSkills;
+
+        if (
+          usedSkills &&
+          typeof usedSkills === 'object'
+        ) {
+          setUsedSkillsByClass(usedSkills);
+        }
+
+        if (
+          typeof currentMyPlayerData.handCount === 'number'
+        ) {
+          // 自分の枚数はローカル状態を正とするため、
+          // ここでは相手表示用の値だけを更新しない。
+        }
       }
 
-      setBattlePhase((data.battlePhase as typeof battlePhase) || 'setup');
-      setCurrentYear(data.currentYear || 1);
-      setTurnIndex(data.turnIndex ?? 0);
-      setFirstPlayer((data.firstPlayer as PlayerRole) || null);
-      setStartSeasonIdx(typeof data.startSeasonIdx === 'number' ? data.startSeasonIdx : null);
-      setHostTotalScore(data.hostTotalScore ?? 0);
-      setGuestTotalScore(data.guestTotalScore ?? 0);
-      setReadyHost(Boolean(data.readyHost));
-      setReadyGuest(Boolean(data.readyGuest));
-      setOpponentHandCount(Number(data[playerRole === 'host' ? 'guestHandCount' : 'hostHandCount'] ?? 0));
-      setOpponentDeckCount(Number(data[playerRole === 'host' ? 'guestDeckCount' : 'hostDeckCount'] ?? 0));
+      // =====================================================
+      // 相手のPlayer
+      // =====================================================
 
-      const classScores = playerRole === 'host' ? data.hostClassScores : data.guestClassScores;
-      const opponentScores = playerRole === 'host' ? data.guestClassScores : data.hostClassScores;
-      if (Array.isArray(classScores)) setMyClassScores(classScores);
-      if (Array.isArray(opponentScores)) setOppClassScores(opponentScores);
+      if (currentOpponentPlayerData) {
+        const avatars =
+          currentOpponentPlayerData.avatars;
 
-      const used = playerRole === 'host' ? data.hostUsedSkills : data.guestUsedSkills;
-      if (used && typeof used === 'object') setUsedSkillsByClass(used);
+        if (Array.isArray(avatars) && avatars.length === 3) {
+          setOppAvatars(
+            (avatars as BattleAvatar[]).map((avatar) => ({
+              ...avatar,
+              baseStats:
+                avatar.baseStats || {
+                  ...avatar.card.stats,
+                },
+              currentDebuff:
+                avatar.currentDebuff || {
+                  hp: 0,
+                  intellect: 0,
+                  dexterity: 0,
+                  charm: 0,
+                },
+              statBoost:
+                avatar.statBoost || {},
+            })),
+          );
+        }
 
-      // ===== 相手の技によるスコア・干渉を受信 =====
-      const lastSkill = data.lastSkill;
-      if (
-        lastSkill?.actionId &&
-        lastSkill.actionId !== lastSkillActionRef.current &&
-        lastSkill.player !== playerRole
-      ) {
-        lastSkillActionRef.current = lastSkill.actionId;
-        if (lastSkill.year === activeIndex + 1) {
-          const incomingDebuffs = (lastSkill.debuffs || {}) as Partial<Record<StatKey, number>>;
-          if (Object.keys(incomingDebuffs).length > 0) {
-            setMyAvatars((prev) =>
-              prev.map((avatar, index) =>
-                index === activeIndex && !avatar.debuffImmune
-                  ? {
-                      ...avatar,
-                      currentDebuff: {
-                        hp: avatar.currentDebuff.hp + Number(incomingDebuffs.hp || 0),
-                        intellect: avatar.currentDebuff.intellect + Number(incomingDebuffs.intellect || 0),
-                        dexterity: avatar.currentDebuff.dexterity + Number(incomingDebuffs.dexterity || 0),
-                        charm: avatar.currentDebuff.charm + Number(incomingDebuffs.charm || 0),
-                      },
-                    }
-                  : avatar,
-              ),
+        const handCount =
+          currentOpponentPlayerData.handCount;
+
+        const deckCount =
+          currentOpponentPlayerData.deckCount;
+
+        if (typeof handCount === 'number') {
+          setOpponentHandCount(handCount);
+        }
+
+        if (typeof deckCount === 'number') {
+          setOpponentDeckCount(deckCount);
+        }
+      }
+    };
+
+    // =======================================================
+    // Room購読
+    // =======================================================
+
+    const unsubscribeRoom = onSnapshot(
+      roomRef,
+      async (snapshot) => {
+        if (!snapshot.exists()) {
+          setBattlePhase('waiting');
+          setWaitingMessage(
+            'このステージは終了しました。合言葉は解放されています。',
+          );
+          return;
+        }
+
+        const data =
+          snapshot.data() as Record<string, any>;
+
+        currentRoomData = data;
+
+        // ===================================================
+        // 認証済みUIDとRoom所有権を確認
+        // ===================================================
+
+        try {
+          const currentUid =
+            (await ensureAnonymousAuth()).uid;
+
+          const expectedUid =
+            playerRole === 'host'
+              ? data.hostUid
+              : data.guestUid;
+
+          if (
+            expectedUid &&
+            currentUid &&
+            expectedUid !== currentUid
+          ) {
+            setBattlePhase('waiting');
+            setWaitingMessage(
+              'このルームの参加者として認証できませんでした。',
+            );
+            return;
+          }
+        } catch (error) {
+          console.error(
+            'Room認証確認エラー:',
+            error,
+          );
+
+          setBattlePhase('waiting');
+          setWaitingMessage(
+            'Firebase認証を確認できませんでした。',
+          );
+          return;
+        }
+
+        // ===================================================
+        // Battle状態
+        // ===================================================
+
+        const observedPhase =
+          (data.battlePhase as string) || 'setup';
+
+        const observedYear =
+          Number(data.currentYear || 1);
+
+        // ===================================================
+        // クラス終了リザルト
+        // ===================================================
+
+        const wasBattle =
+          lastObservedBattlePhaseRef.current === 'battle';
+
+        const completedIndex =
+          observedPhase === 'setup'
+            ? observedYear - 2
+            : observedYear - 1;
+
+        if (
+          wasBattle &&
+          (
+            (
+              observedPhase === 'setup' &&
+              observedYear >
+                lastObservedYearRef.current
+            ) ||
+            observedPhase === 'finished'
+          ) &&
+          completedIndex >= 0 &&
+          completedIndex < 3
+        ) {
+          const hostScores =
+            Array.isArray(data.hostClassScores)
+              ? data.hostClassScores
+              : [0, 0, 0];
+
+          const guestScores =
+            Array.isArray(data.guestClassScores)
+              ? data.guestClassScores
+              : [0, 0, 0];
+
+          const myScores =
+            playerRole === 'host'
+              ? hostScores
+              : guestScores;
+
+          const opponentScores =
+            playerRole === 'host'
+              ? guestScores
+              : hostScores;
+
+          const myTotal =
+            myScores.reduce(
+              (sum: number, score: number) =>
+                sum + score,
+              0,
+            );
+
+          const opponentTotal =
+            opponentScores.reduce(
+              (sum: number, score: number) =>
+                sum + score,
+              0,
+            );
+
+          showClassResult(
+            completedIndex + 1,
+            Number(myScores[completedIndex] || 0),
+            Number(
+              opponentScores[completedIndex] || 0,
+            ),
+            myTotal,
+            opponentTotal,
+          );
+        }
+
+        lastObservedBattlePhaseRef.current =
+          observedPhase;
+
+        lastObservedYearRef.current =
+          observedYear;
+
+        // ===================================================
+        // Room全体の状態
+        // ===================================================
+
+        setBattlePhase(
+          (data.battlePhase as typeof battlePhase) ||
+            'setup',
+        );
+
+        setCurrentYear(
+          Number(data.currentYear || 1),
+        );
+
+        setTurnIndex(
+          Number(data.turnIndex ?? 0),
+        );
+
+        setFirstPlayer(
+          (data.firstPlayer as PlayerRole) ||
+            null,
+        );
+
+        setStartSeasonIdx(
+          typeof data.startSeasonIdx === 'number'
+            ? data.startSeasonIdx
+            : null,
+        );
+
+        setHostTotalScore(
+          Number(data.hostTotalScore ?? 0),
+        );
+
+        setGuestTotalScore(
+          Number(data.guestTotalScore ?? 0),
+        );
+
+        setReadyHost(
+          Boolean(data.readyHost),
+        );
+
+        setReadyGuest(
+          Boolean(data.readyGuest),
+        );
+
+        // ===================================================
+        // スコア
+        // ===================================================
+
+        const classScores =
+          playerRole === 'host'
+            ? data.hostClassScores
+            : data.guestClassScores;
+
+        const opponentScores =
+          playerRole === 'host'
+            ? data.guestClassScores
+            : data.hostClassScores;
+
+        if (Array.isArray(classScores)) {
+          setMyClassScores(classScores);
+        }
+
+        if (Array.isArray(opponentScores)) {
+          setOppClassScores(opponentScores);
+        }
+
+// ===================================================
+// 相手Player構造を正とする
+// ===================================================
+//
+// 相手の以下の情報は、上の
+// currentOpponentPlayerData 処理ですでに取得している。
+//
+//   currentOpponentPlayerData.avatars
+//   currentOpponentPlayerData.handCount
+//   currentOpponentPlayerData.deckCount
+//
+// そのため、ここでは旧Room構造へのフォールバックを行わない。
+//
+// 旧Room直下の以下のフィールドには依存しない。
+//
+//   guestAvatars
+//   hostAvatars
+//   guestHandCount
+//   hostHandCount
+//   guestDeckCount
+//   hostDeckCount
+//
+// ②-Bでは Player 構造を正とする。
+//
+// ===================================================
+
+// 相手Playerが存在しない場合でも、
+// 旧Room構造から相手情報を復元しない。
+// 相手情報は currentOpponentPlayerData 側からのみ取得する。
+//
+// ※ここでは状態更新を行わない。
+
+        // ===================================================
+        // 旧Skill状態
+        // ===================================================
+
+        const used =
+          playerRole === 'host'
+            ? data.hostUsedSkills
+            : data.guestUsedSkills;
+
+        if (
+          used &&
+          typeof used === 'object'
+        ) {
+          setUsedSkillsByClass(used);
+        }
+
+        // ===================================================
+        // 相手の技によるスコア・干渉
+        //
+        // lastSkill はまだRoom直下。
+        // これは②-BでsubmitBattleActionへ移行する。
+        // 今回は既存処理を維持する。
+        // ===================================================
+
+        const lastSkill =
+          data.lastSkill;
+
+        if (
+          lastSkill?.actionId &&
+          lastSkill.actionId !==
+            lastSkillActionRef.current &&
+          lastSkill.player !== playerRole
+        ) {
+          lastSkillActionRef.current =
+            lastSkill.actionId;
+
+          if (
+            lastSkill.year ===
+            activeIndex + 1
+          ) {
+            const incomingDebuffs =
+              (lastSkill.debuffs || {}) as Partial<
+                Record<StatKey, number>
+              >;
+
+            if (
+              Object.keys(incomingDebuffs).length > 0
+            ) {
+              setMyAvatars((prev) =>
+                prev.map((avatar, index) =>
+                  index === activeIndex &&
+                  !avatar.debuffImmune
+                    ? {
+                        ...avatar,
+                        currentDebuff: {
+                          hp:
+                            avatar.currentDebuff.hp +
+                            Number(
+                              incomingDebuffs.hp || 0,
+                            ),
+                          intellect:
+                            avatar.currentDebuff.intellect +
+                            Number(
+                              incomingDebuffs.intellect ||
+                                0,
+                            ),
+                          dexterity:
+                            avatar.currentDebuff.dexterity +
+                            Number(
+                              incomingDebuffs.dexterity ||
+                                0,
+                            ),
+                          charm:
+                            avatar.currentDebuff.charm +
+                            Number(
+                              incomingDebuffs.charm ||
+                                0,
+                            ),
+                        },
+                      }
+                    : avatar,
+                ),
+              );
+            }
+          }
+
+          addLog(
+            '相手が「' +
+              (lastSkill.skillName || '技') +
+              '」を発動しました。',
+          );
+        }
+
+        // ===================================================
+        // 相手アクション
+        //
+        // ここも②-BでsubmitBattleActionへ移行する。
+        // ===================================================
+
+        const opponentAction =
+          data[
+            playerRole === 'host'
+              ? 'guestAction'
+              : 'hostAction'
+          ];
+
+        if (
+          opponentAction?.actionId &&
+          opponentAction.actionId !==
+            lastActionRef.current
+        ) {
+          lastActionRef.current =
+            opponentAction.actionId;
+
+          handleIncomingAction(
+            opponentAction,
+          );
+        }
+
+        // ===================================================
+        // 再戦・退出
+        // ===================================================
+
+        if (
+          data.rematchHost &&
+          data.rematchGuest
+        ) {
+          setRematchChoice(null);
+          setWaitingMessage('');
+        }
+
+        if (
+          data.exitHost &&
+          data.exitGuest
+        ) {
+          setWaitingMessage(
+            '両者が退出を選択しました。このステージでのゲームは終了しました。',
+          );
+        }
+
+        if (
+          (data.rematchHost &&
+            data.exitGuest) ||
+          (data.rematchGuest &&
+            data.exitHost)
+        ) {
+          const rematcher: PlayerRole =
+            data.rematchHost
+              ? 'host'
+              : 'guest';
+
+          if (
+            rematcher === playerRole
+          ) {
+            setBattlePhase('waiting');
+
+            setWaitingMessage(
+              `現在対戦相手がいません。あなたとして待機中です。合言葉は「${roomId}」です。`,
             );
           }
         }
-        addLog(`相手が「${lastSkill.skillName || '技'}」を発動しました。`);
-      }
+      },
+    );
 
-      // ===== 相手アクションの受信 =====
-      const opponentAction = data[playerRole === 'host' ? 'guestAction' : 'hostAction'];
-      if (opponentAction?.actionId && opponentAction.actionId !== lastActionRef.current) {
-        lastActionRef.current = opponentAction.actionId;
-        handleIncomingAction(opponentAction);
-      }
+    // =======================================================
+    // 自分Player購読
+    // =======================================================
 
-      if (data.rematchHost && data.rematchGuest) {
-        setRematchChoice(null);
-        setWaitingMessage('');
-      }
-
-      if (data.exitHost && data.exitGuest) {
-        setWaitingMessage('両者が退出を選択しました。このステージでのゲームは終了しました。');
-      }
-
-      if ((data.rematchHost && data.exitGuest) || (data.rematchGuest && data.exitHost)) {
-        const rematcher: PlayerRole = data.rematchHost ? 'host' : 'guest';
-        if (rematcher === playerRole) {
-          setBattlePhase('waiting');
-          setWaitingMessage(`現在対戦相手がいません。あなたとして待機中です。合言葉は「${roomId}」です。`);
+    const unsubscribeMyPlayer = onSnapshot(
+      myRef,
+      (snapshot) => {
+        if (!snapshot.exists()) {
+          return;
         }
-      }
-    });
 
-    return () => unsubscribe();
-  }, [roomId, playerRole, authReady]);
+        currentMyPlayerData =
+          snapshot.data() as Record<string, any>;
 
+        applyPlayerData();
+      },
+      (error) => {
+        console.error(
+          '自分のPlayer購読エラー:',
+          error,
+        );
+      },
+    );
+
+    // =======================================================
+    // 相手Player購読
+    // =======================================================
+
+    const unsubscribeOpponentPlayer =
+      onSnapshot(
+        opponentRef,
+        (snapshot) => {
+          if (!snapshot.exists()) {
+            currentOpponentPlayerData = null;
+            return;
+          }
+
+          currentOpponentPlayerData =
+            snapshot.data() as Record<string, any>;
+
+          applyPlayerData();
+        },
+        (error) => {
+          // 相手がまだ入室していない場合など。
+          // これは対戦エラーとは限らない。
+          console.warn(
+            '相手Player購読待機:',
+            error,
+          );
+        },
+      );
+
+    return () => {
+      unsubscribeRoom();
+      unsubscribeMyPlayer();
+      unsubscribeOpponentPlayer();
+    };
+  }, [
+    roomId,
+    playerRole,
+    opponentRole,
+    authReady,
+    isOnline,
+  ]);
+
+  // =========================================================
   // ===== 初回ルーム状態の作成 =====
+  // =========================================================
+  //
+  // Room作成自体はFriendMatchSetup側で完了している。
+  //
+  // ここでは既存ルームに不足している「戦闘状態」だけを
+  // ホストが補完する。
+  //
+  // Playerドキュメントの作成はFriendMatchSetupで行うため、
+  // GameBoardから勝手にRoomを再生成しない。
+  // =========================================================
+
   useEffect(() => {
     if (!roomId || !isHost || !authReady) return;
 
     const roomRef = doc(db, 'rooms', roomId);
+
     void getDoc(roomRef).then((snapshot) => {
       if (!snapshot.exists()) return;
-      const data = snapshot.data();
+
+      const data =
+        snapshot.data() as Record<string, any>;
+
       if (data.battlePhase) return;
 
       void updateDoc(roomRef, {
@@ -950,27 +1572,42 @@ export default function GameBoard({ roomId = '', isHost = true, onEditDeck }: Ga
         turnIndex: 0,
         firstPlayer: null,
         startSeasonIdx: null,
+
         hostTotalScore: 0,
         guestTotalScore: 0,
+
         hostClassScores: [0, 0, 0],
         guestClassScores: [0, 0, 0],
+
         hostUsedSkills: {},
         guestUsedSkills: {},
+
         hostAction: null,
         guestAction: null,
+
         rematchHost: false,
         rematchGuest: false,
+
         exitHost: false,
         exitGuest: false,
+
         readyHost: false,
         readyGuest: false,
+
+        // 旧構造との互換用。
+        // 新Player構造ではPlayer側を正とする。
         hostHandCount: 0,
         guestHandCount: 0,
         hostDeckCount: 0,
         guestDeckCount: 0,
       });
     });
-  }, [roomId, isHost, authReady]);
+  }, [
+    roomId,
+    isHost,
+    authReady,
+  ]);
+
 
   // ===== 現在の季節・手番・出場キャラ =====
   const currentSeasonIdx = startSeasonIdx === null ? 0 : (startSeasonIdx + Math.floor(turnIndex / 2)) % 4;
@@ -1017,32 +1654,132 @@ export default function GameBoard({ roomId = '', isHost = true, onEditDeck }: Ga
     }
   }, [battlePhase, myTurn, currentYear, turnIndex, playerRole, myHand.length, myDeck]);
 
-  // ===== オンライン対戦：手札・山札枚数を相手へ公開 =====
+  // ===== オンライン対戦：手札・山札枚数をPlayerへ公開 =====
   useEffect(() => {
-    if (!isOnline || !roomId || battlePhase === 'finished') return;
-    const roomRef = doc(db, 'rooms', roomId);
-    const handField = playerRole === 'host' ? 'hostHandCount' : 'guestHandCount';
-    const deckField = playerRole === 'host' ? 'hostDeckCount' : 'guestDeckCount';
-    void updateDoc(roomRef, {
-      [handField]: myHand.length,
-      [deckField]: myDeck.length,
+    if (
+      !isOnline ||
+      !roomId ||
+      !authReady ||
+      !myPlayerRef ||
+      battlePhase === 'finished'
+    ) {
+      return;
+    }
+  
+    void updateDoc(myPlayerRef, {
+      handCount: myHand.length,
+      deckCount: myDeck.length,
     }).catch(() => undefined);
-  }, [isOnline, roomId, playerRole, battlePhase, myHand.length, myDeck.length]);
+  }, [
+    isOnline,
+    roomId,
+    authReady,
+    myPlayerRef,
+    battlePhase,
+    myHand.length,
+    myDeck.length,
+  ]);
 
-  // ===== Firebaseへアクションを書き込む =====
-  const sendAction = async (action: Record<string, unknown>) => {
-    if (!isOnline || !roomId || !authReady) return;
-    await ensureAnonymousAuth();
-    const roomRef = doc(db, 'rooms', roomId);
-    const field = playerRole === 'host' ? 'hostAction' : 'guestAction';
-    await updateDoc(roomRef, {
-      [field]: {
+// =========================================================
+// ===== Battle Action送信
+// =========================================================
+//
+// オンライン対戦では、クライアントは「結果」ではなく
+// 「プレイヤーが何をしようとしているか」だけを送信する。
+//
+// 送信してよいもの:
+//   type
+//   actionId
+//   skillId
+//   cardId
+//   cardIndex
+//   year
+//   turnIndex
+//   avatarIndex
+//   selectedBoostStat
+//
+// 送信しないもの:
+//   gainedScore
+//   scoreDelta
+//   debuffAmount
+//   debuffs
+//   actorStats
+//   targetStats
+//   変更後のavatar
+//
+// 将来的にAction処理サーバーがこのActionを読み取り、
+// 現在のFirestore状態とゲームルールから結果を計算する。
+// =========================================================
+
+type BattleActionPayload = {
+  type: 'USE_SKILL' | 'PLAY_SUPPORT';
+
+  // 「何をしたか」を識別するためのID
+  actionId?: string;
+
+  // 現在の対戦状態
+  year: number;
+  turnIndex: number;
+
+  // 現在出場しているキャラクター
+  avatarIndex: number;
+
+  // 技使用時
+  skillId?: string;
+
+  // Y系「バースト」など、プレイヤーが選択した対象。
+  // これは結果値ではなく「選択意図」なので送信可能。
+  selectedBoostStat?: StatKey | null;
+
+  // サポート使用時
+  cardId?: string;
+  cardIndex?: number;
+};
+
+const submitBattleAction = async (
+  action: BattleActionPayload,
+) => {
+  if (!isOnline || !roomId || !authReady) return false;
+
+  try {
+    const currentUser = await ensureAnonymousAuth();
+
+    const actionId =
+      action.actionId ||
+      `${playerRole}_${Date.now()}_${Math.random()
+        .toString(36)
+        .slice(2)}`;
+
+    const playerRef = doc(
+      db,
+      'rooms',
+      roomId,
+      'players',
+      playerRole,
+    );
+
+    await updateDoc(playerRef, {
+      pendingAction: {
         ...action,
-        actionId: `${playerRole}_${Date.now()}_${Math.random().toString(36).slice(2)}`,
+        actionId,
+        uid: currentUser.uid,
+        playerRole,
+        submittedAt: Date.now(),
       },
     });
-  };
 
+    return true;
+  } catch (error) {
+    console.error(
+      'Battle Action送信エラー:',
+      error,
+    );
+
+    addLog('⚠️ アクションの送信に失敗しました。');
+
+    return false;
+  }
+};
   // ===== 相手のアクション処理 =====
   const handleIncomingAction = (action: any) => {
     if (!action?.type) return;
@@ -1386,103 +2123,33 @@ export default function GameBoard({ roomId = '', isHost = true, onEditDeck }: Ga
       return;
     }
 
-    const roomRef = doc(db, 'rooms', roomId);
+    const actionSubmitted = await submitBattleAction({
+      type: 'USE_SKILL',
 
-    const actionId = `${playerRole}_${Date.now()}_${Math.random().toString(36).slice(2)}`;
-    await runTransaction(db, async (transaction) => {
-      const snapshot = await transaction.get(roomRef);
-      const data = snapshot.data();
-      if (!data) throw new Error('対戦ルームが見つかりません。');
+      // 現在の対戦状態
+      year: currentYear,
+      turnIndex,
 
-      const firebaseFirst = data.firstPlayer as PlayerRole | null;
-      const firebaseTurnIndex = data.turnIndex ?? 0;
-      const firebaseYear = data.currentYear ?? 1;
-      const expectedPlayer =
-        firebaseFirst === null
-          ? null
-          : firebaseTurnIndex % 2 === 0
-            ? firebaseFirst
-            : firebaseFirst === 'host'
-              ? 'guest'
-              : 'host';
+      // 現在出場しているキャラクター
+      avatarIndex: activeIndex,
 
-      if (data.battlePhase !== 'battle' || expectedPlayer !== playerRole) {
-        throw new Error('現在はあなたの手番ではありません。');
-      }
+      // 使用する技
+      skillId: skill.id,
 
-      const totalField = playerRole === 'host' ? 'hostTotalScore' : 'guestTotalScore';
-      const classField = playerRole === 'host' ? 'hostClassScores' : 'guestClassScores';
-      const usedField = playerRole === 'host' ? 'hostUsedSkills' : 'guestUsedSkills';
-      const opponentAvatarField = playerRole === 'host' ? 'guestAvatars' : 'hostAvatars';
-      const myAvatarField = playerRole === 'host' ? 'hostAvatars' : 'guestAvatars';
-
-      const totals = Array.isArray(data[classField]) ? [...data[classField]] : [0, 0, 0];
-      totals[firebaseYear - 1] = (totals[firebaseYear - 1] || 0) + gainedScore;
-
-      const patch: Record<string, unknown> = {
-        [totalField]: (data[totalField] || 0) + gainedScore,
-        [classField]: totals,
-        [usedField]: nextUsed,
-        [myAvatarField]: nextMyAvatars,
-        lastSkill: {
-          player: playerRole,
-          year: firebaseYear,
-          turnIndex: firebaseTurnIndex,
-          skillId: skill.id,
-          skillName: skill.name,
-          skillType: skill.type,
-          skillRule: skill.rule,
-          gainedScore,
-          debuffAmount,
-          debuffStat,
-          debuffs,
-          selectedBoostStat,
-          actionId,
-        },
-        currentYear: next.currentYear,
-        turnIndex: next.turnIndex,
-        battlePhase: next.nextPhase,
-        firstPlayer: next.nextPhase === 'setup' ? null : firebaseFirst,
-        startSeasonIdx: next.nextPhase === 'setup' ? null : data.startSeasonIdx,
-      };
-
-      if (Object.keys(debuffs).length > 0 && !oppActiveAvatar.debuffImmune) {
-        patch[opponentAvatarField] = nextOppAvatars;
-      }
-
-      transaction.update(roomRef, patch);
+      // Y系「バースト」で選択した対象
+      selectedBoostStat,
     });
 
-    if (next.nextPhase === 'setup' || next.nextPhase === 'finished') {
-      const completedMyScore = (myClassScores[activeIndex] || 0) + gainedScore;
-      const completedOpponentScore = oppClassScores[activeIndex] || 0;
-      const completedMyTotal = myClassScores.reduce((sum, score, index) => sum + score + (index === activeIndex ? gainedScore : 0), 0);
-      const completedOpponentTotal = oppClassScores.reduce((sum, score) => sum + score, 0);
-      showClassResult(
-        currentYear,
-        completedMyScore,
-        completedOpponentScore,
-        completedMyTotal,
-        completedOpponentTotal,
+    if (!actionSubmitted) {
+      addLog(
+        `「${skill.name}」の送信に失敗しました。`,
       );
+      return;
     }
 
-    if (gainedScore > 0) {
-      setMyClassScores((prev) => {
-        const nextScores = [...prev];
-        nextScores[activeIndex] = (nextScores[activeIndex] || 0) + gainedScore;
-        return nextScores;
-      });
-      if (playerRole === 'host') setHostTotalScore((prev) => prev + gainedScore);
-      else setGuestTotalScore((prev) => prev + gainedScore);
-    }
-
-    setUsedSkillsByClass(nextUsed);
-    addLog(`「${skill.name}」発動！ +${gainedScore}スコア`);
-    if (Object.keys(debuffs).length > 0 && !oppActiveAvatar.debuffImmune) {
-      const detail = Object.entries(debuffs).map(([key, value]) => `${STAT_LABELS[key as StatKey]} -${value}`).join(' / ');
-      addLog(`相手へのデバフ：${detail}`);
-    }
+    addLog(
+      `「${skill.name}」の使用を送信しました。`,
+    );
   };
 
   // ===== サポートカードの公式エモーション効果 =====
@@ -1850,14 +2517,19 @@ export default function GameBoard({ roomId = '', isHost = true, onEditDeck }: Ga
     addLog(`サポート「${card.name}」を使用しました。${preset?.description ? ` ${preset.description}` : ''}`);
 
     if (isOnline) {
-      await sendAction({
+      await submitBattleAction({
         type: 'PLAY_SUPPORT',
-        cardName: card.name,
-        presetId: preset?.id || null,
-        scoreDelta: applied.scoreDelta,
-        extraDraw: applied.extraDraw,
-        actorStats: applied.actor.stats,
-        targetStats: applied.target.stats,
+    
+        // 現在の対戦状態
+        year: currentYear,
+        turnIndex,
+    
+        // 現在出場しているキャラクター
+        avatarIndex: activeIndex,
+    
+        // 使用するカードそのものを識別する情報
+        cardId: card.id,
+        cardIndex: index,
       });
     }
   };

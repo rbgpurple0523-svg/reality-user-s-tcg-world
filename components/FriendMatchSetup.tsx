@@ -2,15 +2,21 @@
 
 import React, { useState } from 'react';
 import { db, ensureAnonymousAuth } from '@/lib/firebase';
-import { doc, setDoc, getDoc, updateDoc, onSnapshot, deleteDoc } from 'firebase/firestore';
+import {
+  doc,
+  onSnapshot,
+  runTransaction,
+} from 'firebase/firestore';
 
 interface FriendMatchSetupProps {
-  // 従来の DataConnection の代わりに roomId と isHost を渡す仕様に変更
   onMatchStart: (roomId: string, isHost: boolean) => void;
   onBack: () => void;
 }
 
-export default function FriendMatchSetup({ onMatchStart, onBack }: FriendMatchSetupProps) {
+export default function FriendMatchSetup({
+  onMatchStart,
+  onBack,
+}: FriendMatchSetupProps) {
   const [mode, setMode] = useState<'menu' | 'create' | 'join'>('menu');
   const [roomKey, setRoomKey] = useState<string>('');
   const [statusMessage, setStatusMessage] = useState<string>('');
@@ -19,25 +25,33 @@ export default function FriendMatchSetup({ onMatchStart, onBack }: FriendMatchSe
   const [isWaitingForGuest, setIsWaitingForGuest] = useState<boolean>(false);
 
   // ===== 放置ステージの判定 =====
-  // 両者がいなくなった古いステージは、次回同じ合言葉を使えるよう自動解放します。
   const STALE_STAGE_MS = 60 * 1000;
+
   const isStageStale = (data: Record<string, any>) => {
     const now = Date.now();
+
     const hostSeen = Number(data.hostLastSeenAt || 0);
     const guestSeen = Number(data.guestLastSeenAt || 0);
     const createdAt = Number(data.createdAt || 0);
 
     if (hostSeen || guestSeen) {
-      const hostStale = !hostSeen || now - hostSeen > STALE_STAGE_MS;
-      const guestStale = !guestSeen || now - guestSeen > STALE_STAGE_MS;
+      const hostStale =
+        !hostSeen || now - hostSeen > STALE_STAGE_MS;
+
+      const guestStale =
+        !guestSeen || now - guestSeen > STALE_STAGE_MS;
+
       return hostStale && guestStale;
     }
 
-    // 旧バージョンのルームにはハートビートがないため、古いものだけ解放します。
+    // 旧バージョンのルーム
     return createdAt > 0 && now - createdAt > STALE_STAGE_MS;
   };
 
-  // 1. ステージ（ルーム）を作成する (ホスト)
+  // =========================================================
+  // 1. ステージ作成（ホスト）
+  // =========================================================
+
   const handleCreateStage = async () => {
     if (!roomKey.trim()) {
       setStatusMessage('⚠️ 合言葉を入力してください。');
@@ -49,61 +63,122 @@ export default function FriendMatchSetup({ onMatchStart, onBack }: FriendMatchSe
 
     const roomId = roomKey.trim();
     const roomRef = doc(db, 'rooms', roomId);
+    const hostPlayerRef = doc(db, 'rooms', roomId, 'players', 'host');
 
     try {
-      // ===== Firebase匿名認証 =====
-      // このブラウザのプレイヤーをFirebase UIDで識別します。
+      // Firebase匿名認証
       const currentUser = await ensureAnonymousAuth();
 
-      // ===== 合言葉の重複チェック =====
-      const roomSnap = await getDoc(roomRef);
-      if (roomSnap.exists()) {
-        const existingData = roomSnap.data() as Record<string, any>;
+      const now = Date.now();
 
-        if (isStageStale(existingData)) {
-          // ===== 誰もいなくなった古いステージを解放 =====
-          await deleteDoc(roomRef);
-        } else {
-          setIsLoading(false);
-          setStatusMessage('❌ その合言葉のステージはすでに使用されています。別の合言葉を設定してください。');
-          return;
+      // =====================================================
+      // Room + Host Player 作成をTransaction化
+      //
+      // 既存のRoom構造は維持しつつ、
+      // プレイヤー固有データを players/host に分離する。
+      // =====================================================
+
+      await runTransaction(db, async (transaction) => {
+        const roomSnap = await transaction.get(roomRef);
+
+        if (roomSnap.exists()) {
+          const existingData =
+            roomSnap.data() as Record<string, any>;
+
+          if (!isStageStale(existingData)) {
+            throw new Error('ROOM_ALREADY_IN_USE');
+          }
+
+          // 古いルームを解放
+          transaction.delete(roomRef);
+
+          // 念のため旧playerドキュメントも削除対象にする。
+          transaction.delete(hostPlayerRef);
+          transaction.delete(
+            doc(db, 'rooms', roomId, 'players', 'guest'),
+          );
         }
-      }
 
-      // ===== 新しいステージの初期データ =====
-      // hostUid / guestUid を追加し、
-      // Firebase Authenticationの匿名UIDとルーム参加者を紐付けます。
-      await setDoc(roomRef, {
-        hostUid: currentUser.uid,
-        guestUid: null,
+        // ===================================================
+        // Room本体
+        // ===================================================
 
-        hostJoined: true,
-        guestJoined: false,
-        battlePhase: 'setup',
-        currentYear: 1,
-        turnIndex: 0,
-        firstPlayer: null,
-        startSeasonIdx: null,
-        hostTotalScore: 0,
-        guestTotalScore: 0,
-        hostClassScores: [0, 0, 0],
-        guestClassScores: [0, 0, 0],
-        hostUsedSkills: {},
-        guestUsedSkills: {},
-        rematchHost: false,
-        rematchGuest: false,
-        exitHost: false,
-        exitGuest: false,
-        createdAt: Date.now(),
-        hostLastSeenAt: Date.now(),
-        guestLastSeenAt: 0,
+        transaction.set(roomRef, {
+          // ===== Authentication =====
+          hostUid: currentUser.uid,
+          guestUid: null,
+
+          // ===== 入室状態 =====
+          hostJoined: true,
+          guestJoined: false,
+
+          // ===== Battle state =====
+          battlePhase: 'setup',
+          currentYear: 1,
+          turnIndex: 0,
+          firstPlayer: null,
+          startSeasonIdx: null,
+
+          // ===== Score =====
+          hostTotalScore: 0,
+          guestTotalScore: 0,
+
+          hostClassScores: [0, 0, 0],
+          guestClassScores: [0, 0, 0],
+
+          // ===== Skill =====
+          hostUsedSkills: {},
+          guestUsedSkills: {},
+
+          // ===== Match control =====
+          rematchHost: false,
+          rematchGuest: false,
+          exitHost: false,
+          exitGuest: false,
+
+          // ===== Time =====
+          createdAt: now,
+          hostLastSeenAt: now,
+          guestLastSeenAt: 0,
+        });
+
+        // ===================================================
+        // Host Player
+        //
+        // キャラクター・デッキ等はGameBoard側で設定する。
+        // ここでは「このroomのhostである」という
+        // プレイヤー状態の土台だけを作る。
+        // ===================================================
+
+        transaction.set(hostPlayerRef, {
+          uid: currentUser.uid,
+          role: 'host',
+
+          joined: true,
+          ready: false,
+
+          createdAt: now,
+          lastSeenAt: now,
+
+          // GameBoardで後から設定する領域
+          avatars: [],
+          deck: [],
+          hand: [],
+          usedSkills: {},
+        });
       });
 
       setIsLoading(false);
       setIsWaitingForGuest(true);
-      setStatusMessage(`🎉 ステージ「${roomKey}」を作成しました！友達の参加を待っています...`);
 
-      // ゲストが入室したか（guestJoined が true になったか）をリアルタイム監視
+      setStatusMessage(
+        `🎉 ステージ「${roomKey}」を作成しました！友達の参加を待っています...`,
+      );
+
+      // =====================================================
+      // ゲスト参加監視
+      // =====================================================
+
       const unsubscribe = onSnapshot(roomRef, (docSnap) => {
         const data = docSnap.data();
 
@@ -115,21 +190,42 @@ export default function FriendMatchSetup({ onMatchStart, onBack }: FriendMatchSe
 
     } catch (err) {
       console.error('Create Room Error:', err);
+
+      if (
+        err instanceof Error &&
+        err.message === 'ROOM_ALREADY_IN_USE'
+      ) {
+        setIsLoading(false);
+        setStatusMessage(
+          '❌ その合言葉のステージはすでに使用されています。別の合言葉を設定してください。',
+        );
+        return;
+      }
+
       setIsLoading(false);
-      setStatusMessage('❌ ステージの作成に失敗しました。ネットワーク環境を確認してください。');
+      setStatusMessage(
+        '❌ ステージの作成に失敗しました。ネットワーク環境を確認してください。',
+      );
     }
   };
 
+  // =========================================================
   // 2. 確認ポップアップ
+  // =========================================================
+
   const handleConfirmJoin = () => {
     if (!roomKey.trim()) {
       setStatusMessage('⚠️ 合言葉を入力してください。');
       return;
     }
+
     setShowConfirmModal(true);
   };
 
-  // 3. 友達のステージに入る (ゲスト)
+  // =========================================================
+  // 3. ステージ参加（ゲスト）
+  // =========================================================
+
   const handleJoinStage = async () => {
     setShowConfirmModal(false);
     setIsLoading(true);
@@ -137,67 +233,150 @@ export default function FriendMatchSetup({ onMatchStart, onBack }: FriendMatchSe
 
     const roomId = roomKey.trim();
     const roomRef = doc(db, 'rooms', roomId);
+    const guestPlayerRef = doc(
+      db,
+      'rooms',
+      roomId,
+      'players',
+      'guest',
+    );
 
     try {
-      // ===== Firebase匿名認証 =====
-      // 参加者自身のUIDを取得します。
+      // Firebase匿名認証
       const currentUser = await ensureAnonymousAuth();
 
-      const roomSnap = await getDoc(roomRef);
-      if (!roomSnap.exists()) {
-        setIsLoading(false);
-        setStatusMessage('❌ 一致するステージが見つかりません。合言葉を確認してください。');
-        return;
-      }
+      // =====================================================
+      // ゲスト参加をTransaction化
+      //
+      // 「空いている場合だけguestUidを取得する」
+      // 「同時にplayers/guestを作成する」
+      //
+      // を一つの原子的処理にする。
+      // =====================================================
 
-      const roomData = roomSnap.data() as Record<string, any>;
+      await runTransaction(db, async (transaction) => {
+        const roomSnap = await transaction.get(roomRef);
 
-      if (isStageStale(roomData)) {
-        // ===== 誰もいなくなった古いステージを解放 =====
-        await deleteDoc(roomRef);
-        setIsLoading(false);
-        setStatusMessage('❌ 一致するステージが見つかりません。合言葉を確認してください。');
-        return;
-      }
+        if (!roomSnap.exists()) {
+          throw new Error('ROOM_NOT_FOUND');
+        }
 
-      // ===== 自分自身のステージへの参加を拒否 =====
-      // ホストとゲストが同じ匿名UIDになるのを防ぎます。
-      if (roomData.hostUid && roomData.hostUid === currentUser.uid) {
-        setIsLoading(false);
-        setStatusMessage('❌ 自分で作成したステージには参加できません。別のプレイヤーに参加してもらってください。');
-        return;
-      }
+        const roomData =
+          roomSnap.data() as Record<string, any>;
 
-      // ===== 満員チェック =====
-      if (roomData.guestJoined === true || roomData.guestUid) {
-        setIsLoading(false);
-        setStatusMessage('❌ このステージはすでに対戦中です。');
-        return;
-      }
+        // 古いルームなら削除
+        if (isStageStale(roomData)) {
+          transaction.delete(roomRef);
+          transaction.delete(guestPlayerRef);
 
-      // ===== ゲスト参加をマーク =====
-      // Firebase Authenticationの匿名UIDをguestUidとして保存します。
-      await updateDoc(roomRef, {
-        guestUid: currentUser.uid,
-        guestJoined: true,
-        guestRejoinedAt: Date.now(),
-        guestLastSeenAt: Date.now(),
+          throw new Error('ROOM_STALE');
+        }
+
+        // ===================================================
+        // 自分自身のルームには参加できない
+        // ===================================================
+
+        if (
+          roomData.hostUid &&
+          roomData.hostUid === currentUser.uid
+        ) {
+          throw new Error('SELF_JOIN');
+        }
+
+        // ===================================================
+        // すでにゲストがいる場合
+        // ===================================================
+
+        if (
+          roomData.guestJoined === true ||
+          roomData.guestUid
+        ) {
+          throw new Error('ROOM_FULL');
+        }
+
+        const now = Date.now();
+
+        // ===================================================
+        // Room側のゲスト参加状態
+        // ===================================================
+
+        transaction.update(roomRef, {
+          guestUid: currentUser.uid,
+          guestJoined: true,
+          guestRejoinedAt: now,
+          guestLastSeenAt: now,
+        });
+
+        // ===================================================
+        // Guest Player
+        //
+        // GameBoard側でキャラクター・デッキ等を設定する。
+        // ===================================================
+
+        transaction.set(guestPlayerRef, {
+          uid: currentUser.uid,
+          role: 'guest',
+
+          joined: true,
+          ready: false,
+
+          createdAt: now,
+          lastSeenAt: now,
+
+          // GameBoardで後から設定する領域
+          avatars: [],
+          deck: [],
+          hand: [],
+          usedSkills: {},
+        });
       });
 
       setIsLoading(false);
+
+      // ゲストとして対戦開始
       onMatchStart(roomId, false);
 
     } catch (err) {
       console.error('Join Room Error:', err);
+
       setIsLoading(false);
-      setStatusMessage('❌ ステージへの参加に失敗しました。');
+
+      if (err instanceof Error) {
+        switch (err.message) {
+          case 'ROOM_NOT_FOUND':
+          case 'ROOM_STALE':
+            setStatusMessage(
+              '❌ 一致するステージが見つかりません。合言葉を確認してください。',
+            );
+            return;
+
+          case 'SELF_JOIN':
+            setStatusMessage(
+              '❌ 自分で作成したステージには参加できません。別のプレイヤーに参加してもらってください。',
+            );
+            return;
+
+          case 'ROOM_FULL':
+            setStatusMessage(
+              '❌ このステージはすでに対戦中です。',
+            );
+            return;
+        }
+      }
+
+      setStatusMessage(
+        '❌ ステージへの参加に失敗しました。',
+      );
     }
   };
 
   return (
     <div className="max-w-md mx-auto p-6 bg-white rounded-2xl shadow-md border border-gray-100 space-y-6">
       <div className="flex justify-between items-center border-b pb-3">
-        <h2 className="text-lg font-bold text-gray-800">🎮 友達と対戦する (Firebase版)</h2>
+        <h2 className="text-lg font-bold text-gray-800">
+          🎮 友達と対戦する (Firebase版)
+        </h2>
+
         <button
           onClick={onBack}
           className="text-xs text-gray-500 hover:text-gray-700 font-bold px-2 py-1 bg-gray-100 rounded-lg cursor-pointer"
@@ -216,13 +395,20 @@ export default function FriendMatchSetup({ onMatchStart, onBack }: FriendMatchSe
       {mode === 'menu' && (
         <div className="space-y-3 pt-2">
           <button
-            onClick={() => { setMode('create'); setStatusMessage(''); }}
+            onClick={() => {
+              setMode('create');
+              setStatusMessage('');
+            }}
             className="w-full py-3 bg-indigo-600 hover:bg-indigo-700 text-white font-bold rounded-xl shadow transition cursor-pointer"
           >
             ➕ 友達と使うステージを作成する
           </button>
+
           <button
-            onClick={() => { setMode('join'); setStatusMessage(''); }}
+            onClick={() => {
+              setMode('join');
+              setStatusMessage('');
+            }}
             className="w-full py-3 bg-emerald-600 hover:bg-emerald-700 text-white font-bold rounded-xl shadow transition cursor-pointer"
           >
             🔑 友達の作ったステージに入る
@@ -234,7 +420,10 @@ export default function FriendMatchSetup({ onMatchStart, onBack }: FriendMatchSe
       {mode === 'create' && (
         <div className="space-y-4">
           <div>
-            <label className="block text-xs font-bold text-gray-700 mb-1">合言葉を設定（ひらがな・漢字もOK！）</label>
+            <label className="block text-xs font-bold text-gray-700 mb-1">
+              合言葉を設定（ひらがな・漢字もOK！）
+            </label>
+
             <input
               type="text"
               value={roomKey}
@@ -255,13 +444,22 @@ export default function FriendMatchSetup({ onMatchStart, onBack }: FriendMatchSe
             </button>
           ) : (
             <div className="text-center py-4 space-y-2">
-              <div className="animate-spin text-2xl inline-block">⏳</div>
-              <p className="text-xs text-gray-500 font-bold">対戦相手の参加を待っています...</p>
+              <div className="animate-spin text-2xl inline-block">
+                ⏳
+              </div>
+
+              <p className="text-xs text-gray-500 font-bold">
+                対戦相手の参加を待っています...
+              </p>
             </div>
           )}
 
           <button
-            onClick={() => { setMode('menu'); setIsWaitingForGuest(false); setStatusMessage(''); }}
+            onClick={() => {
+              setMode('menu');
+              setIsWaitingForGuest(false);
+              setStatusMessage('');
+            }}
             className="w-full py-1.5 text-xs text-gray-500 hover:underline font-bold cursor-pointer"
           >
             キャンセル
@@ -273,7 +471,10 @@ export default function FriendMatchSetup({ onMatchStart, onBack }: FriendMatchSe
       {mode === 'join' && (
         <div className="space-y-4">
           <div>
-            <label className="block text-xs font-bold text-gray-700 mb-1">合言葉を入力</label>
+            <label className="block text-xs font-bold text-gray-700 mb-1">
+              合言葉を入力
+            </label>
+
             <input
               type="text"
               value={roomKey}
@@ -293,7 +494,10 @@ export default function FriendMatchSetup({ onMatchStart, onBack }: FriendMatchSe
           </button>
 
           <button
-            onClick={() => { setMode('menu'); setStatusMessage(''); }}
+            onClick={() => {
+              setMode('menu');
+              setStatusMessage('');
+            }}
             className="w-full py-1.5 text-xs text-gray-500 hover:underline font-bold cursor-pointer"
           >
             キャンセル
@@ -305,10 +509,18 @@ export default function FriendMatchSetup({ onMatchStart, onBack }: FriendMatchSe
       {showConfirmModal && (
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center p-4 z-50">
           <div className="bg-white rounded-2xl p-5 max-w-xs w-full space-y-4 text-center shadow-xl">
-            <h3 className="font-bold text-gray-800 text-sm">確認</h3>
+            <h3 className="font-bold text-gray-800 text-sm">
+              確認
+            </h3>
+
             <p className="text-xs text-gray-600">
-              合言葉 <span className="font-bold text-indigo-600">「{roomKey}」</span> で間違いないですか？
+              合言葉{' '}
+              <span className="font-bold text-indigo-600">
+                「{roomKey}」
+              </span>{' '}
+              で間違いないですか？
             </p>
+
             <div className="flex space-x-2 pt-2">
               <button
                 onClick={() => setShowConfirmModal(false)}
@@ -316,6 +528,7 @@ export default function FriendMatchSetup({ onMatchStart, onBack }: FriendMatchSe
               >
                 いいえ
               </button>
+
               <button
                 onClick={handleJoinStage}
                 className="flex-1 py-2 bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs rounded-xl transition cursor-pointer"
