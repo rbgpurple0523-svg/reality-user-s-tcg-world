@@ -48,14 +48,18 @@ export default function FriendMatchSetup({ onMatchStart, onBack }: FriendMatchSe
     setStatusMessage('ステージを作成中...');
 
     const roomId = roomKey.trim();
+    const roomRef = doc(db, 'rooms', roomId);
 
     try {
-      const user = await ensureAnonymousAuth();
-      const roomRef = doc(db, 'rooms', roomId);
+      // ===== Firebase匿名認証 =====
+      // このブラウザのプレイヤーをFirebase UIDで識別します。
+      const currentUser = await ensureAnonymousAuth();
+
       // ===== 合言葉の重複チェック =====
       const roomSnap = await getDoc(roomRef);
       if (roomSnap.exists()) {
         const existingData = roomSnap.data() as Record<string, any>;
+
         if (isStageStale(existingData)) {
           // ===== 誰もいなくなった古いステージを解放 =====
           await deleteDoc(roomRef);
@@ -67,11 +71,14 @@ export default function FriendMatchSetup({ onMatchStart, onBack }: FriendMatchSe
       }
 
       // ===== 新しいステージの初期データ =====
+      // hostUid / guestUid を追加し、
+      // Firebase Authenticationの匿名UIDとルーム参加者を紐付けます。
       await setDoc(roomRef, {
+        hostUid: currentUser.uid,
+        guestUid: null,
+
         hostJoined: true,
         guestJoined: false,
-        hostUid: user.uid,
-        guestUid: null,
         battlePhase: 'setup',
         currentYear: 1,
         turnIndex: 0,
@@ -99,7 +106,8 @@ export default function FriendMatchSetup({ onMatchStart, onBack }: FriendMatchSe
       // ゲストが入室したか（guestJoined が true になったか）をリアルタイム監視
       const unsubscribe = onSnapshot(roomRef, (docSnap) => {
         const data = docSnap.data();
-        if (data && data.guestJoined) {
+
+        if (data && data.guestJoined && data.guestUid) {
           unsubscribe();
           onMatchStart(roomId, true);
         }
@@ -128,10 +136,13 @@ export default function FriendMatchSetup({ onMatchStart, onBack }: FriendMatchSe
     setStatusMessage('ステージを探しています...');
 
     const roomId = roomKey.trim();
+    const roomRef = doc(db, 'rooms', roomId);
 
     try {
-      const user = await ensureAnonymousAuth();
-      const roomRef = doc(db, 'rooms', roomId);
+      // ===== Firebase匿名認証 =====
+      // 参加者自身のUIDを取得します。
+      const currentUser = await ensureAnonymousAuth();
+
       const roomSnap = await getDoc(roomRef);
       if (!roomSnap.exists()) {
         setIsLoading(false);
@@ -141,13 +152,6 @@ export default function FriendMatchSetup({ onMatchStart, onBack }: FriendMatchSe
 
       const roomData = roomSnap.data() as Record<string, any>;
 
-      // 自分で作ったステージへ同じ端末からゲスト参加することを防ぐ。
-      if (roomData.hostUid && roomData.hostUid === user.uid) {
-        setIsLoading(false);
-        setStatusMessage('❌ 自分で作成したステージにはゲストとして参加できません。');
-        return;
-      }
-
       if (isStageStale(roomData)) {
         // ===== 誰もいなくなった古いステージを解放 =====
         await deleteDoc(roomRef);
@@ -156,17 +160,26 @@ export default function FriendMatchSetup({ onMatchStart, onBack }: FriendMatchSe
         return;
       }
 
+      // ===== 自分自身のステージへの参加を拒否 =====
+      // ホストとゲストが同じ匿名UIDになるのを防ぎます。
+      if (roomData.hostUid && roomData.hostUid === currentUser.uid) {
+        setIsLoading(false);
+        setStatusMessage('❌ 自分で作成したステージには参加できません。別のプレイヤーに参加してもらってください。');
+        return;
+      }
+
       // ===== 満員チェック =====
-      if (roomData.guestJoined === true) {
+      if (roomData.guestJoined === true || roomData.guestUid) {
         setIsLoading(false);
         setStatusMessage('❌ このステージはすでに対戦中です。');
         return;
       }
 
       // ===== ゲスト参加をマーク =====
+      // Firebase Authenticationの匿名UIDをguestUidとして保存します。
       await updateDoc(roomRef, {
+        guestUid: currentUser.uid,
         guestJoined: true,
-        guestUid: user.uid,
         guestRejoinedAt: Date.now(),
         guestLastSeenAt: Date.now(),
       });
