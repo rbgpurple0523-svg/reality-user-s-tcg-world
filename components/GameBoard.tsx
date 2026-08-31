@@ -688,55 +688,133 @@ export default function GameBoard({ roomId = '', isHost = true, onEditDeck }: Ga
     });
   };
 
-  const resetLocalSupportDeck = (deck?: Deck | null) => {
+  const resetLocalSupportDeck = (
+    deck?: Deck | null,
+  ): {
+    hand: SupportCard[];
+    deck: SupportCard[];
+  } => {
     try {
-      const entriesRaw = localStorage.getItem('reality_world_entries');
-      const entries: EntryRecordWithSkills[] = entriesRaw ? JSON.parse(entriesRaw) : [];
+      const entriesRaw = localStorage.getItem(
+        'reality_world_entries',
+      );
+  
+      const entries: EntryRecordWithSkills[] =
+        entriesRaw ? JSON.parse(entriesRaw) : [];
+  
       const pool = getSupportPool(entries);
-      const ids = resolveSupportIdsForBattle(deck?.supportCardIds || [], entries);
+  
+      const ids = resolveSupportIdsForBattle(
+        deck?.supportCardIds || [],
+        entries,
+      );
+  
       const selected = ids
         .map((id) => pool.find((card) => card.id === id))
-        .filter((card): card is SupportCard => Boolean(card));
+        .filter(
+          (card): card is SupportCard =>
+            Boolean(card),
+        );
 
-      // 実戦デッキは18枚。初期手札は4枚、手札上限は7枚。
-      // 以降、手番開始時に手札上限7枚まで1枚ずつドローする。
-      // デッキ構築画面で登録されたカードが18枚未満の場合は、登録カードを循環させて18枚にする。
-      const source = selected.length > 0 ? selected : createVirtualSupportCards(new Set());
+      // 実戦デッキは18枚。
+      // 初期手札は4枚、山札は14枚。
+      //
+      // デッキ構築画面で登録されたカードが18枚未満の場合は、
+      // 登録カードを循環させて18枚にする。
+      const source =
+      selected.length > 0
+          ? selected
+          : createVirtualSupportCards(new Set());
+  
       if (source.length === 0) {
         setMyHand([]);
         setMyDeck([]);
-        return;
+  
+        return {
+          hand: [],
+          deck: [],
+        };
       }
+  
+      const battleDeck: SupportCard[] =
+        Array.from(
+          { length: BATTLE_DECK_SIZE },
+          (_, index) =>
+            source[index % source.length],
+        );
 
-      const battleDeck: SupportCard[] = Array.from(
-        { length: BATTLE_DECK_SIZE },
-        (_, index) => source[index % source.length],
+      const shuffled = battleDeck.sort(
+        () => Math.random() - 0.5,
       );
-      const shuffled = battleDeck.sort(() => Math.random() - 0.5);
-
-      setMyHand(shuffled.slice(0, INITIAL_HAND_SIZE));
-      setMyDeck(shuffled.slice(INITIAL_HAND_SIZE));
+  
+      const initialHand =
+        shuffled.slice(
+          0,
+          INITIAL_HAND_SIZE,
+        );
+  
+      const initialDeck =
+        shuffled.slice(
+          INITIAL_HAND_SIZE,
+        );
+  
+      setMyHand(initialHand);
+      setMyDeck(initialDeck);
+  
+      return {
+        hand: initialHand,
+        deck: initialDeck,
+      };
     } catch (error) {
-      console.error('サポートデッキ初期化エラー:', error);
-
-      const source = createVirtualSupportCards(new Set());
+      console.error(
+        'サポートデッキ初期化エラー:',
+        error,
+      );
+  
+      const source =
+        createVirtualSupportCards(new Set());
+  
       if (source.length === 0) {
         setMyHand([]);
         setMyDeck([]);
-        return;
+  
+        return {
+          hand: [],
+          deck: [],
+        };
       }
 
-      const battleDeck: SupportCard[] = Array.from(
-        { length: BATTLE_DECK_SIZE },
-        (_, index) => source[index % source.length],
+      const battleDeck: SupportCard[] =
+        Array.from(
+          { length: BATTLE_DECK_SIZE },
+          (_, index) =>
+            source[index % source.length],
+        );
+  
+      const shuffled = battleDeck.sort(
+        () => Math.random() - 0.5,
       );
-      const shuffled = battleDeck.sort(() => Math.random() - 0.5);
+  
+      const initialHand =
+        shuffled.slice(
+          0,
+          INITIAL_HAND_SIZE,
+        );
 
-      setMyHand(shuffled.slice(0, INITIAL_HAND_SIZE));
-      setMyDeck(shuffled.slice(INITIAL_HAND_SIZE));
+      const initialDeck =
+        shuffled.slice(
+          INITIAL_HAND_SIZE,
+        );
+  
+      setMyHand(initialHand);
+      setMyDeck(initialDeck);
+  
+      return {
+        hand: initialHand,
+        deck: initialDeck,
+      };
     }
   };
-
   // =========================================================
   // ===== Firebase Player 構造 =====
   // =========================================================
@@ -802,7 +880,8 @@ export default function GameBoard({ roomId = '', isHost = true, onEditDeck }: Ga
       selectedDeck = null;
     }
 
-    resetLocalSupportDeck(selectedDeck);
+    const initialSupportState =
+      resetLocalSupportDeck(selectedDeck);
 
     // 保存済みデッキがあれば、
     // 入場直後から「このデッキではじめる」を押せる状態にする。
@@ -1514,6 +1593,21 @@ export default function GameBoard({ roomId = '', isHost = true, onEditDeck }: Ga
 
           currentOpponentPlayerData =
             snapshot.data() as Record<string, any>;
+
+          const pendingAction =
+            currentOpponentPlayerData.pendingAction;
+
+          if (
+            pendingAction?.actionId &&
+            pendingAction.actionId !== lastActionRef.current
+          ) {
+            lastActionRef.current =
+              pendingAction.actionId;
+
+            handleIncomingAction(
+              pendingAction,
+            );
+          }
 
           applyPlayerData();
         },
