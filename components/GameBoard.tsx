@@ -8,7 +8,6 @@ import {
   onSnapshot,
   runTransaction,
   updateDoc,
-  increment,
 } from 'firebase/firestore';
 import {
   AvatarCard,
@@ -1834,28 +1833,35 @@ export default function GameBoard({ roomId = '', isHost = true, onEditDeck }: Ga
 // =========================================================
 
 type BattleActionPayload = {
-  type: 'USE_SKILL' | 'PLAY_SUPPORT';
-
-  // 「何をしたか」を識別するためのID
   actionId?: string;
 
-  // 現在の対戦状態
+  type:
+    | 'USE_SKILL'
+    | 'PLAY_SUPPORT';
+
+  // 誰がActionを送ったか
+  playerRole?: PlayerRole;
+
+  // 試合状態
   year: number;
   turnIndex: number;
 
-  // 現在出場しているキャラクター
+  // 対象キャラクター
   avatarIndex: number;
 
-  // 技使用時
+  // =====================================================
+  // 技
+  // =====================================================
+
   skillId?: string;
 
-  // Y系「バースト」など、プレイヤーが選択した対象。
-  // これは結果値ではなく「選択意図」なので送信可能。
-  selectedBoostStat?: StatKey | null;
+  selectedBoostStat?: StatKey;
 
-  // サポート使用時
-  cardId?: string;
-  cardIndex?: number;
+  // =====================================================
+  // サポートカード
+  // =====================================================
+
+  supportCardId?: string;
 };
 
 const submitBattleAction = async (
@@ -1868,10 +1874,8 @@ const submitBattleAction = async (
 
     const actionId =
       action.actionId ||
-      `${playerRole}_${Date.now()}_${Math.random()
-        .toString(36)
-        .slice(2)}`;
-
+      `${currentUser.uid}-${Date.now()}`;
+    
     const playerRef = doc(
       db,
       'rooms',
@@ -1903,7 +1907,11 @@ const submitBattleAction = async (
   }
 };
   // ===== 相手のアクション処理 =====
-  const handleIncomingAction = (action: BattleActionPayload) => {
+  const handleIncomingAction = (
+    action: BattleActionPayload & {
+      playerRole?: PlayerRole;
+    },
+  ) => {
     if (!action?.type) return;
 
     // -------------------------------------------------------
@@ -1914,56 +1922,7 @@ const submitBattleAction = async (
         typeof action.avatarIndex === 'number'
           ? action.avatarIndex
           : activeIndex;
-
-      let opponentCard: SupportCard | undefined;
-
-      // cardIdから、相手が使用したカードを特定する。
-      if (action.cardId) {
-        try {
-          const entriesRaw = localStorage.getItem(
-            'reality_world_entries',
-          );
-
-          const entries: EntryRecordWithSkills[] =
-            entriesRaw
-              ? JSON.parse(entriesRaw)
-              : [];
-
-          const pool = getSupportPool(entries);
-
-          opponentCard =
-            pool.find(
-              (card) =>
-                card.id === action.cardId,
-            );
-
-          // 仮サポートカードの場合も取得できるようにする。
-          if (!opponentCard) {
-            opponentCard =
-              createVirtualSupportCards(
-                new Set(),
-              ).find(
-                (card) =>
-                  card.id === action.cardId,
-              );
-          }
-        } catch (error) {
-          console.error(
-            '相手サポートカード取得エラー:',
-            error,
-          );
-        }
-      }
-
-      if (!opponentCard) {
-        addLog(
-          '相手がサポートカードを使用しました。',
-        );
-        return;
-      }
-
-      // 相手を actor、自分を target として、
-      // 現在の公式エモーション処理をそのまま適用する。
+      
       const opponentAvatar =
         oppAvatars[avatarIndex];
 
@@ -1977,73 +1936,294 @@ const submitBattleAction = async (
         return;
       }
 
+      // =====================================================
+      // 使用されたサポートカードを supportCardId から特定
+      // =====================================================
+      //
+      // Firebaseには効果計算済みの内部状態を送らない。
+      //
+      // 使用したサポートカードのIDだけを共有し、
+      // 受信側でも同じカード定義から効果を再現する。
+      // =====================================================
+
+      let entries: EntryRecordWithSkills[] = [];
+
+      try {
+        const entriesRaw =
+          localStorage.getItem(
+            'reality_world_entries',
+          );
+
+        entries =
+          entriesRaw
+            ? JSON.parse(entriesRaw)
+            : [];
+      } catch (error) {
+        console.error(
+          'サポートカード情報読み込みエラー:',
+          error,
+        );
+      }
+
+      const supportPool =
+        getSupportPool(entries);
+
+      const opponentSupportCard =
+        action.supportCardId
+          ? supportPool.find(
+              (card) =>
+                card.id ===
+                action.supportCardId,
+            )
+          : undefined;
+
+      // -----------------------------------------------------
+      // カードが特定できなかった場合
+      // -----------------------------------------------------
+
+      if (!opponentSupportCard) {
+        addLog(
+          '相手がサポートカードを使用しました。',
+        );
+
+        return;
+      }
+
+      // =====================================================
+      // サポートカード効果を受信側でも再現
+      // =====================================================
+      //
+      // 送信側・CPU側と同じ
+      // applyEmotionToPair() を使用する。
+      //
+      // Firebaseには計算済み結果を送らず、
+      // supportCardId からカードを特定して、
+      // 双方で同じ公式エモーション定義を使って計算する。
+      // =====================================================
+
+      const opponentPreset =
+        getEmotionPresetForCard(
+          opponentSupportCard,
+        );
+
       const applied =
         applyEmotionToPair(
-          opponentCard,
+          opponentSupportCard,
           opponentAvatar,
           myAvatar,
         );
 
-      // 相手側の能力値更新
-      setOppAvatars((prev) =>
-        prev.map(
+      // -----------------------------------------------------
+      // 相手（カード使用者）側
+      // -----------------------------------------------------
+
+      const nextOppAvatars =
+        oppAvatars.map(
           (avatar, index) =>
             index === avatarIndex
               ? applied.actor
               : avatar,
-        ),
-      );
+        );
 
-      // 自分側の能力値更新
-      setMyAvatars((prev) =>
-        prev.map(
+      // -----------------------------------------------------
+      // 自分（カード効果対象側）
+      // -----------------------------------------------------
+
+      const nextMyAvatars =
+        myAvatars.map(
           (avatar, index) =>
             index === avatarIndex
               ? applied.target
               : avatar,
-        ),
+        );
+
+      // -----------------------------------------------------
+      // スコア効果
+      // -----------------------------------------------------
+
+      const gainedScore =
+        applied.scoreDelta;
+
+      // =====================================================
+      // 状態反映
+      // =====================================================
+
+      setMyAvatars(
+        nextMyAvatars,
       );
 
-      // 相手側スコア更新
-      if (applied.scoreDelta !== 0) {
-        setOppClassScores((prev) => {
-          const next = [...prev];
+      setOppAvatars(
+        nextOppAvatars,
+      );
 
-          next[avatarIndex] =
-            Math.max(
-              0,
+      // =====================================================
+      // スコア反映
+      // =====================================================
+
+      if (gainedScore !== 0) {
+        setOppClassScores(
+          (prev) => {
+            const next =
+              [...prev];
+
+            next[avatarIndex] =
               (next[avatarIndex] || 0) +
-                applied.scoreDelta,
-            );
+              gainedScore;
 
-          return next;
-        });
+            return next;
+          },
+        );
 
-        // 表示用合計スコアも同期する。
-        if (playerRole === 'host') {
-          setGuestTotalScore((prev) =>
-            Math.max(
-              0,
-              prev + applied.scoreDelta,
-            ),
+        if (
+          playerRole === 'host'
+        ) {
+          setGuestTotalScore(
+            (prev) =>
+              prev + gainedScore,
           );
         } else {
-          setHostTotalScore((prev) =>
-            Math.max(
-              0,
-              prev + applied.scoreDelta,
-            ),
+          setHostTotalScore(
+            (prev) =>
+              prev + gainedScore,
           );
         }
       }
 
+      // =====================================================
+      // ログ
+      // =====================================================
+
       addLog(
-        `相手がサポート「${opponentCard.name}」を使用しました。`,
+        `相手がサポート「${opponentSupportCard.name}」を使用しました。` +
+          (
+            opponentPreset?.description
+              ? ` ${opponentPreset.description}`
+              : ''
+          ),
       );
+
+      // =====================================================
+      // Firestoreの正式状態を更新
+      // =====================================================
+      //
+      // サポート使用では turnIndex を変更しない。
+      // =====================================================
+
+      if (
+        isOnline &&
+        roomId
+      ) {
+        const roomRef =
+          doc(
+            db,
+            'rooms',
+            roomId,
+          );
+
+        const actorRole =
+          action.playerRole === 'host'
+            ? 'host'
+            : 'guest';
+
+        const scoreField =
+          actorRole === 'host'
+            ? 'hostClassScores'
+            : 'guestClassScores';
+
+        const totalField =
+          actorRole === 'host'
+            ? 'hostTotalScore'
+            : 'guestTotalScore';
+
+        void runTransaction(
+          db,
+          async (transaction) => {
+            const snapshot =
+              await transaction.get(
+                roomRef,
+              );
+
+            if (!snapshot.exists()) {
+              return;
+            }
+
+            const roomData =
+              snapshot.data() as Record<
+                string,
+                any
+              >;
+
+            // -----------------------------------------------
+            // 同じActionを二重処理しない
+            // -----------------------------------------------
+
+            if (
+              roomData.lastProcessedActionId ===
+              action.actionId
+            ) {
+              return;
+            }
+
+            const scores =
+              Array.isArray(
+                roomData[scoreField],
+              )
+                ? [
+                    ...roomData[
+                      scoreField
+                    ],
+                  ]
+                : [0, 0, 0];
+
+            scores[avatarIndex] =
+              Number(
+                scores[avatarIndex] ||
+                  0,
+              ) + gainedScore;
+
+            const nextTotal =
+              Number(
+                roomData[totalField] ||
+                  0,
+              ) + gainedScore;
+
+            transaction.update(
+              roomRef,
+              {
+                [scoreField]:
+                  scores,
+
+                [totalField]:
+                  nextTotal,
+
+                lastProcessedActionId:
+                  action.actionId,
+
+                // サポートカードでは
+                // ターンを進めない
+                turnIndex:
+                  roomData.turnIndex ?? 0,
+
+                currentYear:
+                  roomData.currentYear ??
+                  action.year,
+
+                battlePhase:
+                  roomData.battlePhase ??
+                  'battle',
+              },
+            );
+          },
+        ).catch((error) => {
+          console.error(
+            '相手のサポート結果同期エラー:',
+            error,
+          );
+        });
+      }
 
       return;
     }
-
     // -------------------------------------------------------
     // 相手の技使用
     // -------------------------------------------------------
@@ -2399,15 +2579,215 @@ const submitBattleAction = async (
       // 技の使用が完了した場合のみ、次のターンへ進む。
       // =====================================================
 
+      // =====================================================
+      // Firebaseの正式なスコア・ターン状態を更新
+      // =====================================================
+      //
+      // 相手のActionを受信した側が、
+      // Firestore上の正式な試合結果を更新する。
+      //
+      // turnIndex は Action送信時の値を基準に判定する。
+      // =====================================================
+
       if (isOnline && roomId) {
-        void updateDoc(
-          doc(db, 'rooms', roomId),
-          {
-            turnIndex: increment(1),
+        const roomRef =
+          doc(
+            db,
+            'rooms',
+            roomId,
+          );
+
+        const actorRole =
+          action.playerRole === 'host'
+            ? 'host'
+            : 'guest';
+
+        const scoreField =
+          actorRole === 'host'
+            ? 'hostClassScores'
+            : 'guestClassScores';
+
+        const totalField =
+          actorRole === 'host'
+            ? 'hostTotalScore'
+            : 'guestTotalScore';
+
+        const usedField =
+          actorRole === 'host'
+            ? 'hostUsedSkills'
+            : 'guestUsedSkills';
+
+        const isLastTurn =
+          action.turnIndex >= 7;
+
+        const nextYear =
+          isLastTurn && action.year < 3
+            ? action.year + 1
+            : action.year;
+
+        const nextPhase =
+          isLastTurn
+            ? action.year < 3
+              ? 'setup'
+              : 'finished'
+            : 'battle';
+
+        void runTransaction(
+          db,
+          async (transaction) => {
+            const snapshot =
+              await transaction.get(
+                roomRef,
+              );
+
+            if (!snapshot.exists()) {
+              return;
+            }
+
+            const roomData =
+              snapshot.data() as Record<
+                string,
+                any
+              >;
+
+            // ------------------------------------------------
+            // 同じActionを二重処理しない
+            // ------------------------------------------------
+
+            const processedActionId =
+              roomData.lastProcessedActionId;
+
+            if (
+              processedActionId ===
+              action.actionId
+            ) {
+              return;
+            }
+
+            // ------------------------------------------------
+            // クラス別スコア
+            // ------------------------------------------------
+
+            const scores =
+              Array.isArray(
+                roomData[scoreField],
+              )
+                ? [
+                    ...roomData[
+                      scoreField
+                    ],
+                  ]
+                : [0, 0, 0];
+
+            scores[avatarIndex] =
+              Number(
+                scores[avatarIndex] ||
+                  0,
+              ) + gainedScore;
+
+            // ------------------------------------------------
+            // 合計スコア
+            // ------------------------------------------------
+
+            const nextTotal =
+              Number(
+                roomData[totalField] ||
+                  0,
+              ) + gainedScore;
+
+            // ------------------------------------------------
+            // 使用済み技
+            // ------------------------------------------------
+
+            const roomUsedSkills =
+              roomData[usedField] &&
+              typeof roomData[
+                usedField
+              ] === 'object'
+                ? {
+                    ...roomData[
+                      usedField
+                    ],
+                  }
+                : {};
+
+            const yearKey =
+              String(action.year);
+
+            const usedForYear =
+              Array.isArray(
+                roomUsedSkills[
+                  yearKey
+                ],
+              )
+                ? [
+                    ...roomUsedSkills[
+                      yearKey
+                    ],
+                  ]
+                : [];
+
+            if (
+              skill.maxUsesPerClass > 0 &&
+              !usedForYear.includes(
+                skill.id,
+              )
+            ) {
+              usedForYear.push(
+                skill.id,
+              );
+            }
+
+            roomUsedSkills[
+              yearKey
+            ] = usedForYear;
+
+            // ------------------------------------------------
+            // Firestore更新
+            // ------------------------------------------------
+
+            transaction.update(
+              roomRef,
+              {
+                [scoreField]: scores,
+
+                [totalField]:
+                  nextTotal,
+
+                [usedField]:
+                  roomUsedSkills,
+
+                lastProcessedActionId:
+                  action.actionId,
+
+                currentYear:
+                  nextYear,
+
+                turnIndex:
+                  isLastTurn
+                    ? 0
+                    : action.turnIndex + 1,
+
+                battlePhase:
+                  nextPhase,
+
+                firstPlayer:
+                  isLastTurn
+                    ? null
+                    : roomData.firstPlayer ??
+                      null,
+
+                startSeasonIdx:
+                  isLastTurn
+                    ? null
+                    : roomData.startSeasonIdx ??
+                      null,
+              },
+            );
           },
         ).catch((error) => {
           console.error(
-            '相手の技後のターン進行エラー:',
+            '相手の技結果同期エラー:',
             error,
           );
         });
@@ -2731,22 +3111,34 @@ const submitBattleAction = async (
       return;
     }
 
-    const actionSubmitted = await submitBattleAction({
-      type: 'USE_SKILL',
+    // =====================================================
+    // オンライン対戦
+    // =====================================================
+    //
+    // 先にAction送信を成功させ、
+    // 成功した場合は使用者自身にも即時反映する。
+    //
+    // 相手側は pendingAction を受信して
+    // 同じルール計算を行う。
+    // =====================================================
 
-      // 現在の対戦状態
-      year: currentYear,
-      turnIndex,
+    const actionSubmitted =
+      await submitBattleAction({
+        actionId:
+          `${Date.now()}-${Math.random().toString(36).slice(2)}`,
 
-      // 現在出場しているキャラクター
-      avatarIndex: activeIndex,
+        type: 'USE_SKILL',
 
-      // 使用する技
-      skillId: skill.id,
+        year: currentYear,
+        turnIndex,
 
-      // Y系「バースト」で選択した対象
-      selectedBoostStat,
-    });
+        avatarIndex: activeIndex,
+
+        skillId: skill.id,
+
+        selectedBoostStat:
+        selectedBoostStat ?? undefined,
+     });
 
     if (!actionSubmitted) {
       addLog(
@@ -2755,9 +3147,67 @@ const submitBattleAction = async (
       return;
     }
 
-    addLog(
-      `「${skill.name}」の使用を送信しました。`,
+    // -----------------------------------------------------
+    // 使用者側にも即時反映
+    // -----------------------------------------------------
+
+    const nextScores =
+      [...myClassScores];
+
+    nextScores[activeIndex] =
+      (nextScores[activeIndex] || 0) +
+      gainedScore;
+
+    setMyClassScores(
+      nextScores,
     );
+
+    if (playerRole === 'host') {
+      setHostTotalScore(
+        (prev) =>
+          prev + gainedScore,
+      );
+    } else {
+      setGuestTotalScore(
+        (prev) =>
+          prev + gainedScore,
+      );
+    }
+
+    setMyAvatars(
+      nextMyAvatars,
+    );
+
+    setOppAvatars(
+      nextOppAvatars,
+    );
+
+    setUsedSkillsByClass(
+      nextUsed,
+    );
+
+    addLog(
+      `「${skill.name}」発動！ +${gainedScore}スコア`,
+    );
+
+    if (
+      Object.keys(debuffs).length > 0 &&
+      !oppActiveAvatar.debuffImmune
+    ) {
+      const detail =
+        Object.entries(debuffs)
+          .map(
+            ([key, value]) =>
+              `${STAT_LABELS[
+                key as StatKey
+              ]} -${value}`,
+          )
+          .join(' / ');
+
+      addLog(
+        `相手へのデバフ：${detail}`,
+      );
+    }
   };
 
   // ===== サポートカードの公式エモーション効果 =====
@@ -3136,8 +3586,7 @@ const submitBattleAction = async (
         avatarIndex: activeIndex,
     
         // 使用するカードそのものを識別する情報
-        cardId: card.id,
-        cardIndex: index,
+        supportCardId: card.id,
       });
     }
   };
