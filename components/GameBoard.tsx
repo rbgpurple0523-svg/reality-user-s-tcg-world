@@ -2107,47 +2107,6 @@ const submitBattleAction = async (
         nextOppAvatars,
       );
 
-    // =====================================================
-    // Action使用者（相手）の状態をPlayerへ正式保存
-    // =====================================================
-    
-    if (isOnline && roomId) {
-      const actorRole =
-        action.playerRole === 'host'
-          ? 'host'
-          : 'guest';
-
-      const actorPlayerRef =
-        doc(
-          db,
-          'rooms',
-          roomId,
-          'players',
-          actorRole,
-        );
-    
-      void updateDoc(
-        actorPlayerRef,
-        {
-          avatars:
-            nextOppAvatars,
-        },
-      ).catch((error) => {
-        console.error(
-          '相手サポート後のAvatar保存エラー:',
-          error,
-        );
-      });
-    }
-
-      // =====================================================
-      // 自分側に反映されたサポート効果を正式保存
-      // =====================================================
-
-      void saveMyPlayerBattleState(
-        nextMyAvatars,
-      );
-
       // =====================================================
       // スコア反映
       // =====================================================
