@@ -8,6 +8,7 @@ import {
   onSnapshot,
   runTransaction,
   updateDoc,
+  increment,
 } from 'firebase/firestore';
 import {
   AvatarCard,
@@ -929,15 +930,17 @@ export default function GameBoard({ roomId = '', isHost = true, onEditDeck }: Ga
 
           // Player固有データ
           avatars: loaded,
-          deck: selectedDeck || null,
+   
+          // 実戦用サポートデッキ状態
+          // 初期手札4枚、残り14枚をPlayerへ保存する。
+          deck: initialSupportState.deck,
+          hand: initialSupportState.hand,
 
           // 初期状態
-          hand: [],
           usedSkills: {},
 
-          // 後続処理で実際のデッキ状態を同期する。
-          handCount: 0,
-          deckCount: 0,
+          handCount: initialSupportState.hand.length,
+          deckCount: initialSupportState.deck.length,
 
           lastSeenAt: Date.now(),
         });
@@ -1104,17 +1107,21 @@ export default function GameBoard({ roomId = '', isHost = true, onEditDeck }: Ga
         }
       }
 
-      // =====================================================
-      // 相手のPlayer
-      // =====================================================
-
-      if (currentOpponentPlayerData) {
-        const avatars =
-          currentOpponentPlayerData.avatars;
-
-        if (Array.isArray(avatars) && avatars.length === 3) {
-          setOppAvatars(
-            (avatars as BattleAvatar[]).map((avatar) => ({
+    // =====================================================
+    // 相手のPlayer
+    // =====================================================
+    
+    if (currentOpponentPlayerData) {
+      const avatars =
+        currentOpponentPlayerData.avatars;
+    
+      if (
+        Array.isArray(avatars) &&
+        avatars.length === 3
+      ) {
+        setOppAvatars(
+          (avatars as BattleAvatar[]).map(
+            (avatar) => ({
               ...avatar,
               baseStats:
                 avatar.baseStats || {
@@ -1129,25 +1136,46 @@ export default function GameBoard({ roomId = '', isHost = true, onEditDeck }: Ga
                 },
               statBoost:
                 avatar.statBoost || {},
-            })),
-          );
-        }
-
-        const handCount =
-          currentOpponentPlayerData.handCount;
-
-        const deckCount =
-          currentOpponentPlayerData.deckCount;
-
-        if (typeof handCount === 'number') {
-          setOpponentHandCount(handCount);
-        }
-
-        if (typeof deckCount === 'number') {
-          setOpponentDeckCount(deckCount);
-        }
+            }),
+          ),
+        );
       }
-    };
+    
+      const handCount =
+        currentOpponentPlayerData.handCount;
+    
+      const deckCount =
+        currentOpponentPlayerData.deckCount;
+    
+      if (typeof handCount === 'number') {
+        setOpponentHandCount(handCount);
+      }
+    
+      if (typeof deckCount === 'number') {
+        setOpponentDeckCount(deckCount);
+      }
+    
+      // ===================================================
+      // 相手のBattle Action
+      // ===================================================
+    
+      const pendingAction =
+        currentOpponentPlayerData.pendingAction;
+    
+      if (
+        pendingAction?.actionId &&
+        pendingAction.actionId !==
+          lastActionRef.current
+      ) {
+        lastActionRef.current =
+          pendingAction.actionId;
+    
+        handleIncomingAction(
+          pendingAction,
+        );
+      }
+    }
+  };
 
     // =======================================================
     // Room購読
@@ -1875,31 +1903,517 @@ const submitBattleAction = async (
   }
 };
   // ===== 相手のアクション処理 =====
-  const handleIncomingAction = (action: any) => {
+  const handleIncomingAction = (action: BattleActionPayload) => {
     if (!action?.type) return;
 
+    // -------------------------------------------------------
+    // 相手のサポートカード使用
+    // -------------------------------------------------------
     if (action.type === 'PLAY_SUPPORT') {
-      const opponentPreset = action.presetId
-        ? EMOTION_PRESETS.find((emotion) => emotion.id === action.presetId)
-        : undefined;
-      if (action.targetStats && typeof action.targetStats === 'object') {
-        setMyAvatars((prev) => prev.map((avatar, index) => index === activeIndex ? { ...avatar, stats: action.targetStats } : avatar));
+      const avatarIndex =
+        typeof action.avatarIndex === 'number'
+          ? action.avatarIndex
+          : activeIndex;
+
+      let opponentCard: SupportCard | undefined;
+
+      // cardIdから、相手が使用したカードを特定する。
+      if (action.cardId) {
+        try {
+          const entriesRaw = localStorage.getItem(
+            'reality_world_entries',
+          );
+
+          const entries: EntryRecordWithSkills[] =
+            entriesRaw
+              ? JSON.parse(entriesRaw)
+              : [];
+
+          const pool = getSupportPool(entries);
+
+          opponentCard =
+            pool.find(
+              (card) =>
+                card.id === action.cardId,
+            );
+
+          // 仮サポートカードの場合も取得できるようにする。
+          if (!opponentCard) {
+            opponentCard =
+              createVirtualSupportCards(
+                new Set(),
+              ).find(
+                (card) =>
+                  card.id === action.cardId,
+              );
+          }
+        } catch (error) {
+          console.error(
+            '相手サポートカード取得エラー:',
+            error,
+          );
+        }
       }
-      if (action.actorStats && typeof action.actorStats === 'object') {
-        setOppAvatars((prev) => prev.map((avatar, index) => index === activeIndex ? { ...avatar, stats: action.actorStats } : avatar));
+
+      if (!opponentCard) {
+        addLog(
+          '相手がサポートカードを使用しました。',
+        );
+        return;
       }
-      if (typeof action.scoreDelta === 'number' && action.scoreDelta !== 0) {
+
+      // 相手を actor、自分を target として、
+      // 現在の公式エモーション処理をそのまま適用する。
+      const opponentAvatar =
+        oppAvatars[avatarIndex];
+
+      const myAvatar =
+        myAvatars[avatarIndex];
+
+      if (
+        !opponentAvatar ||
+        !myAvatar
+      ) {
+        return;
+      }
+
+      const applied =
+        applyEmotionToPair(
+          opponentCard,
+          opponentAvatar,
+          myAvatar,
+        );
+
+      // 相手側の能力値更新
+      setOppAvatars((prev) =>
+        prev.map(
+          (avatar, index) =>
+            index === avatarIndex
+              ? applied.actor
+              : avatar,
+        ),
+      );
+
+      // 自分側の能力値更新
+      setMyAvatars((prev) =>
+        prev.map(
+          (avatar, index) =>
+            index === avatarIndex
+              ? applied.target
+              : avatar,
+        ),
+      );
+
+      // 相手側スコア更新
+      if (applied.scoreDelta !== 0) {
         setOppClassScores((prev) => {
           const next = [...prev];
-          next[activeIndex] = Math.max(0, (next[activeIndex] || 0) + action.scoreDelta);
+
+          next[avatarIndex] =
+            Math.max(
+              0,
+              (next[avatarIndex] || 0) +
+                applied.scoreDelta,
+            );
+
           return next;
         });
+
+        // 表示用合計スコアも同期する。
+        if (playerRole === 'host') {
+          setGuestTotalScore((prev) =>
+            Math.max(
+              0,
+              prev + applied.scoreDelta,
+            ),
+          );
+        } else {
+          setHostTotalScore((prev) =>
+            Math.max(
+              0,
+              prev + applied.scoreDelta,
+            ),
+          );
+        }
       }
-      addLog(`相手がサポート「${action.cardName}」を使用しました。${opponentPreset?.description ? ` ${opponentPreset.description}` : ''}`);
+
+      addLog(
+        `相手がサポート「${opponentCard.name}」を使用しました。`,
+      );
+
+      return;
     }
 
+    // -------------------------------------------------------
+    // 相手の技使用
+    // -------------------------------------------------------
     if (action.type === 'USE_SKILL') {
-      addLog(`相手が「${action.skillName}」を使用しました。`);
+      const avatarIndex =
+        typeof action.avatarIndex === 'number'
+          ? action.avatarIndex
+          : activeIndex;
+
+      const opponentAvatar =
+        oppAvatars[avatarIndex];
+
+      const myAvatar =
+        myAvatars[avatarIndex];
+
+      if (
+        !opponentAvatar ||
+        !myAvatar ||
+        !action.skillId
+      ) {
+        return;
+      }
+
+      const skill =
+        opponentAvatar.skills.find(
+          (item) =>
+            item.id === action.skillId,
+        );
+
+      if (!skill) {
+        addLog(
+          '相手が技を使用しました。',
+        );
+        return;
+      }
+
+      const effective =
+        getEffectiveStats(
+          opponentAvatar,
+        );
+
+      const opponentEffective =
+        getEffectiveStats(
+          myAvatar,
+        );
+
+      let gainedScore = 0;
+
+      let debuffs:
+        Partial<
+          Record<StatKey, number>
+        > = {};
+
+      let nextOpponentAvatars =
+        oppAvatars;
+
+      let nextMyAvatars =
+        myAvatars;
+
+      // -----------------------------------------------------
+      // 技ルールを、ローカル戦と同じ計算で実行
+      // -----------------------------------------------------
+
+      if (
+        skill.rule ===
+        'primary_score'
+      ) {
+        const stat =
+          skill.primaryStat || 'hp';
+
+        gainedScore =
+          effective[stat] * 10;
+
+      } else if (
+        skill.rule ===
+        'product_score'
+      ) {
+        const first =
+          skill.primaryStat || 'hp';
+
+        const second =
+          skill.secondaryStat ||
+          'intellect';
+
+        gainedScore =
+          effective[first] *
+          effective[second];
+
+      } else if (
+        skill.rule ===
+        'difference_score'
+      ) {
+        const stat =
+          skill.primaryStat || 'hp';
+
+        gainedScore =
+          Math.max(
+            0,
+            effective[stat] -
+              opponentEffective[stat],
+          ) * 20;
+
+      } else if (
+        skill.rule ===
+        'combo_score_and_debuff'
+      ) {
+        const first =
+          skill.secondaryStat ||
+          'intellect';
+
+        const second =
+          skill.tertiaryStat ||
+          'charm';
+
+        const target =
+          skill.primaryStat || 'hp';
+
+        gainedScore =
+          (effective[first] +
+            effective[second]) *
+          5;
+
+        debuffs[target] =
+          Math.ceil(
+            opponentEffective[target] / 2,
+          );
+
+      } else if (
+        skill.rule ===
+        'y_total_score'
+      ) {
+        gainedScore =
+          Object.values(
+            effective,
+          ).reduce(
+            (sum, value) =>
+              sum + value,
+            0,
+          ) * 5;
+
+      } else if (
+        skill.rule ===
+        'y_response_score'
+      ) {
+        const opponentMin =
+          Math.min(
+            ...Object.values(
+              effective,
+            ),
+          );
+
+        const myMin =
+          Math.min(
+            ...Object.values(
+              opponentEffective,
+            ),
+          );
+
+        gainedScore =
+          Math.max(
+            0,
+            opponentMin - myMin,
+          ) * 20;
+
+      } else if (
+        skill.rule ===
+        'y_burst'
+      ) {
+        gainedScore = 100;
+
+        const selectedBoostStat =
+          action.selectedBoostStat;
+
+        if (selectedBoostStat) {
+          nextOpponentAvatars =
+            oppAvatars.map(
+              (avatar, index) =>
+                index === avatarIndex
+                  ? {
+                      ...avatar,
+                      statBoost: {
+                        ...(
+                          avatar.statBoost ||
+                          {}
+                        ),
+                        [selectedBoostStat]: 2,
+                      },
+                    }
+                  : avatar,
+            );
+        }
+
+      } else if (
+        skill.rule ===
+        'y_crash'
+      ) {
+        Object.entries(
+          opponentEffective,
+        ).forEach(
+          ([key, value]) => {
+            debuffs[
+              key as StatKey
+            ] =
+              Math.ceil(
+                value * 0.25,
+              );
+          },
+        );
+
+      } else {
+        // 旧形式との互換
+        if (
+          skill.type === 'score'
+        ) {
+          gainedScore =
+            effective.hp * 10;
+        }
+
+        if (
+          skill.type ===
+          'draw_score'
+        ) {
+          gainedScore =
+            effective.intellect;
+        }
+
+        if (
+          skill.type ===
+          'debuff_attack'
+        ) {
+          debuffs.hp =
+            effective.charm;
+        }
+      }
+
+      // -----------------------------------------------------
+      // デバフ適用
+      // -----------------------------------------------------
+
+      if (
+        Object.keys(debuffs).length >
+          0 &&
+        !myAvatar.debuffImmune
+      ) {
+        nextMyAvatars =
+          myAvatars.map(
+            (avatar, index) =>
+              index === avatarIndex
+                ? {
+                    ...avatar,
+                    currentDebuff: {
+                      hp:
+                        avatar.currentDebuff.hp +
+                        Number(
+                          debuffs.hp || 0,
+                        ),
+                      intellect:
+                        avatar.currentDebuff
+                          .intellect +
+                        Number(
+                          debuffs.intellect ||
+                            0,
+                        ),
+                      dexterity:
+                        avatar.currentDebuff
+                          .dexterity +
+                        Number(
+                          debuffs.dexterity ||
+                            0,
+                        ),
+                      charm:
+                        avatar.currentDebuff
+                          .charm +
+                        Number(
+                          debuffs.charm || 0,
+                        ),
+                    },
+                  }
+                : avatar,
+          );
+      }
+
+      // -----------------------------------------------------
+      // 状態反映
+      // -----------------------------------------------------
+
+      setOppAvatars(
+        nextOpponentAvatars,
+      );
+
+      setMyAvatars(
+        nextMyAvatars,
+      );
+
+      setOppClassScores((prev) => {
+        const next = [...prev];
+
+        next[avatarIndex] =
+          (next[avatarIndex] || 0) +
+          gainedScore;
+
+        return next;
+      });
+
+      // 表示用合計スコア
+      if (playerRole === 'host') {
+        setGuestTotalScore(
+          (prev) =>
+            prev + gainedScore,
+        );
+      } else {
+        setHostTotalScore(
+          (prev) =>
+            prev + gainedScore,
+        );
+      }
+
+      // 相手の技使用済み状態も更新
+      setCpuUsedSkillsByClass(
+        (prev) => {
+          const yearKey =
+            String(action.year);
+
+          const current =
+            prev[yearKey] || [];
+
+          if (
+            skill.maxUsesPerClass > 0 &&
+            !current.includes(skill.id)
+          ) {
+            return {
+              ...prev,
+              [yearKey]: [
+                ...current,
+                skill.id,
+              ],
+            };
+          }
+
+          return prev;
+        },
+      );
+
+      addLog(
+        `相手が「${skill.name}」を使用しました。 +${gainedScore}スコア`,
+      );
+
+      // =====================================================
+      // 相手の技処理完了後、オンライン対戦ではターンを進める
+      // =====================================================
+      //
+      // サポートカード使用ではターン終了しない。
+      // 技の使用が完了した場合のみ、次のターンへ進む。
+      // =====================================================
+
+      if (isOnline && roomId) {
+        void updateDoc(
+          doc(db, 'rooms', roomId),
+          {
+            turnIndex: increment(1),
+          },
+        ).catch((error) => {
+          console.error(
+            '相手の技後のターン進行エラー:',
+            error,
+          );
+        });
+      }
+
+      return;
     }
   };
 
