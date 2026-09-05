@@ -3868,21 +3868,49 @@ const handleUseSupportCard = async (
 
 if (isOnline) {
   // =====================================================
-  // 使用者自身の戦闘状態を一括保存
+  // サポート使用による手札・山札だけをFirebaseへ保存
+  // =====================================================
+  //
+  // avatars はここで保存し直さない。
+  //
+  // サポート使用直後に avatars をFirebaseへ保存すると、
+  // 自分PlayerのSnapshotが即時発火し、
+  // ローカルで正常だったキャラ情報を
+  // Firestore側のデータで上書きする可能性があるため。
   // =====================================================
 
-  await saveMyPlayerBattleState(
-    myAvatars.map(
-      (avatar, avatarIndex) =>
-        avatarIndex === activeIndex
-          ? applied.actor
-          : avatar,
-    ),
-    {
-      hand: nextHand,
-      deck: nextDeck,
-    },
-  );
+  const playerRef =
+    doc(
+      db,
+      'rooms',
+      roomId,
+      'players',
+      playerRole,
+    );
+
+  try {
+    await setDoc(
+      playerRef,
+      {
+        hand: nextHand,
+        deck: nextDeck,
+
+        handCount:
+          nextHand.length,
+
+        deckCount:
+          nextDeck.length,
+      },
+      {
+        merge: true,
+      },
+    );
+  } catch (error) {
+    console.error(
+      'サポート使用後の手札保存エラー:',
+      error,
+    );
+  }
 
   // =====================================================
   // 相手へアクション送信
@@ -3900,7 +3928,8 @@ if (isOnline) {
       year: currentYear,
       turnIndex,
 
-      avatarIndex: activeIndex,
+      avatarIndex:
+        activeIndex,
 
       supportCardId:
         card.id,
@@ -3910,8 +3939,8 @@ if (isOnline) {
     addLog(
       `⚠️ サポート「${card.name}」の送信に失敗しました。`,
     );
-   }
   }
+}
 };
 
   // ===== クラス間の準備をホストがリセット =====
