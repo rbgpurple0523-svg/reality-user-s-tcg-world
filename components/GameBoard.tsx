@@ -8,6 +8,7 @@ import {
   onSnapshot,
   runTransaction,
   updateDoc,
+  setDoc,
 } from 'firebase/firestore';
 import {
   AvatarCard,
@@ -510,7 +511,7 @@ export default function GameBoard({ roomId = '', isHost = true, onEditDeck }: Ga
   const lastObservedYearRef = useRef<number>(1);
   const initializedRef = useRef(false);
 
-  const addLog = (message: string) => setLog((prev) => [message, ...prev].slice(0, 8));
+  const addLog = (message: string) => setLog((prev) => [...prev,message,]);
 
   // ===== CPU用一時デッキを自動構築 =====
   // 6人の正式な仮キャラから3人をランダム選出し、35種の仮サポートから
@@ -1884,15 +1885,21 @@ const submitBattleAction = async (
       playerRole,
     );
 
-    await updateDoc(playerRef, {
-      pendingAction: {
-        ...action,
-        actionId,
-        uid: currentUser.uid,
-        playerRole,
-        submittedAt: Date.now(),
+    await setDoc(
+      playerRef,
+      {
+        pendingAction: {
+          ...action,
+          actionId,
+          uid: currentUser.uid,
+          playerRole,
+          submittedAt: Date.now(),
+        },
       },
-    });
+      {
+        merge: true,
+      },
+     );
 
     return true;
   } catch (error) {
@@ -1906,6 +1913,95 @@ const submitBattleAction = async (
     return false;
   }
 };
+  // =========================================================
+  // ===== Player戦闘状態をFirebaseへ保存
+  // =========================================================
+  //
+  // Room：
+  //   スコア・ターン・試合進行
+  //
+  // Player：
+  //   avatars
+  //   hand
+  //   deck
+  //   usedSkills
+  //
+  // を正とする。
+  // =========================================================
+
+  const saveMyPlayerBattleState = async (
+    nextAvatars: BattleAvatar[],
+    options?: {
+      hand?: SupportCard[];
+      deck?: SupportCard[];
+      usedSkills?: Record<
+        string,
+        string[]
+      >;
+    },
+  ) => {
+    if (
+      !isOnline ||
+      !roomId ||
+      !authReady
+    ) {
+      return;
+    }
+
+    try {
+      const playerRef =
+        doc(
+          db,
+          'rooms',
+          roomId,
+          'players',
+          playerRole,
+        );
+
+      const nextHand =
+        options?.hand ??
+        myHand;
+
+      const nextDeck =
+        options?.deck ??
+        myDeck;
+
+      const nextUsedSkills =
+        options?.usedSkills ??
+        usedSkillsByClass;
+
+      await setDoc(
+        playerRef,
+        {
+          avatars:
+            nextAvatars,
+
+          hand:
+            nextHand,
+
+          deck:
+            nextDeck,
+
+          handCount:
+            nextHand.length,
+
+          deckCount:
+            nextDeck.length,
+
+          usedSkills:
+            nextUsedSkills,
+        },
+        {
+          merge: true,
+        },
+      );
+    } catch (error) {
+      console.error(
+        'Player戦闘状態保存エラー:',
+        error,
+      );
+    }
+  };
   // ===== 相手のアクション処理 =====
   const handleIncomingAction = (
     action: BattleActionPayload & {
@@ -2054,6 +2150,14 @@ const submitBattleAction = async (
 
       setOppAvatars(
         nextOppAvatars,
+      );
+
+      // =====================================================
+      // 自分側に反映されたサポート効果を正式保存
+      // =====================================================
+
+      void saveMyPlayerBattleState(
+        nextMyAvatars,
       );
 
       // =====================================================
@@ -2515,6 +2619,14 @@ const submitBattleAction = async (
       );
 
       setMyAvatars(
+        nextMyAvatars,
+      );
+
+      // =====================================================
+      // 自分が受けた影響をPlayer状態へ保存
+      // =====================================================
+
+      void saveMyPlayerBattleState(
         nextMyAvatars,
       );
 
@@ -3184,6 +3296,18 @@ const submitBattleAction = async (
 
     setUsedSkillsByClass(
       nextUsed,
+    );
+
+    // =====================================================
+    // 使用者自身の正式状態をPlayerへ保存
+    // =====================================================
+
+    await saveMyPlayerBattleState(
+      nextMyAvatars,
+      {
+        usedSkills:
+          nextUsed,
+      },
     );
 
     addLog(
@@ -4308,15 +4432,29 @@ const submitBattleAction = async (
 
         {/* ===== ⑥ LIVE LOG：盤面の最後 ===== */}
         <section className="mt-4 rounded-2xl bg-slate-950/80 p-3 text-xs text-white shadow-lg">
-          <div className="mb-1 font-black opacity-50">LIVE LOG</div>
-          {log.map((item, index) => (
-            <div
-              key={`${item}_${index}`}
-              className={index === 0 ? 'font-black' : 'opacity-60'}
-            >
-              {item}
-            </div>
-          ))}
+          <div className="mb-2 font-black opacity-50">
+            LIVE LOG
+          </div>
+
+          <div
+            style={{
+              maxHeight: 300,
+              overflowY: 'auto',
+            }}
+          >
+            {log.map((item, index) => (
+              <div
+                key={`${item}_${index}`}
+                className={
+                  index === 0
+                    ? 'font-black'
+                    : 'opacity-60'
+                }
+              >
+                {item}
+              </div>
+            ))}
+          </div>
         </section>
 
         {/* ===== 勝敗・再戦 ===== */}
