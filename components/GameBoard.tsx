@@ -3741,13 +3741,64 @@ const submitBattleAction = async (
   ]);
 
   // ===== サポートカード使用 =====
-  const handleUseSupportCard = async (card: SupportCard, index: number) => {
-    if (!myTurn || battlePhase !== 'battle') return;
+  const handleUseSupportCard = async (
+    card: SupportCard,
+      index: number,
+    ) => {
+      if (!myTurn || battlePhase !== 'battle') {
+        return;
+      }
+    
+      // -------------------------------------------------------
+      // 二重使用防止
+      // -------------------------------------------------------
+    
+      if (!myHand[index]) {
+        return;
+      }
+    
+      const applied =
+        applyEmotionToPair(
+          card,
+          myActiveAvatar,
+          oppActiveAvatar,
+        );
 
-    const applied = applyEmotionToPair(card, myActiveAvatar, oppActiveAvatar);
-    setMyHand((prev) => prev.filter((_, i) => i !== index));
-    setMyAvatars((prev) => prev.map((avatar, avatarIndex) => avatarIndex === activeIndex ? applied.actor : avatar));
-    setOppAvatars((prev) => prev.map((avatar, avatarIndex) => avatarIndex === activeIndex ? applied.target : avatar));
+      // -------------------------------------------------------
+      // 使用後の正式な手札を先に作る
+      // -------------------------------------------------------
+    
+      const nextHand =
+        myHand.filter(
+          (_, handIndex) =>
+            handIndex !== index,
+        );
+    
+      // -------------------------------------------------------
+      // ローカルへ即時反映
+      // -------------------------------------------------------
+    
+      setMyHand(
+        nextHand,
+      );
+    
+      setMyAvatars((prev) =>
+        prev.map(
+          (avatar, avatarIndex) =>
+            avatarIndex === activeIndex
+              ? applied.actor
+              : avatar,
+        ),
+      );
+
+      setOppAvatars((prev) =>
+        prev.map(
+          (avatar, avatarIndex) =>
+            avatarIndex === activeIndex
+              ? applied.target
+              : avatar,
+        ),
+      );
 
     if (applied.scoreDelta !== 0) {
       setMyClassScores((prev) => {
@@ -3987,15 +4038,40 @@ const submitBattleAction = async (
     resetLocalSupportDeck(selectedDeck);
     setMyDeckReady(Boolean(selectedDeck));
     setDeckConfirmed(false);
-    if (isOnline) {
-      const field = playerRole === 'host' ? 'hostAvatars' : 'guestAvatars';
-      const readyField = playerRole === 'host' ? 'readyHost' : 'readyGuest';
-      await updateDoc(doc(db, 'rooms', roomId), {
-        [field]: loaded,
-        [playerRole === 'host' ? 'hostDeckId' : 'guestDeckId']: deckId,
+
+  if (isOnline) {
+    if (!myPlayerRef) {
+      addLog(
+        '⚠️ プレイヤーデータを保存できません。',
+      );
+      return;
+    }
+  
+    await updateDoc(
+      myPlayerRef,
+      {
+        avatars: loaded,
+        deckId,
+        joined: true,
+        lastSeenAt: Date.now(),
+      },
+    );
+  
+    const readyField =
+      playerRole === 'host'
+        ? 'readyHost'
+        : 'readyGuest';
+  
+    await updateDoc(
+      doc(db, 'rooms', roomId),
+      {
         [readyField]: false,
-      });
-      setPreparationMessage('デッキを変更しました。もう一度「このデッキではじめる」を押してください。');
+      },
+    );
+  
+    setPreparationMessage(
+      'デッキを変更しました。もう一度「このデッキではじめる」を押してください。',
+    );
     } else {
       setPreparationMessage(`デッキ「${selectedDeck?.name || '新しいデッキ'}」を選択しました。`);
     }
