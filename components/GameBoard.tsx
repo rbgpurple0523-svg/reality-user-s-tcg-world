@@ -1491,31 +1491,6 @@ export default function GameBoard({ roomId = '', isHost = true, onEditDeck }: Ga
           );
         }
 
-        // ===================================================
-        // 相手アクション
-        //
-        // ここも②-BでsubmitBattleActionへ移行する。
-        // ===================================================
-
-        const opponentAction =
-          data[
-            playerRole === 'host'
-              ? 'guestAction'
-              : 'hostAction'
-          ];
-
-        if (
-          opponentAction?.actionId &&
-          opponentAction.actionId !==
-            lastActionRef.current
-        ) {
-          lastActionRef.current =
-            opponentAction.actionId;
-
-          handleIncomingAction(
-            opponentAction,
-          );
-        }
 
         // ===================================================
         // 再戦・退出
@@ -3891,73 +3866,54 @@ const handleUseSupportCard = async (
       ),
   );
 
-  // -------------------------------------------------------
-  // オンライン：使用後の手札・山札を正式保存
-  // -------------------------------------------------------
-  //
-  // ここでは avatars を保存しない。
-  // サポート使用時に古いAvatar配列で上書きして
-  // キャラ情報が消える事故を防ぐ。
-  // -------------------------------------------------------
+if (isOnline) {
+  // =====================================================
+  // 使用者自身の戦闘状態を一括保存
+  // =====================================================
 
-  if (
-    isOnline &&
-    myPlayerRef
-  ) {
-    try {
-      await updateDoc(
-        myPlayerRef,
-        {
-          hand: nextHand,
-          deck: nextDeck,
+  await saveMyPlayerBattleState(
+    myAvatars.map(
+      (avatar, avatarIndex) =>
+        avatarIndex === activeIndex
+          ? applied.actor
+          : avatar,
+    ),
+    {
+      hand: nextHand,
+      deck: nextDeck,
+    },
+  );
 
-          handCount:
-            nextHand.length,
+  // =====================================================
+  // 相手へアクション送信
+  // =====================================================
 
-          deckCount:
-            nextDeck.length,
+  const actionSubmitted =
+    await submitBattleAction({
+      actionId:
+        `${Date.now()}-${Math.random()
+          .toString(36)
+          .slice(2)}`,
 
-          lastSeenAt:
-            Date.now(),
-        },
-      );
-    } catch (error) {
-      console.error(
-        'サポート使用後の手札保存エラー:',
-        error,
-      );
+      type: 'PLAY_SUPPORT',
 
-      addLog(
-        '⚠️ サポートカード状態の保存に失敗しました。',
-      );
+      year: currentYear,
+      turnIndex,
 
-      return;
-    }
+      avatarIndex: activeIndex,
 
-    // -----------------------------------------------------
-    // 相手へアクション送信
-    // -----------------------------------------------------
+      supportCardId:
+        card.id,
+    });
 
-    const actionSubmitted =
-      await submitBattleAction({
-        type: 'PLAY_SUPPORT',
-
-        year: currentYear,
-        turnIndex,
-
-        avatarIndex: activeIndex,
-
-        supportCardId:
-          card.id,
-      });
-
-    if (!actionSubmitted) {
-      addLog(
-        `⚠️ サポート「${card.name}」の送信に失敗しました。`,
-      );
-    }
+  if (!actionSubmitted) {
+    addLog(
+      `⚠️ サポート「${card.name}」の送信に失敗しました。`,
+    );
+   }
   }
 };
+
   // ===== クラス間の準備をホストがリセット =====
   const resetForNextClass = async () => {
     if (!isHost || battlePhase !== 'setup' || currentYear > 3) return;
