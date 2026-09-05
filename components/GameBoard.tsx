@@ -3740,112 +3740,224 @@ const submitBattleAction = async (
     cpuDeck,
   ]);
 
-  // ===== サポートカード使用 =====
-  const handleUseSupportCard = async (
-    card: SupportCard,
-      index: number,
-    ) => {
-      if (!myTurn || battlePhase !== 'battle') {
-        return;
+// ===== サポートカード使用 =====
+const handleUseSupportCard = async (
+  card: SupportCard,
+  index: number,
+) => {
+  if (!myTurn || battlePhase !== 'battle') {
+    return;
+  }
+
+  // -------------------------------------------------------
+  // 二重使用防止
+  // -------------------------------------------------------
+
+  if (!myHand[index]) {
+    return;
+  }
+
+  const applied =
+    applyEmotionToPair(
+      card,
+      myActiveAvatar,
+      oppActiveAvatar,
+    );
+
+  // -------------------------------------------------------
+  // 使用カードを除いた手札を作成
+  // -------------------------------------------------------
+
+  const nextHand =
+    myHand.filter(
+      (_, handIndex) =>
+        handIndex !== index,
+    );
+
+  // 山札もコピーして、最終状態をローカル変数で管理
+  const nextDeck =
+    [...myDeck];
+
+  // -------------------------------------------------------
+  // 追加ドロー
+  // -------------------------------------------------------
+
+  if (applied.extraDraw > 0) {
+    let drawCount = 0;
+
+    while (
+      drawCount < applied.extraDraw &&
+      nextHand.length < MAX_HAND &&
+      nextDeck.length > 0
+    ) {
+      const drawnCard =
+        nextDeck.shift();
+
+      if (drawnCard) {
+        nextHand.push(
+          drawnCard,
+        );
       }
-    
-      // -------------------------------------------------------
-      // 二重使用防止
-      // -------------------------------------------------------
-    
-      if (!myHand[index]) {
-        return;
-      }
-    
-      const applied =
-        applyEmotionToPair(
-          card,
-          myActiveAvatar,
-          oppActiveAvatar,
+
+      drawCount += 1;
+    }
+  }
+
+  // -------------------------------------------------------
+  // ローカルへ即時反映
+  // -------------------------------------------------------
+
+  setMyHand(
+    nextHand,
+  );
+
+  setMyDeck(
+    nextDeck,
+  );
+
+  setMyAvatars((prev) =>
+    prev.map(
+      (avatar, avatarIndex) =>
+        avatarIndex === activeIndex
+          ? applied.actor
+          : avatar,
+    ),
+  );
+
+  setOppAvatars((prev) =>
+    prev.map(
+      (avatar, avatarIndex) =>
+        avatarIndex === activeIndex
+          ? applied.target
+          : avatar,
+    ),
+  );
+
+  // -------------------------------------------------------
+  // スコア反映
+  // -------------------------------------------------------
+
+  if (applied.scoreDelta !== 0) {
+    setMyClassScores((prev) => {
+      const next =
+        [...prev];
+
+      next[activeIndex] =
+        Math.max(
+          0,
+          (next[activeIndex] || 0) +
+            applied.scoreDelta,
         );
 
-      // -------------------------------------------------------
-      // 使用後の正式な手札を先に作る
-      // -------------------------------------------------------
-    
-      const nextHand =
-        myHand.filter(
-          (_, handIndex) =>
-            handIndex !== index,
-        );
-    
-      // -------------------------------------------------------
-      // ローカルへ即時反映
-      // -------------------------------------------------------
-    
-      setMyHand(
-        nextHand,
+      return next;
+    });
+
+    if (playerRole === 'host') {
+      setHostTotalScore(
+        (prev) =>
+          Math.max(
+            0,
+            prev +
+              applied.scoreDelta,
+          ),
       );
-    
-      setMyAvatars((prev) =>
-        prev.map(
-          (avatar, avatarIndex) =>
-            avatarIndex === activeIndex
-              ? applied.actor
-              : avatar,
-        ),
+    } else {
+      setGuestTotalScore(
+        (prev) =>
+          Math.max(
+            0,
+            prev +
+              applied.scoreDelta,
+          ),
+      );
+    }
+  }
+
+  // -------------------------------------------------------
+  // ログ
+  // -------------------------------------------------------
+
+  const preset =
+    getEmotionPresetForCard(
+      card,
+    );
+
+  addLog(
+    `サポート「${card.name}」を使用しました。` +
+      (
+        preset?.description
+          ? ` ${preset.description}`
+          : ''
+      ),
+  );
+
+  // -------------------------------------------------------
+  // オンライン：使用後の手札・山札を正式保存
+  // -------------------------------------------------------
+  //
+  // ここでは avatars を保存しない。
+  // サポート使用時に古いAvatar配列で上書きして
+  // キャラ情報が消える事故を防ぐ。
+  // -------------------------------------------------------
+
+  if (
+    isOnline &&
+    myPlayerRef
+  ) {
+    try {
+      await updateDoc(
+        myPlayerRef,
+        {
+          hand: nextHand,
+          deck: nextDeck,
+
+          handCount:
+            nextHand.length,
+
+          deckCount:
+            nextDeck.length,
+
+          lastSeenAt:
+            Date.now(),
+        },
+      );
+    } catch (error) {
+      console.error(
+        'サポート使用後の手札保存エラー:',
+        error,
       );
 
-      setOppAvatars((prev) =>
-        prev.map(
-          (avatar, avatarIndex) =>
-            avatarIndex === activeIndex
-              ? applied.target
-              : avatar,
-        ),
+      addLog(
+        '⚠️ サポートカード状態の保存に失敗しました。',
       );
 
-    if (applied.scoreDelta !== 0) {
-      setMyClassScores((prev) => {
-        const next = [...prev];
-        next[activeIndex] = Math.max(0, (next[activeIndex] || 0) + applied.scoreDelta);
-        return next;
-      });
-      if (playerRole === 'host') {
-        setHostTotalScore((prev) => Math.max(0, prev + applied.scoreDelta));
-      } else {
-        setGuestTotalScore((prev) => Math.max(0, prev + applied.scoreDelta));
-      }
+      return;
     }
 
-    if (applied.extraDraw > 0) {
-      setMyHand((prev) => {
-        const next = [...prev];
-        let drawIndex = 0;
-        while (drawIndex < applied.extraDraw && next.length < MAX_HAND && myDeck[drawIndex]) {
-          next.push(myDeck[drawIndex]);
-          drawIndex += 1;
-        }
-        return next;
-      });
-      setMyDeck((prev) => prev.slice(applied.extraDraw));
-    }
+    // -----------------------------------------------------
+    // 相手へアクション送信
+    // -----------------------------------------------------
 
-    const preset = getEmotionPresetForCard(card);
-    addLog(`サポート「${card.name}」を使用しました。${preset?.description ? ` ${preset.description}` : ''}`);
-
-    if (isOnline) {
+    const actionSubmitted =
       await submitBattleAction({
         type: 'PLAY_SUPPORT',
-    
-        // 現在の対戦状態
+
         year: currentYear,
         turnIndex,
-    
-        // 現在出場しているキャラクター
-        avatarIndex: activeIndex,
-    
-        // 使用するカードそのものを識別する情報
-        supportCardId: card.id,
-      });
-    }
-  };
 
+        avatarIndex: activeIndex,
+
+        supportCardId:
+          card.id,
+      });
+
+    if (!actionSubmitted) {
+      addLog(
+        `⚠️ サポート「${card.name}」の送信に失敗しました。`,
+      );
+    }
+  }
+};
   // ===== クラス間の準備をホストがリセット =====
   const resetForNextClass = async () => {
     if (!isHost || battlePhase !== 'setup' || currentYear > 3) return;
