@@ -1957,6 +1957,7 @@ const submitBattleAction = async (
       );
     }
   };
+ 
   // ===== 相手のアクション処理 =====
   const handleIncomingAction = (
     action: BattleActionPayload & {
@@ -2106,6 +2107,44 @@ const submitBattleAction = async (
       setOppAvatars(
         nextOppAvatars,
       );
+
+      // =====================================================
+      // サポート効果を受けた自分のAvatar状態を正式保存
+      // =====================================================
+      //
+      // 相手Playerは自分から保存しない。
+      // 自分に反映された nextMyAvatars だけ保存する。
+      // =====================================================
+      
+      if (
+        isOnline &&
+        roomId
+      ) {
+        const myPlayerBattleRef =
+          doc(
+            db,
+            'rooms',
+            roomId,
+            'players',
+            playerRole,
+          );
+      
+        void updateDoc(
+          myPlayerBattleRef,
+          {
+            avatars:
+              nextMyAvatars,
+      
+            lastSeenAt:
+              Date.now(),
+          },
+        ).catch((error) => {
+          console.error(
+            'サポート効果を受けた側のAvatar保存エラー:',
+            error,
+          );
+        });
+      }
 
       // =====================================================
       // スコア反映
@@ -3679,7 +3718,10 @@ const handleUseSupportCard = async (
   card: SupportCard,
   index: number,
 ) => {
-  if (!myTurn || battlePhase !== 'battle') {
+  if (
+    !myTurn ||
+    battlePhase !== 'battle'
+  ) {
     return;
   }
 
@@ -3698,48 +3740,89 @@ const handleUseSupportCard = async (
       oppActiveAvatar,
     );
 
-  // -------------------------------------------------------
-  // 使用カードを除いた手札を作成
-  // -------------------------------------------------------
+  // =======================================================
+  // ① 使用後のAvatar状態を先に確定
+  // =======================================================
 
-  const nextHand =
+  const nextMyAvatars =
+    myAvatars.map(
+      (avatar, avatarIndex) =>
+        avatarIndex === activeIndex
+          ? applied.actor
+          : avatar,
+    );
+
+  // -------------------------------------------------------
+  // 相手側はローカル表示だけ更新
+  //
+  // 相手PlayerのFirestoreデータは
+  // 自分側から書き換えない。
+  // =======================================================
+
+  const nextOppAvatars =
+    oppAvatars.map(
+      (avatar, avatarIndex) =>
+        avatarIndex === activeIndex
+          ? applied.target
+          : avatar,
+    );
+
+  // =======================================================
+  // ② 使用したカードを手札から削除
+  // =======================================================
+
+  let nextHand =
     myHand.filter(
       (_, handIndex) =>
         handIndex !== index,
     );
 
-  // 山札もコピーして、最終状態をローカル変数で管理
-  const nextDeck =
+  let nextDeck =
     [...myDeck];
 
-  // -------------------------------------------------------
-  // 追加ドロー
-  // -------------------------------------------------------
+  // =======================================================
+  // ③ ドロー効果
+  // =======================================================
 
   if (applied.extraDraw > 0) {
-    let drawCount = 0;
+    const drawCount =
+      Math.min(
+        applied.extraDraw,
+        Math.max(
+          0,
+          MAX_HAND - nextHand.length,
+        ),
+        nextDeck.length,
+      );
 
-    while (
-      drawCount < applied.extraDraw &&
-      nextHand.length < MAX_HAND &&
-      nextDeck.length > 0
-    ) {
-      const drawnCard =
-        nextDeck.shift();
+    const drawnCards =
+      nextDeck.slice(
+        0,
+        drawCount,
+      );
 
-      if (drawnCard) {
-        nextHand.push(
-          drawnCard,
-        );
-      }
+    nextHand = [
+      ...nextHand,
+      ...drawnCards,
+    ];
 
-      drawCount += 1;
-    }
+    nextDeck =
+      nextDeck.slice(
+        drawCount,
+      );
   }
 
-  // -------------------------------------------------------
-  // ローカルへ即時反映
-  // -------------------------------------------------------
+  // =======================================================
+  // ④ ローカル状態へ即時反映
+  // =======================================================
+
+  setMyAvatars(
+    nextMyAvatars,
+  );
+
+  setOppAvatars(
+    nextOppAvatars,
+  );
 
   setMyHand(
     nextHand,
@@ -3749,32 +3832,13 @@ const handleUseSupportCard = async (
     nextDeck,
   );
 
-  setMyAvatars((prev) =>
-    prev.map(
-      (avatar, avatarIndex) =>
-        avatarIndex === activeIndex
-          ? applied.actor
-          : avatar,
-    ),
-  );
-
-  setOppAvatars((prev) =>
-    prev.map(
-      (avatar, avatarIndex) =>
-        avatarIndex === activeIndex
-          ? applied.target
-          : avatar,
-    ),
-  );
-
-  // -------------------------------------------------------
-  // スコア反映
-  // -------------------------------------------------------
+  // =======================================================
+  // ⑤ スコア効果
+  // =======================================================
 
   if (applied.scoreDelta !== 0) {
     setMyClassScores((prev) => {
-      const next =
-        [...prev];
+      const next = [...prev];
 
       next[activeIndex] =
         Math.max(
@@ -3807,9 +3871,9 @@ const handleUseSupportCard = async (
     }
   }
 
-  // -------------------------------------------------------
-  // ログ
-  // -------------------------------------------------------
+  // =======================================================
+  // ⑥ ログ
+  // =======================================================
 
   const preset =
     getEmotionPresetForCard(
@@ -3825,81 +3889,91 @@ const handleUseSupportCard = async (
       ),
   );
 
-if (isOnline) {
-  // =====================================================
-  // サポート使用による手札・山札だけをFirebaseへ保存
-  // =====================================================
+  // =======================================================
+  // ⑦ オンライン戦
   //
-  // avatars はここで保存し直さない。
+  // ★重要★
   //
-  // サポート使用直後に avatars をFirebaseへ保存すると、
-  // 自分PlayerのSnapshotが即時発火し、
-  // ローカルで正常だったキャラ情報を
-  // Firestore側のデータで上書きする可能性があるため。
-  // =====================================================
+  // pendingAction を送る前に、
+  // 自分自身の正式なBattle状態をFirestoreへ保存する。
+  //
+  // これにより、自分のonSnapshotが発火しても
+  // DEFAULT_AVATARSなどの古い状態で
+  // 上書きされなくなる。
+  // =======================================================
 
-  const playerRef =
-    doc(
-      db,
-      'rooms',
-      roomId,
-      'players',
-      playerRole,
-    );
+  if (isOnline) {
+    if (!myPlayerRef) {
+      addLog(
+        '⚠️ 自分のPlayer情報が見つかりません。',
+      );
 
-  try {
-    await setDoc(
-      playerRef,
-      {
-        hand: nextHand,
-        deck: nextDeck,
+      return;
+    }
 
-        handCount:
-          nextHand.length,
+    try {
+      await updateDoc(
+        myPlayerRef,
+        {
+          avatars:
+            nextMyAvatars,
 
-        deckCount:
-          nextDeck.length,
-      },
-      {
-        merge: true,
-      },
-    );
-  } catch (error) {
-    console.error(
-      'サポート使用後の手札保存エラー:',
-      error,
-    );
+          hand:
+            nextHand,
+
+          deck:
+            nextDeck,
+
+          handCount:
+            nextHand.length,
+
+          deckCount:
+            nextDeck.length,
+
+          lastSeenAt:
+            Date.now(),
+        },
+      );
+    } catch (error) {
+      console.error(
+        'サポート使用後の自分状態保存エラー:',
+        error,
+      );
+
+      addLog(
+        '⚠️ サポート使用状態を保存できませんでした。',
+      );
+
+      return;
+    }
+
+    // =====================================================
+    // ⑧ 保存成功後にAction送信
+    // =====================================================
+
+    const submitted =
+      await submitBattleAction({
+        type:
+          'PLAY_SUPPORT',
+
+        year:
+          currentYear,
+
+        turnIndex,
+
+        avatarIndex:
+          activeIndex,
+
+        supportCardId:
+          card.id,
+      });
+
+    if (!submitted) {
+      addLog(
+        '⚠️ サポート使用Actionの送信に失敗しました。',
+      );
+    }
   }
-
-  // =====================================================
-  // 相手へアクション送信
-  // =====================================================
-
-  const actionSubmitted =
-    await submitBattleAction({
-      actionId:
-        `${Date.now()}-${Math.random()
-          .toString(36)
-          .slice(2)}`,
-
-      type: 'PLAY_SUPPORT',
-
-      year: currentYear,
-      turnIndex,
-
-      avatarIndex:
-        activeIndex,
-
-      supportCardId:
-        card.id,
-    });
-
-  if (!actionSubmitted) {
-    addLog(
-      `⚠️ サポート「${card.name}」の送信に失敗しました。`,
-    );
-  }
-}
 };
 
   // ===== クラス間の準備をホストがリセット =====
