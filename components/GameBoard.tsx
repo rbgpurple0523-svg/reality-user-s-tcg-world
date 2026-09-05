@@ -1154,26 +1154,6 @@ export default function GameBoard({ roomId = '', isHost = true, onEditDeck }: Ga
       if (typeof deckCount === 'number') {
         setOpponentDeckCount(deckCount);
       }
-    
-      // ===================================================
-      // 相手のBattle Action
-      // ===================================================
-    
-      const pendingAction =
-        currentOpponentPlayerData.pendingAction;
-    
-      if (
-        pendingAction?.actionId &&
-        pendingAction.actionId !==
-          lastActionRef.current
-      ) {
-        lastActionRef.current =
-          pendingAction.actionId;
-    
-        handleIncomingAction(
-          pendingAction,
-        );
-      }
     }
   };
 
@@ -2152,6 +2132,39 @@ const submitBattleAction = async (
         nextOppAvatars,
       );
 
+    // =====================================================
+    // Action使用者（相手）の状態をPlayerへ正式保存
+    // =====================================================
+    
+    if (isOnline && roomId) {
+      const actorRole =
+        action.playerRole === 'host'
+          ? 'host'
+          : 'guest';
+
+      const actorPlayerRef =
+        doc(
+          db,
+          'rooms',
+          roomId,
+          'players',
+          actorRole,
+        );
+    
+      void updateDoc(
+        actorPlayerRef,
+        {
+          avatars:
+            nextOppAvatars,
+        },
+      ).catch((error) => {
+        console.error(
+          '相手サポート後のAvatar保存エラー:',
+          error,
+        );
+      });
+    }
+
       // =====================================================
       // 自分側に反映されたサポート効果を正式保存
       // =====================================================
@@ -2622,6 +2635,73 @@ const submitBattleAction = async (
         nextMyAvatars,
       );
 
+      // =====================================================
+      // 技を使用した相手Playerの状態を正式保存
+      // =====================================================
+      
+      const actorRole =
+        action.playerRole === 'host'
+          ? 'host'
+          : 'guest';
+      
+      const targetRole =
+        actorRole === 'host'
+          ? 'guest'
+          : 'host';
+      
+      if (isOnline && roomId) {
+        // ---------------------------------------------------
+        // 技を使用した側
+        // ---------------------------------------------------
+      
+        const actorPlayerRef =
+          doc(
+            db,
+            'rooms',
+            roomId,
+            'players',
+            actorRole,
+          );
+      
+        void updateDoc(
+          actorPlayerRef,
+          {
+            avatars:
+              nextOpponentAvatars,
+          },
+        ).catch((error) => {
+          console.error(
+            '相手の技後のAvatar保存エラー:',
+            error,
+          );
+        });
+
+        // ---------------------------------------------------
+        // 技を受けた側
+        // ---------------------------------------------------
+      
+        const targetPlayerRef =
+          doc(
+            db,
+            'rooms',
+            roomId,
+            'players',
+            targetRole,
+          );
+      
+        void updateDoc(
+          targetPlayerRef,
+          {
+            avatars:
+              nextMyAvatars,
+          },
+        ).catch((error) => {
+          console.error(
+            '技を受けた側のAvatar保存エラー:',
+            error,
+          );
+        });
+      }
       // =====================================================
       // 自分が受けた影響をPlayer状態へ保存
       // =====================================================
