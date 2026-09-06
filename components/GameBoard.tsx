@@ -507,7 +507,6 @@ export default function GameBoard({ roomId = '', isHost = true, onEditDeck }: Ga
   const [opponentHandCount, setOpponentHandCount] = useState(0);
   const [opponentDeckCount, setOpponentDeckCount] = useState(0);
   const lastActionRef = useRef<string>('');
-  const lastSkillActionRef = useRef<string>('');
   const lastObservedBattlePhaseRef = useRef<string>('');
   const lastObservedYearRef = useRef<number>(1);
   const initializedRef = useRef(false);
@@ -1399,98 +1398,6 @@ export default function GameBoard({ roomId = '', isHost = true, onEditDeck }: Ga
 //
 // ※ここでは状態更新を行わない。
 
-        // ===================================================
-        // 旧Skill状態
-        // ===================================================
-
-        const used =
-          playerRole === 'host'
-            ? data.hostUsedSkills
-            : data.guestUsedSkills;
-
-        if (
-          used &&
-          typeof used === 'object'
-        ) {
-          setUsedSkillsByClass(used);
-        }
-
-        // ===================================================
-        // 相手の技によるスコア・干渉
-        //
-        // lastSkill はまだRoom直下。
-        // これは②-BでsubmitBattleActionへ移行する。
-        // 今回は既存処理を維持する。
-        // ===================================================
-
-        const lastSkill =
-          data.lastSkill;
-
-        if (
-          lastSkill?.actionId &&
-          lastSkill.actionId !==
-            lastSkillActionRef.current &&
-          lastSkill.player !== playerRole
-        ) {
-          lastSkillActionRef.current =
-            lastSkill.actionId;
-
-          if (
-            lastSkill.year ===
-            activeIndex + 1
-          ) {
-            const incomingDebuffs =
-              (lastSkill.debuffs || {}) as Partial<
-                Record<StatKey, number>
-              >;
-
-            if (
-              Object.keys(incomingDebuffs).length > 0
-            ) {
-              setMyAvatars((prev) =>
-                prev.map((avatar, index) =>
-                  index === activeIndex &&
-                  !avatar.debuffImmune
-                    ? {
-                        ...avatar,
-                        currentDebuff: {
-                          hp:
-                            avatar.currentDebuff.hp +
-                            Number(
-                              incomingDebuffs.hp || 0,
-                            ),
-                          intellect:
-                            avatar.currentDebuff.intellect +
-                            Number(
-                              incomingDebuffs.intellect ||
-                                0,
-                            ),
-                          dexterity:
-                            avatar.currentDebuff.dexterity +
-                            Number(
-                              incomingDebuffs.dexterity ||
-                                0,
-                            ),
-                          charm:
-                            avatar.currentDebuff.charm +
-                            Number(
-                              incomingDebuffs.charm ||
-                                0,
-                            ),
-                        },
-                      }
-                    : avatar,
-                ),
-              );
-            }
-          }
-
-          addLog(
-            '相手が「' +
-              (lastSkill.skillName || '技') +
-              '」を発動しました。',
-          );
-        }
 
 
         // ===================================================
@@ -1657,12 +1564,6 @@ export default function GameBoard({ roomId = '', isHost = true, onEditDeck }: Ga
 
         hostClassScores: [0, 0, 0],
         guestClassScores: [0, 0, 0],
-
-        hostUsedSkills: {},
-        guestUsedSkills: {},
-
-        hostAction: null,
-        guestAction: null,
 
         rematchHost: false,
         rematchGuest: false,
@@ -2634,39 +2535,6 @@ const handleIncomingActionRef =
           ? 'host'
           : 'guest';
       
-      const targetRole =
-        actorRole === 'host'
-          ? 'guest'
-          : 'host';
-      
-      if (isOnline && roomId) {
- 
-        // ---------------------------------------------------
-        // 技を受けた側
-        // ---------------------------------------------------
-      
-        const targetPlayerRef =
-          doc(
-            db,
-            'rooms',
-            roomId,
-            'players',
-            targetRole,
-          );
-      
-        void updateDoc(
-          targetPlayerRef,
-          {
-            avatars:
-              nextMyAvatars,
-          },
-        ).catch((error) => {
-          console.error(
-            '技を受けた側のAvatar保存エラー:',
-            error,
-          );
-        });
-      }
       // =====================================================
       // 自分が受けた影響だけを正式保存
       // =====================================================
@@ -3195,52 +3063,6 @@ useEffect(() => {
                   0,
               ) + gainedScore;
 
-            // ------------------------------------------------
-            // 使用済み技
-            // ------------------------------------------------
-
-            const roomUsedSkills =
-              roomData[usedField] &&
-              typeof roomData[
-                usedField
-              ] === 'object'
-                ? {
-                    ...roomData[
-                      usedField
-                    ],
-                  }
-                : {};
-
-            const yearKey =
-              String(currentYear);
-
-            const usedForYear =
-              Array.isArray(
-                roomUsedSkills[
-                  yearKey
-                ],
-              )
-                ? [
-                    ...roomUsedSkills[
-                      yearKey
-                    ],
-                  ]
-                : [];
-
-            if (
-              skill.maxUsesPerClass > 0 &&
-              !usedForYear.includes(
-                skill.id,
-              )
-            ) {
-              usedForYear.push(
-                skill.id,
-              );
-            }
-
-            roomUsedSkills[
-              yearKey
-            ] = usedForYear;
 
             // ------------------------------------------------
             // 次のターン状態
@@ -3254,9 +3076,6 @@ useEffect(() => {
 
                 [totalField]:
                   nextTotal,
-
-                [usedField]:
-                  roomUsedSkills,
 
                 lastProcessedActionId:
                   actionId,
@@ -4044,8 +3863,6 @@ const handleUseSupportCard = async (
       startSeasonIdx: null,
       turnIndex: 0,
       battlePhase: 'setup',
-      hostAction: null,
-      guestAction: null,
     });
     addLog(`${currentYear}年目（${ROLE_NAMES[currentYear - 1]}戦）の準備を開始します。`);
   };
@@ -4152,16 +3969,12 @@ const handleUseSupportCard = async (
         guestTotalScore: 0,
         hostClassScores: [0, 0, 0],
         guestClassScores: [0, 0, 0],
-        hostUsedSkills: {},
-        guestUsedSkills: {},
         rematchHost: false,
         rematchGuest: false,
         exitHost: false,
         exitGuest: false,
         readyHost: false,
         readyGuest: false,
-        hostAction: null,
-        guestAction: null,
       });
     });
 
