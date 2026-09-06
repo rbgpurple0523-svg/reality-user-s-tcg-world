@@ -939,6 +939,8 @@ export default function GameBoard({ roomId = '', isHost = true, onEditDeck }: Ga
           // 初期状態
           usedSkills: {},
 
+          lastProcessedIncomingActionId: '',
+
           handCount: initialSupportState.hand.length,
           deckCount: initialSupportState.deck.length,
 
@@ -1488,17 +1490,34 @@ export default function GameBoard({ roomId = '', isHost = true, onEditDeck }: Ga
           const pendingAction =
             currentOpponentPlayerData.pendingAction;
 
+          const lastProcessedIncomingActionId =
+            typeof currentMyPlayerData?.lastProcessedIncomingActionId === 'string'
+              ? currentMyPlayerData.lastProcessedIncomingActionId
+              : '';
+
           if (
             pendingAction?.actionId &&
-            pendingAction.actionId !==
-              lastActionRef.current
+            pendingAction.actionId !== lastActionRef.current &&
+            pendingAction.actionId !== lastProcessedIncomingActionId
           ) {
             lastActionRef.current =
               pendingAction.actionId;
           
-            handleIncomingActionRef.current(
-              pendingAction,
-            );
+            void Promise.resolve(
+              handleIncomingActionRef.current(
+                pendingAction,
+              ),
+            ).then(() => {
+              void updateDoc(myRef, {
+                lastProcessedIncomingActionId:
+                  pendingAction.actionId,
+              }).catch((error) => {
+                console.error(
+                  '受信済みAction ID保存エラー:',
+                  error,
+                );
+              });
+            });
           }
 
           applyPlayerData();
@@ -1873,7 +1892,7 @@ const handleIncomingActionRef =
       },
     ) => void
   >(
-    () => undefined,
+    async () => undefined,
   );
 
   // ===== 相手のアクション処理 =====
