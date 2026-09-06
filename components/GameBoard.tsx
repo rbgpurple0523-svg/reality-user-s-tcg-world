@@ -5088,23 +5088,28 @@ const handleUseSupportCard = async (
       const data = snapshot.data();
       if (!data || !data.rematchHost || !data.rematchGuest) return;
 
-      void updateDoc(roomRef, {
-        battlePhase: 'setup',
-        currentYear: 1,
-        turnIndex: 0,
-        firstPlayer: null,
-        startSeasonIdx: null,
-        hostTotalScore: 0,
-        guestTotalScore: 0,
-        hostClassScores: [0, 0, 0],
-        guestClassScores: [0, 0, 0],
-        rematchHost: false,
-        rematchGuest: false,
-        exitHost: false,
-        exitGuest: false,
-        readyHost: false,
-        readyGuest: false,
-      });
+    void updateDoc(roomRef, {
+      battlePhase: 'setup',
+      currentYear: 1,
+      turnIndex: 0,
+      firstPlayer: null,
+      startSeasonIdx: null,
+      hostTotalScore: 0,
+      guestTotalScore: 0,
+      hostClassScores: [0, 0, 0],
+      guestClassScores: [0, 0, 0],
+      rematchHost: false,
+      rematchGuest: false,
+      exitHost: false,
+      exitGuest: false,
+      readyHost: false,
+      readyGuest: false,
+    }).catch((error) => {
+      console.error(
+        '再戦リセットRoom更新エラー:',
+        error,
+      );
+    });
     });
 
     return () => unsubscribe();
