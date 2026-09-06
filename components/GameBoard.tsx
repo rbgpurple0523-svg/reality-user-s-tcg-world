@@ -2593,6 +2593,84 @@ const handleIncomingActionRef =
         );
         return;
       }
+      // =====================================================
+      // ③-④ 技の使用回数検証
+      //
+      // maxUsesPerClass > 0 の技は、
+      // 同じクラスで一度しか使用できない。
+      // 相手PlayerのusedSkillsを正とする。
+      // =====================================================
+
+      let opponentUsedSkills:
+        Record<string, string[]> = {};
+
+      if (
+        isOnline &&
+        opponentPlayerRef
+      ) {
+        try {
+          const opponentPlayerSnapshot =
+            await getDoc(
+              opponentPlayerRef,
+            );
+
+          if (
+            opponentPlayerSnapshot.exists()
+          ) {
+            const opponentPlayerData =
+              opponentPlayerSnapshot.data() as Record<
+                string,
+                any
+              >;
+
+            if (
+              opponentPlayerData.usedSkills &&
+              typeof opponentPlayerData.usedSkills ===
+                'object'
+            ) {
+              opponentUsedSkills =
+                opponentPlayerData.usedSkills;
+            }
+          }
+        } catch (error) {
+          console.error(
+            '相手Playerの使用済み技取得エラー:',
+            error,
+          );
+
+          return;
+        }
+      }
+
+      const usedForClass =
+        Array.isArray(
+          opponentUsedSkills[
+            String(action.year)
+          ],
+        )
+          ? opponentUsedSkills[
+              String(action.year)
+            ]
+          : [];
+
+      if (
+        skill.maxUsesPerClass > 0 &&
+        usedForClass.includes(
+          skill.id,
+        )
+      ) {
+        console.warn(
+          'すでに使用済みの技Actionを無視しました。',
+          {
+            skillId:
+              skill.id,
+            year:
+              action.year,
+          },
+        );
+
+        return;
+      }
 
       const effective =
         getEffectiveStats(
