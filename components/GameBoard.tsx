@@ -10,6 +10,7 @@ import {
   updateDoc,
   setDoc,
   increment,
+  deleteField,
 } from 'firebase/firestore';
 import {
   AvatarCard,
@@ -839,6 +840,14 @@ export default function GameBoard({ roomId = '', isHost = true, onEditDeck }: Ga
     [isOnline, roomId, playerRole],
   );
 
+  const myPrivatePlayerRef = useMemo(
+    () =>
+      isOnline && roomId
+        ? doc(db, 'rooms', roomId, 'privatePlayers', playerRole)
+        : null,
+    [isOnline, roomId, playerRole],
+  );
+
   const opponentRole: PlayerRole =
     playerRole === 'host' ? 'guest' : 'host';
 
@@ -923,29 +932,42 @@ export default function GameBoard({ roomId = '', isHost = true, onEditDeck }: Ga
 
         if (cancelled) return;
 
+        await setDoc(
+          myPrivatePlayerRef!,
+          {
+            uid: currentUser.uid,
+            hand: initialSupportState.hand,
+            deck: initialSupportState.deck,
+          },
+          {
+            merge: true,
+          },
+        );
+
         await updateDoc(myPlayerRef, {
           uid: currentUser.uid,
           role: playerRole,
           joined: true,
-
-          // Player固有データ
+        
+          // 公開Player情報
           avatars: loaded,
-   
-          // 実戦用サポートデッキ状態
-          // 初期手札4枚、残り14枚をPlayerへ保存する。
-          deck: initialSupportState.deck,
-          hand: initialSupportState.hand,
+
+          // hand / deck本体はprivatePlayersへ移動
+          hand: deleteField(),
+          deck: deleteField(),
 
           // 初期状態
           usedSkills: {},
 
           lastProcessedIncomingActionId: '',
 
+          // 枚数だけ公開
           handCount: initialSupportState.hand.length,
           deckCount: initialSupportState.deck.length,
 
           lastSeenAt: Date.now(),
         });
+
       } catch (error) {
         console.error(
           '自分のPlayerデータ公開エラー:',
@@ -1038,6 +1060,15 @@ export default function GameBoard({ roomId = '', isHost = true, onEditDeck }: Ga
       'players',
       playerRole,
     );
+    
+    const myPrivateRef = doc(
+      db,
+      'rooms',
+      roomId,
+      'privatePlayers',
+      playerRole,
+    );
+    
     const opponentRef = doc(
       db,
       'rooms',
@@ -1048,6 +1079,7 @@ export default function GameBoard({ roomId = '', isHost = true, onEditDeck }: Ga
 
     let currentRoomData: Record<string, any> | null = null;
     let currentMyPlayerData: Record<string, any> | null = null;
+    let currentMyPrivatePlayerData: Record<string, any> | null = null;
     let currentOpponentPlayerData: Record<string, any> | null = null;
 
     const applyPlayerData = () => {
@@ -1079,16 +1111,25 @@ export default function GameBoard({ roomId = '', isHost = true, onEditDeck }: Ga
           );
         }
 
-        const playerHand = currentMyPlayerData.hand;
+        // ★ここからprivatePlayersを読む
+        if (currentMyPrivatePlayerData) {
+          const playerHand =
+            currentMyPrivatePlayerData.hand;
 
-        if (Array.isArray(playerHand)) {
-          setMyHand(playerHand as SupportCard[]);
-        }
+          if (Array.isArray(playerHand)) {
+            setMyHand(
+              playerHand as SupportCard[],
+            );
+          }
 
-        const playerDeck = currentMyPlayerData.deck;
+          const playerDeck =
+            currentMyPrivatePlayerData.deck;
 
-        if (Array.isArray(playerDeck)) {
-          setMyDeck(playerDeck as SupportCard[]);
+          if (Array.isArray(playerDeck)) {
+            setMyDeck(
+              playerDeck as SupportCard[],
+            );
+          }
         }
 
         const usedSkills =
@@ -1472,6 +1513,36 @@ export default function GameBoard({ roomId = '', isHost = true, onEditDeck }: Ga
     );
 
     // =======================================================
+    // 自分PrivatePlayer購読
+    // =======================================================
+    //
+    // hand / deck は本人だけが読む。
+    // 公開Playerにはカード本体を保存しない。
+    // =======================================================
+
+    const unsubscribeMyPrivatePlayer =
+      onSnapshot(
+        myPrivateRef!,
+        (snapshot) => {
+          if (!snapshot.exists()) {
+            currentMyPrivatePlayerData = null;
+            return;
+          }
+
+          currentMyPrivatePlayerData =
+            snapshot.data() as Record<string, any>;
+
+          applyPlayerData();
+        },
+        (error) => {
+          console.error(
+            '自分のPrivatePlayer購読エラー:',
+            error,
+          );
+        },
+      );
+
+    // =======================================================
     // 相手Player購読
     // =======================================================
 
@@ -1535,6 +1606,7 @@ export default function GameBoard({ roomId = '', isHost = true, onEditDeck }: Ga
     return () => {
       unsubscribeRoom();
       unsubscribeMyPlayer();
+      unsubscribeMyPrivatePlayer();
       unsubscribeOpponentPlayer();
     };
   }, [
@@ -1725,6 +1797,7 @@ export default function GameBoard({ roomId = '', isHost = true, onEditDeck }: Ga
     myDeck,
     isOnline,
     myPlayerRef,
+    myPrivatePlayerRef,
   ]);
 
   // ===== オンライン対戦：手札・山札枚数をPlayerへ公開 =====
