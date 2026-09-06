@@ -1793,6 +1793,7 @@ type BattleActionPayload = {
 
   // 誰がActionを送ったか
   playerRole?: PlayerRole;
+  uid?: string;
 
   // 試合状態
   year: number;
@@ -2127,6 +2128,91 @@ const handleIncomingActionRef =
       } catch (error) {
         console.error(
           'Actionの手番検証エラー:',
+          error,
+        );
+
+        return;
+      }
+    }
+    // =====================================================
+    // ③-③ ActionのUID / playerRole検証
+    //
+    // Actionに含まれるUIDと、FirestoreのPlayer.uidを照合する。
+    // playerRoleの偽装も同時に防止する。
+    // =====================================================
+
+    if (
+      isOnline &&
+      roomId
+    ) {
+      try {
+        const actionPlayerRole =
+          action.playerRole === 'host'
+            ? 'host'
+            : action.playerRole === 'guest'
+              ? 'guest'
+              : null;
+
+        if (!actionPlayerRole) {
+          console.warn(
+            'playerRoleが不正なActionを無視しました。',
+          );
+          return;
+        }
+
+        if (!action.uid) {
+          console.warn(
+            'UIDがないActionを無視しました。',
+          );
+          return;
+        }
+
+        const actionPlayerRef =
+          doc(
+            db,
+            'rooms',
+            roomId,
+            'players',
+            actionPlayerRole,
+          );
+
+        const actionPlayerSnapshot =
+          await getDoc(
+            actionPlayerRef,
+          );
+
+        if (
+          !actionPlayerSnapshot.exists()
+        ) {
+          return;
+        }
+
+        const actionPlayerData =
+          actionPlayerSnapshot.data() as Record<
+            string,
+            any
+          >;
+
+        if (
+          actionPlayerData.uid !==
+          action.uid
+        ) {
+          console.warn(
+            'UIDがPlayer情報と一致しないActionを無視しました。',
+            {
+              actionPlayerRole,
+              actionUid:
+                action.uid,
+              playerUid:
+                actionPlayerData.uid,
+            },
+          );
+
+          return;
+        }
+      } catch (error) {
+        console.error(
+          'ActionのUID検証エラー:',
           error,
         );
 
