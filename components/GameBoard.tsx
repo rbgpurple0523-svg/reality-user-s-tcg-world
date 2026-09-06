@@ -1501,7 +1501,7 @@ export default function GameBoard({ roomId = '', isHost = true, onEditDeck }: Ga
 
     const unsubscribeMyPrivatePlayer =
       onSnapshot(
-        myPrivateRef!,
+        myPrivateRef,
         (snapshot) => {
           if (!snapshot.exists()) {
             currentMyPrivatePlayerData = null;
@@ -1707,103 +1707,157 @@ export default function GameBoard({ roomId = '', isHost = true, onEditDeck }: Ga
     charm: Math.max(0, avatar.stats.charm * (avatar.statBoost?.charm || 1) - avatar.currentDebuff.charm),
   });
 
-  // ===== ターン開始時の自動ドロー =====
-  const previousTurnRef = useRef<string>('');
+// ===== ターン開始時の自動ドロー =====
+const previousTurnRef = useRef<string>('');
 
-  useEffect(() => {
-    if (
-      battlePhase !== 'battle' ||
-      !myTurn
-    ) {
-      return;
-    }
+useEffect(() => {
+  if (
+    battlePhase !== 'battle' ||
+    !myTurn
+  ) {
+    return;
+  }
 
-    const key =
-      `${currentYear}-${turnIndex}-${playerRole}`;
+  const key =
+    `${currentYear}-${turnIndex}-${playerRole}`;
 
-    if (
-      previousTurnRef.current === key
-    ) {
-      return;
-    }
+  if (
+    previousTurnRef.current === key
+  ) {
+    return;
+  }
 
-    if (
-      myHand.length >= MAX_HAND ||
-      myDeck.length === 0
-    ) {
-      return;
-    }
+  if (
+    myHand.length >= MAX_HAND ||
+    myDeck.length === 0
+  ) {
+    return;
+  }
 
-    // 手札・山札が実際に読み込まれている状態で
-    // 初めて「このターンは処理済み」と記録する。
-    previousTurnRef.current = key;
+  const drawnCard = myDeck[0];
 
-    const drawnCard = myDeck[0];
+  const nextHand = [
+    ...myHand,
+    drawnCard,
+  ];
 
-    const nextHand = [
-      ...myHand,
-      drawnCard,
-    ];
+  const nextDeck =
+    myDeck.slice(1);
 
-    const nextDeck =
-      myDeck.slice(1);
+  // =====================================================
+  // 非同期処理
+  // =====================================================
 
+  let cancelled = false;
+
+  const drawCard = async () => {
     // -----------------------------------------
-    // ローカルへ即時反映
-    // -----------------------------------------
-
-    setMyHand(nextHand);
-    setMyDeck(nextDeck);
-
-    addLog(
-      'サポートカードを1枚ドローしました。',
-    );
-
-    // -----------------------------------------
-    // オンラインではPlayerへ正式保存
+    // オンラインではFirestoreへ先に正式保存
     // -----------------------------------------
 
     if (
       isOnline &&
-      myPlayerRef
+      myPlayerRef &&
+      myPrivatePlayerRef
     ) {
-      void updateDoc(
-        myPlayerRef,
-        {
-          hand:
-            nextHand,
+      try {
+        await setDoc(
+          myPrivatePlayerRef,
+          {
+            hand:
+              nextHand,
 
-          deck:
-            nextDeck,
+            deck:
+              nextDeck,
+          },
+          {
+            merge: true,
+          },
+        );
 
-          handCount:
-            nextHand.length,
+        await updateDoc(
+          myPlayerRef,
+          {
+            handCount:
+              nextHand.length,
 
-          deckCount:
-            nextDeck.length,
+            deckCount:
+              nextDeck.length,
 
-          lastSeenAt:
-            Date.now(),
-        },
-      ).catch((error) => {
+            lastSeenAt:
+              Date.now(),
+          },
+        );
+
+        if (cancelled) {
+          return;
+        }
+
+        // Firestoreへの保存成功後に
+        // 初めて画面へ反映する。
+        setMyHand(
+          nextHand,
+        );
+
+        setMyDeck(
+          nextDeck,
+        );
+
+        previousTurnRef.current = key;
+
+        addLog(
+          'サポートカードを1枚ドローしました。',
+        );
+      } catch (error) {
         console.error(
           'ターン開始ドロー保存エラー:',
           error,
         );
-      });
+      }
+
+      return;
     }
-  }, [
-    battlePhase,
-    myTurn,
-    currentYear,
-    turnIndex,
-    playerRole,
-    myHand,
-    myDeck,
-    isOnline,
-    myPlayerRef,
-    myPrivatePlayerRef,
-  ]);
+
+    // -----------------------------------------
+    // CPU戦
+    // -----------------------------------------
+
+    if (cancelled) {
+      return;
+    }
+
+    setMyHand(
+      nextHand,
+    );
+
+    setMyDeck(
+      nextDeck,
+    );
+
+    previousTurnRef.current = key;
+
+    addLog(
+      'サポートカードを1枚ドローしました。',
+    );
+  };
+
+  void drawCard();
+
+  return () => {
+    cancelled = true;
+  };
+}, [
+  battlePhase,
+  myTurn,
+  currentYear,
+  turnIndex,
+  playerRole,
+  myHand,
+  myDeck,
+  isOnline,
+  myPlayerRef,
+  myPrivatePlayerRef,
+]);
 
   // ===== オンライン対戦：手札・山札枚数をPlayerへ公開 =====
   useEffect(() => {
