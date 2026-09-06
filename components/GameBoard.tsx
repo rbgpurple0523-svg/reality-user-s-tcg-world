@@ -3191,9 +3191,7 @@ useEffect(() => {
       next.nextPhase ===
       'battle'
     ) {
-      setFirstPlayer(
-        playerRole,
-      );
+
     }
 
     if (
