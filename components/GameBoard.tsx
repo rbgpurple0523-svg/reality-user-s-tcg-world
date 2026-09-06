@@ -3080,9 +3080,9 @@ useEffect(() => {
 
         skillId: skill.id,
 
-        selectedBoostStat:
-          selectedBoostStat ??
-          undefined,
+        ...(selectedBoostStat
+          ? { selectedBoostStat }
+          : {}),
       });
 
     if (!actionSubmitted) {
