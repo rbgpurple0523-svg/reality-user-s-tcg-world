@@ -3488,6 +3488,45 @@ useEffect(() => {
           nextDeckDefinition,
         );
 
+// -----------------------------------------------------
+// オンラインでは次クラスの手札・山札をPlayerへ正式保存
+// -----------------------------------------------------
+
+if (
+  isOnline &&
+  myPlayerRef
+) {
+  try {
+    await updateDoc(
+      myPlayerRef,
+      {
+        hand:
+          nextSupportState.hand,
+
+        deck:
+          nextSupportState.deck,
+
+        handCount:
+          nextSupportState.hand.length,
+
+        deckCount:
+          nextSupportState.deck.length,
+
+        lastSeenAt:
+          Date.now(),
+      },
+    );
+  } catch (error) {
+    console.error(
+      '次クラスのサポートデッキ初期化保存エラー:',
+      error,
+    );
+
+    addLog(
+      '⚠️ 次クラスの手札・山札初期化に失敗しました。',
+    );
+  }
+}
 
       // 新しいクラスでは「このクラス1回」の技使用状況だけリセットする。
       // 新しいクラスでは「このクラス1回」の技使用状況だけリセットする。
