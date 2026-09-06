@@ -1111,27 +1111,6 @@ export default function GameBoard({ roomId = '', isHost = true, onEditDeck }: Ga
           );
         }
 
-        // ★ここからprivatePlayersを読む
-        if (currentMyPrivatePlayerData) {
-          const playerHand =
-            currentMyPrivatePlayerData.hand;
-
-          if (Array.isArray(playerHand)) {
-            setMyHand(
-              playerHand as SupportCard[],
-            );
-          }
-
-          const playerDeck =
-            currentMyPrivatePlayerData.deck;
-
-          if (Array.isArray(playerDeck)) {
-            setMyDeck(
-              playerDeck as SupportCard[],
-            );
-          }
-        }
-
         const usedSkills =
           currentMyPlayerData.usedSkills;
 
@@ -1529,10 +1508,34 @@ export default function GameBoard({ roomId = '', isHost = true, onEditDeck }: Ga
             return;
           }
 
-          currentMyPrivatePlayerData =
-            snapshot.data() as Record<string, any>;
+         currentMyPrivatePlayerData =
+           snapshot.data() as Record<string, any>;
 
-          applyPlayerData();
+         // =====================================================
+         // privatePlayers
+         //   hand / deck
+         // =====================================================
+
+         const privateData =
+           currentMyPrivatePlayerData;
+
+         const playerHand =
+           privateData.hand;
+
+         if (Array.isArray(playerHand)) {
+           setMyHand(
+             playerHand as SupportCard[],
+           );
+         }
+
+         const playerDeck =
+           privateData.deck;
+
+         if (Array.isArray(playerDeck)) {
+           setMyDeck(
+             playerDeck as SupportCard[],
+           );
+         }
         },
         (error) => {
           console.error(
