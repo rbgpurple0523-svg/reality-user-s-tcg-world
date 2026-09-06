@@ -1819,40 +1819,57 @@ type BattleActionPayload = {
 
 const submitBattleAction = async (
   action: BattleActionPayload,
+  options?: {
+    avatars?: BattleAvatar[];
+    deck?: SupportCard[];
+  },
 ) => {
-  if (!isOnline || !roomId || !authReady) {
+  if (
+    !isOnline ||
+    !roomId ||
+    !authReady
+  ) {
     return false;
   }
 
   try {
-    const currentUser = await ensureAnonymousAuth();
+    const currentUser =
+      await ensureAnonymousAuth();
 
     const actionId =
       action.actionId ||
-      `${currentUser.uid}-${Date.now()}`;
+      `${currentUser.uid}-${Date.now()}-${Math.random()
+        .toString(36)
+        .slice(2)}`;
 
-    const playerRef = doc(
-      db,
-      'rooms',
-      roomId,
-      'players',
-      playerRole,
-    );
+    const playerRef =
+      doc(
+        db,
+        'rooms',
+        roomId,
+        'players',
+        playerRole,
+      );
 
     // =====================================================
-    // PLAY_SUPPORT は、
+    // PLAY_SUPPORT
     //
-    // 「手札確認」
-    // 「カード1枚消費」
-    // 「pendingAction保存」
+    // 手札確認
+    // カード1枚消費
+    // Avatar状態保存
+    // 山札保存
+    // pendingAction保存
     //
-    // を同一Transactionで処理する。
+    // を同一Transactionで確定する。
     // =====================================================
 
     if (
-      action.type === 'PLAY_SUPPORT'
+      action.type ===
+      'PLAY_SUPPORT'
     ) {
-      if (!action.supportCardId) {
+      if (
+        !action.supportCardId
+      ) {
         console.warn(
           'supportCardIdがないサポートActionを拒否しました。',
         );
@@ -1868,7 +1885,9 @@ const submitBattleAction = async (
               playerRef,
             );
 
-          if (!snapshot.exists()) {
+          if (
+            !snapshot.exists()
+          ) {
             throw new Error(
               'Playerデータが存在しません。',
             );
@@ -1889,37 +1908,41 @@ const submitBattleAction = async (
                 ]
               : [];
 
-          // -------------------------------------------------
+          // =================================================
           // ③-⑤ 使用前の所持確認
-          // -------------------------------------------------
+          // =================================================
 
           const supportCardIndex =
             currentHand.findIndex(
-              (handCard: SupportCard) =>
+              (
+                handCard: SupportCard,
+              ) =>
                 handCard.id ===
                 action.supportCardId,
             );
 
           if (
-            supportCardIndex === -1
+            supportCardIndex ===
+            -1
           ) {
             throw new Error(
               '指定されたサポートカードが手札に存在しません。',
             );
           }
 
-          // 同じカードIDを何枚持っているか。
-          // 最大2枚という現行デッキ仕様にも対応する。
+          // 同じカードIDを使用前に何枚持っていたか。
           const supportCardCountBefore =
             currentHand.filter(
-              (handCard: SupportCard) =>
+              (
+                handCard: SupportCard,
+              ) =>
                 handCard.id ===
                 action.supportCardId,
             ).length;
 
-          // -------------------------------------------------
+          // =================================================
           // ③-⑥ 1枚だけ消費
-          // -------------------------------------------------
+          // =================================================
 
           const nextHand =
             currentHand.filter(
@@ -1933,12 +1956,13 @@ const submitBattleAction = async (
 
           const supportCardCountAfter =
             nextHand.filter(
-              (handCard: SupportCard) =>
+              (
+                handCard: SupportCard,
+              ) =>
                 handCard.id ===
                 action.supportCardId,
             ).length;
 
-          // 必ず1枚だけ減っていることを確認。
           if (
             supportCardCountAfter !==
             supportCardCountBefore - 1
@@ -1948,19 +1972,51 @@ const submitBattleAction = async (
             );
           }
 
-          // -------------------------------------------------
-          // pendingActionとカード消費を同時確定
-          // -------------------------------------------------
+          // =================================================
+          // Transactionで正式状態を確定
+          // =================================================
 
           transaction.update(
             playerRef,
             {
+              // -----------------------------
+              // 手札
+              // -----------------------------
               hand:
                 nextHand,
 
               handCount:
                 nextHand.length,
 
+              // -----------------------------
+              // 山札
+              // -----------------------------
+              ...(options?.deck
+                ? {
+                    deck:
+                      options.deck,
+
+                    deckCount:
+                      options.deck.length,
+                  }
+                : {}),
+
+              // -----------------------------
+              // 自分のAvatar状態
+              //
+              // サポートによる自分への
+              // バフもここで正式保存する。
+              // -----------------------------
+              ...(options?.avatars
+                ? {
+                    avatars:
+                      options.avatars,
+                  }
+                : {}),
+
+              // -----------------------------
+              // サポート消費記録
+              // -----------------------------
               lastSupportActionId:
                 actionId,
 
@@ -1976,20 +2032,27 @@ const submitBattleAction = async (
               lastSupportActionAt:
                 Date.now(),
 
+              // -----------------------------
+              // 相手側の検証用Action
+              // -----------------------------
               pendingAction: {
                 ...action,
+
                 actionId,
+
                 uid:
                   currentUser.uid,
+
                 playerRole,
+
                 submittedAt:
                   Date.now(),
 
-                // 受信側の整合性検証用
                 supportCardConsumed:
                   true,
 
                 supportCardCountBefore,
+
                 supportCardCountAfter,
               },
             },
@@ -2001,7 +2064,10 @@ const submitBattleAction = async (
     }
 
     // =====================================================
-    // USE_SKILLなど、サポート以外のAction
+    // PLAY_SUPPORT以外
+    //
+    // 現時点ではUSE_SKILLなどは
+    // 従来どおりpendingActionだけ保存する。
     // =====================================================
 
     await updateDoc(
@@ -2009,10 +2075,14 @@ const submitBattleAction = async (
       {
         pendingAction: {
           ...action,
+
           actionId,
+
           uid:
             currentUser.uid,
+
           playerRole,
+
           submittedAt:
             Date.now(),
         },
@@ -4584,21 +4654,30 @@ const handleUseSupportCard = async (
     // =====================================================
   
     const submitted =
-      await submitBattleAction({
-        type:
-          'PLAY_SUPPORT',
-  
-        year:
-          currentYear,
+      await submitBattleAction(
+        {
+          type:
+            'PLAY_SUPPORT',
 
-        turnIndex,
-  
-        avatarIndex:
-          activeIndex,
-  
-        supportCardId:
-          card.id,
-      });
+          year:
+            currentYear,
+
+          turnIndex,
+
+          avatarIndex:
+            activeIndex,
+
+          supportCardId:
+            card.id,
+        },
+        {
+          avatars:
+            nextMyAvatars,
+
+          deck:
+            nextDeck,
+        },
+      );
 
     // =====================================================
     // Transaction失敗
