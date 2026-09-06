@@ -1724,14 +1724,16 @@ export default function GameBoard({ roomId = '', isHost = true, onEditDeck }: Ga
       return;
     }
 
-    previousTurnRef.current = key;
-
     if (
       myHand.length >= MAX_HAND ||
       myDeck.length === 0
     ) {
       return;
     }
+
+    // 手札・山札が実際に読み込まれている状態で
+    // 初めて「このターンは処理済み」と記録する。
+    previousTurnRef.current = key;
 
     const drawnCard = myDeck[0];
 
