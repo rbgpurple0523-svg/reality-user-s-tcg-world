@@ -1924,6 +1924,15 @@ const submitBattleAction = async (
         playerRole,
       );
 
+const privatePlayerRef =
+  doc(
+    db,
+    'rooms',
+    roomId,
+    'privatePlayers',
+    playerRole,
+  );
+
     // =====================================================
     // PLAY_SUPPORT
     //
@@ -1955,7 +1964,7 @@ const submitBattleAction = async (
         async (transaction) => {
           const snapshot =
             await transaction.get(
-              playerRef,
+              privatePlayerRef,
             );
 
           if (
@@ -2003,7 +2012,6 @@ const submitBattleAction = async (
             );
           }
 
-          // 同じカードIDを使用前に何枚持っていたか。
           const supportCardCountBefore =
             currentHand.filter(
               (
@@ -2046,40 +2054,52 @@ const submitBattleAction = async (
           }
 
           // =================================================
-          // Transactionで正式状態を確定
+          // 非公開Player
+          //   hand / deck
+          // =================================================
+
+          transaction.set(
+            privatePlayerRef,
+            {
+              uid:
+                currentUser.uid,
+
+              hand:
+                nextHand,
+
+              deck:
+                options?.deck ??
+                (
+                  Array.isArray(
+                    playerData.deck,
+                  )
+                    ? playerData.deck
+                    : []
+                ),
+            },
+            {
+              merge: true,
+            },
+          );
+
+          // =================================================
+          // 公開Player
+          //   枚数 / Avatar / Action
           // =================================================
 
           transaction.update(
             playerRef,
             {
-              // -----------------------------
-              // 手札
-              // -----------------------------
-              hand:
-                nextHand,
-
               handCount:
                 nextHand.length,
 
-              // -----------------------------
-              // 山札
-              // -----------------------------
               ...(options?.deck
                 ? {
-                    deck:
-                      options.deck,
-
                     deckCount:
                       options.deck.length,
                   }
                 : {}),
 
-              // -----------------------------
-              // 自分のAvatar状態
-              //
-              // サポートによる自分への
-              // バフもここで正式保存する。
-              // -----------------------------
               ...(options?.avatars
                 ? {
                     avatars:
@@ -2087,9 +2107,6 @@ const submitBattleAction = async (
                   }
                 : {}),
 
-              // -----------------------------
-              // サポート消費記録
-              // -----------------------------
               lastSupportActionId:
                 actionId,
 
@@ -2105,9 +2122,6 @@ const submitBattleAction = async (
               lastSupportActionAt:
                 Date.now(),
 
-              // -----------------------------
-              // 相手側の検証用Action
-              // -----------------------------
               pendingAction: {
                 ...action,
 
@@ -2193,79 +2207,120 @@ const submitBattleAction = async (
   // を正とする。
   // =========================================================
 
-  const saveMyPlayerBattleState = async (
-    nextAvatars: BattleAvatar[],
-    options?: {
-      hand?: SupportCard[];
-      deck?: SupportCard[];
-      usedSkills?: Record<
-        string,
-        string[]
-      >;
-    },
-  ) => {
-    if (
-      !isOnline ||
-      !roomId ||
-      !authReady
-    ) {
-      return;
-    }
+const saveMyPlayerBattleState = async (
+  nextAvatars: BattleAvatar[],
+  options?: {
+    hand?: SupportCard[];
+    deck?: SupportCard[];
+    usedSkills?: Record<
+      string,
+      string[]
+    >;
+  },
+) => {
+  if (
+    !isOnline ||
+    !roomId ||
+    !authReady
+  ) {
+    return;
+  }
 
-    try {
-      const playerRef =
-        doc(
-          db,
-          'rooms',
-          roomId,
-          'players',
-          playerRole,
-        );
-
-      const nextHand =
-        options?.hand ??
-        myHand;
-
-      const nextDeck =
-        options?.deck ??
-        myDeck;
-
-      const nextUsedSkills =
-        options?.usedSkills ??
-        usedSkillsByClass;
-
-      await setDoc(
-        playerRef,
-        {
-          avatars:
-            nextAvatars,
-
-          hand:
-            nextHand,
-
-          deck:
-            nextDeck,
-
-          handCount:
-            nextHand.length,
-
-          deckCount:
-            nextDeck.length,
-
-          usedSkills:
-            nextUsedSkills,
-        },
-        {
-          merge: true,
-        },
+  try {
+    const playerRef =
+      doc(
+        db,
+        'rooms',
+        roomId,
+        'players',
+        playerRole,
       );
-    } catch (error) {
-      console.error(
-        'Player戦闘状態保存エラー:',
-        error,
+
+    const privatePlayerRef =
+      doc(
+        db,
+        'rooms',
+        roomId,
+        'privatePlayers',
+        playerRole,
       );
-    }
-  };
+
+    const nextHand =
+      options?.hand ??
+      myHand;
+
+    const nextDeck =
+      options?.deck ??
+      myDeck;
+
+    const nextUsedSkills =
+      options?.usedSkills ??
+      usedSkillsByClass;
+
+    // =====================================================
+    // 非公開Player
+    //   hand / deck
+    // =====================================================
+
+    await setDoc(
+      privatePlayerRef,
+      {
+        hand:
+          nextHand,
+
+        deck:
+          nextDeck,
+
+        // uidは本人確認用
+        uid:
+          (await ensureAnonymousAuth()).uid,
+      },
+      {
+        merge: true,
+      },
+    );
+
+    // =====================================================
+    // 公開Player
+    //   avatars / 枚数 / usedSkills
+    //
+    // hand / deck 本体は保存しない。
+    // =====================================================
+
+    await setDoc(
+      playerRef,
+      {
+        avatars:
+          nextAvatars,
+
+        handCount:
+          nextHand.length,
+
+        deckCount:
+          nextDeck.length,
+
+        usedSkills:
+          nextUsedSkills,
+
+        // 旧形式の秘密情報を公開Playerから削除
+        hand:
+          deleteField(),
+
+        deck:
+          deleteField(),
+      },
+      {
+        merge: true,
+      },
+    );
+  } catch (error) {
+    console.error(
+      'Player戦闘状態保存エラー:',
+      error,
+    );
+  }
+};
+
 // =========================================================
 // ===== 最新の相手Action処理を保持するRef
 // =========================================================
@@ -3632,23 +3687,43 @@ useEffect(() => {
         );
 
 // -----------------------------------------------------
-// オンラインでは次クラスの手札・山札をPlayerへ正式保存
+// オンラインでは次クラスの手札・山札を
+// privatePlayersへ正式保存
 // -----------------------------------------------------
 
 if (
   isOnline &&
-  myPlayerRef
+  myPlayerRef &&
+  myPrivatePlayerRef
 ) {
   try {
-    await updateDoc(
-      myPlayerRef,
+    // =================================================
+    // 非公開Player
+    //   hand / deck
+    // =================================================
+
+    await setDoc(
+      myPrivatePlayerRef,
       {
         hand:
           nextSupportState.hand,
 
         deck:
           nextSupportState.deck,
+      },
+      {
+        merge: true,
+      },
+    );
 
+    // =================================================
+    // 公開Player
+    //   handCount / deckCount / lastSeenAt
+    // =================================================
+
+    await updateDoc(
+      myPlayerRef,
+      {
         handCount:
           nextSupportState.hand.length,
 
@@ -3657,6 +3732,13 @@ if (
 
         lastSeenAt:
           Date.now(),
+
+        // 旧構造の秘密情報を削除
+        hand:
+          deleteField(),
+
+        deck:
+          deleteField(),
       },
     );
   } catch (error) {
