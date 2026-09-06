@@ -2296,6 +2296,70 @@ const handleIncomingActionRef =
       }
 
       // =====================================================
+      // ③-⑤ サポートカード所持チェック
+      //
+      // Actionで指定されたsupportCardIdが、
+      // 相手Playerの現在の手札に実際に存在するか確認する。
+      // =====================================================
+
+      if (
+        isOnline &&
+        opponentPlayerRef
+      ) {
+        try {
+          const opponentPlayerSnapshot =
+            await getDoc(
+              opponentPlayerRef,
+            );
+
+          if (
+            !opponentPlayerSnapshot.exists()
+          ) {
+            return;
+          }
+
+          const opponentPlayerData =
+            opponentPlayerSnapshot.data() as Record<
+              string,
+              any
+            >;
+
+          const opponentHand =
+            Array.isArray(
+              opponentPlayerData.hand,
+            )
+              ? opponentPlayerData.hand
+              : [];
+
+          const hasSupportCard =
+            opponentHand.some(
+              (handCard: SupportCard) =>
+                handCard.id ===
+                action.supportCardId,
+            );
+
+          if (!hasSupportCard) {
+            console.warn(
+              '相手の手札に存在しないサポートカードActionを無視しました。',
+              {
+                supportCardId:
+                  action.supportCardId,
+              },
+            );
+
+            return;
+          }
+        } catch (error) {
+          console.error(
+            '相手Playerの手札検証エラー:',
+            error,
+          );
+
+          return;
+        }
+      }
+
+      // =====================================================
       // サポートカード効果を受信側でも再現
       // =====================================================
       //
