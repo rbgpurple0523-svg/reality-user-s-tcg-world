@@ -2050,6 +2050,89 @@ const handleIncomingActionRef =
         return;
       }
     }
+    // =====================================================
+    // ③-② Action送信者が現在の手番プレイヤーか検証
+    //
+    // Room.firstPlayer と turnIndex から
+    // 現在の手番プレイヤーを求める。
+    //
+    // 相手Playerから届いたActionであっても、
+    // 本来の手番ではなければ処理しない。
+    // =====================================================
+
+    if (
+      isOnline &&
+      roomId
+    ) {
+      const roomRef =
+        doc(
+          db,
+          'rooms',
+          roomId,
+        );
+
+      try {
+        const roomSnapshot =
+          await getDoc(roomRef);
+
+        if (
+          !roomSnapshot.exists()
+        ) {
+          return;
+        }
+
+        const roomData =
+          roomSnapshot.data() as Record<
+            string,
+            any
+          >;
+
+        const currentFirstPlayer =
+          roomData.firstPlayer as
+            | PlayerRole
+            | null;
+
+        if (!currentFirstPlayer) {
+          return;
+        }
+
+        const expectedPlayer =
+          Number(action.turnIndex) % 2 === 0
+            ? currentFirstPlayer
+            : currentFirstPlayer === 'host'
+              ? 'guest'
+              : 'host';
+
+        const actionPlayer =
+          action.playerRole === 'host'
+            ? 'host'
+            : 'guest';
+
+        if (
+          actionPlayer !==
+          expectedPlayer
+        ) {
+          console.warn(
+            '現在の手番ではないPlayerのActionを無視しました。',
+            {
+              actionPlayer,
+              expectedPlayer,
+              turnIndex:
+                action.turnIndex,
+            },
+          );
+
+          return;
+        }
+      } catch (error) {
+        console.error(
+          'Actionの手番検証エラー:',
+          error,
+        );
+
+        return;
+      }
+    }
 
     // -------------------------------------------------------
     // 相手のサポートカード使用
