@@ -1977,6 +1977,80 @@ const handleIncomingActionRef =
   ) => {
     if (!action?.type) return;
 
+    // =====================================================
+    // ③-① Actionのyear / turnIndex検証
+    //
+    // Actionが現在のRoom状態に対するものか確認する。
+    // 古いActionや別ターンのActionは処理しない。
+    // =====================================================
+
+    if (
+      isOnline &&
+      roomId
+    ) {
+      try {
+        const roomRef =
+          doc(
+            db,
+            'rooms',
+            roomId,
+          );
+
+        const roomSnapshot =
+          await getDoc(roomRef);
+
+        if (
+          !roomSnapshot.exists()
+        ) {
+          return;
+        }
+
+        const roomData =
+          roomSnapshot.data() as Record<
+            string,
+            any
+          >;
+
+        const roomYear =
+          Number(
+            roomData.currentYear ?? 1,
+          );
+
+        const roomTurnIndex =
+          Number(
+            roomData.turnIndex ?? 0,
+          );
+
+        if (
+          Number(action.year) !==
+            roomYear ||
+          Number(action.turnIndex) !==
+            roomTurnIndex
+        ) {
+          console.warn(
+            '古い、または現在のターンと一致しないActionを無視しました。',
+            {
+              actionYear:
+                action.year,
+              actionTurnIndex:
+                action.turnIndex,
+              roomYear,
+              roomTurnIndex,
+            },
+          );
+
+          return;
+        }
+      } catch (error) {
+        console.error(
+          'Actionのターン検証エラー:',
+          error,
+        );
+
+        return;
+      }
+    }
+
     // -------------------------------------------------------
     // 相手のサポートカード使用
     // -------------------------------------------------------
