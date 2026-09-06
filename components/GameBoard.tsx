@@ -1582,12 +1582,13 @@ export default function GameBoard({ roomId = '', isHost = true, onEditDeck }: Ga
 
           if (
             pendingAction?.actionId &&
-            pendingAction.actionId !== lastActionRef.current
+            pendingAction.actionId !==
+              lastActionRef.current
           ) {
             lastActionRef.current =
               pendingAction.actionId;
-
-            handleIncomingAction(
+          
+            handleIncomingActionRef.current(
               pendingAction,
             );
           }
@@ -1957,7 +1958,21 @@ const submitBattleAction = async (
       );
     }
   };
- 
+// =========================================================
+// ===== 最新の相手Action処理を保持するRef
+// =========================================================
+
+const handleIncomingActionRef =
+  useRef<
+    (
+      action: BattleActionPayload & {
+        playerRole?: PlayerRole;
+      },
+    ) => void
+  >(
+    () => undefined,
+  );
+
   // ===== 相手のアクション処理 =====
   const handleIncomingAction = (
     action: BattleActionPayload & {
@@ -2961,6 +2976,16 @@ const submitBattleAction = async (
       return;
     }
   };
+
+// =========================================================
+// 常に最新のhandleIncomingActionをRefへ保存
+// =========================================================
+
+useEffect(() => {
+  handleIncomingActionRef.current =
+    handleIncomingAction;
+});
+
 
   // ===== 先手・後手を決定（デッキ確定後のみ） =====
   const decideFirstPlayer = async () => {
