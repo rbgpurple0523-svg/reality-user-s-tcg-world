@@ -1634,18 +1634,98 @@ export default function GameBoard({ roomId = '', isHost = true, onEditDeck }: Ga
 
   // ===== ターン開始時の自動ドロー =====
   const previousTurnRef = useRef<string>('');
+
   useEffect(() => {
-    if (battlePhase !== 'battle' || !myTurn) return;
-    const key = `${currentYear}-${turnIndex}-${playerRole}`;
-    if (previousTurnRef.current === key) return;
+    if (
+      battlePhase !== 'battle' ||
+      !myTurn
+    ) {
+      return;
+    }
+
+    const key =
+      `${currentYear}-${turnIndex}-${playerRole}`;
+
+    if (
+      previousTurnRef.current === key
+    ) {
+      return;
+    }
+
     previousTurnRef.current = key;
 
-    if (myHand.length < MAX_HAND && myDeck.length > 0) {
-      setMyHand((prev) => [...prev, myDeck[0]]);
-      setMyDeck((prev) => prev.slice(1));
-      addLog('サポートカードを1枚ドローしました。');
+    if (
+      myHand.length >= MAX_HAND ||
+      myDeck.length === 0
+    ) {
+      return;
     }
-  }, [battlePhase, myTurn, currentYear, turnIndex, playerRole, myHand.length, myDeck]);
+
+    const drawnCard = myDeck[0];
+
+    const nextHand = [
+      ...myHand,
+      drawnCard,
+    ];
+
+    const nextDeck =
+      myDeck.slice(1);
+
+    // -----------------------------------------
+    // ローカルへ即時反映
+    // -----------------------------------------
+
+    setMyHand(nextHand);
+    setMyDeck(nextDeck);
+
+    addLog(
+      'サポートカードを1枚ドローしました。',
+    );
+
+    // -----------------------------------------
+    // オンラインではPlayerへ正式保存
+    // -----------------------------------------
+
+    if (
+      isOnline &&
+      myPlayerRef
+    ) {
+      void updateDoc(
+        myPlayerRef,
+        {
+          hand:
+            nextHand,
+
+          deck:
+            nextDeck,
+
+          handCount:
+            nextHand.length,
+
+          deckCount:
+            nextDeck.length,
+
+          lastSeenAt:
+            Date.now(),
+        },
+      ).catch((error) => {
+        console.error(
+          'ターン開始ドロー保存エラー:',
+          error,
+        );
+      });
+    }
+  }, [
+    battlePhase,
+    myTurn,
+    currentYear,
+    turnIndex,
+    playerRole,
+    myHand,
+    myDeck,
+    isOnline,
+    myPlayerRef,
+  ]);
 
   // ===== オンライン対戦：手札・山札枚数をPlayerへ公開 =====
   useEffect(() => {
@@ -2725,6 +2805,17 @@ useEffect(() => {
       // デッキは継続使用するが、デッキ変更は許可しない。
       setMyDeckReady(true);
       setDeckConfirmed(true);
+
+      // 次のクラスはサポートデッキを18枚から再スタート。
+      // 初期手札4枚、山札14枚。
+      const nextDeckDefinition =
+        activeDeckId
+          ? loadDeckDefinition(activeDeckId)
+          : null;
+
+      resetLocalSupportDeck(
+        nextDeckDefinition,
+      );
 
       // 新しいクラスでは「このクラス1回」の技使用状況だけリセットする。
       setUsedSkillsByClass((prev) => {
