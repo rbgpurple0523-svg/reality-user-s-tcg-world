@@ -9,6 +9,7 @@ import {
   runTransaction,
   updateDoc,
   setDoc,
+  increment,
 } from 'firebase/firestore';
 import {
   AvatarCard,
@@ -1858,6 +1859,7 @@ const submitBattleAction = async (
      );
 
     return true;
+
   } catch (error) {
     console.error(
       'Battle Action送信エラー:',
@@ -1974,7 +1976,7 @@ const handleIncomingActionRef =
   );
 
   // ===== 相手のアクション処理 =====
-  const handleIncomingAction = (
+  const handleIncomingAction = async (
     action: BattleActionPayload & {
       playerRole?: PlayerRole;
     },
@@ -2638,32 +2640,7 @@ const handleIncomingActionRef =
           : 'host';
       
       if (isOnline && roomId) {
-        // ---------------------------------------------------
-        // 技を使用した側
-        // ---------------------------------------------------
-      
-        const actorPlayerRef =
-          doc(
-            db,
-            'rooms',
-            roomId,
-            'players',
-            actorRole,
-          );
-      
-        void updateDoc(
-          actorPlayerRef,
-          {
-            avatars:
-              nextOpponentAvatars,
-          },
-        ).catch((error) => {
-          console.error(
-            '相手の技後のAvatar保存エラー:',
-            error,
-          );
-        });
-
+ 
         // ---------------------------------------------------
         // 技を受けた側
         // ---------------------------------------------------
@@ -2691,37 +2668,23 @@ const handleIncomingActionRef =
         });
       }
       // =====================================================
-      // 自分が受けた影響をPlayer状態へ保存
+      // 自分が受けた影響だけを正式保存
+      // =====================================================
+      //
+      // 相手PlayerのAvatarはここでは保存しない。
+      //
+      // 技を使った本人が自分自身の状態を保存し、
+      // 受信側は「自分が受けた影響」だけを保存する。
       // =====================================================
 
-      void saveMyPlayerBattleState(
+      await saveMyPlayerBattleState(
         nextMyAvatars,
       );
 
-      setOppClassScores((prev) => {
-        const next = [...prev];
+      // =====================================================
+      // 相手の使用済み技を表示用に記録
+      // =====================================================
 
-        next[avatarIndex] =
-          (next[avatarIndex] || 0) +
-          gainedScore;
-
-        return next;
-      });
-
-      // 表示用合計スコア
-      if (playerRole === 'host') {
-        setGuestTotalScore(
-          (prev) =>
-            prev + gainedScore,
-        );
-      } else {
-        setHostTotalScore(
-          (prev) =>
-            prev + gainedScore,
-        );
-      }
-
-      // 相手の技使用済み状態も更新
       setCpuUsedSkillsByClass(
         (prev) => {
           const yearKey =
@@ -2747,231 +2710,24 @@ const handleIncomingActionRef =
         },
       );
 
+      // =====================================================
+      // ログ
+      // =====================================================
+
       addLog(
         `相手が「${skill.name}」を使用しました。 +${gainedScore}スコア`,
       );
 
       // =====================================================
-      // 相手の技処理完了後、オンライン対戦ではターンを進める
+      // 重要
       // =====================================================
       //
-      // サポートカード使用ではターン終了しない。
-      // 技の使用が完了した場合のみ、次のターンへ進む。
-      // =====================================================
-
-      // =====================================================
-      // Firebaseの正式なスコア・ターン状態を更新
-      // =====================================================
+      // スコア・turnIndex・currentYear・battlePhaseは
+      // ここでは更新しない。
       //
-      // 相手のActionを受信した側が、
-      // Firestore上の正式な試合結果を更新する。
-      //
-      // turnIndex は Action送信時の値を基準に判定する。
+      // 技を使用した本人がRoomの正式状態を更新し、
+      // この画面はRoomのonSnapshotで結果を受け取る。
       // =====================================================
-
-      if (isOnline && roomId) {
-        const roomRef =
-          doc(
-            db,
-            'rooms',
-            roomId,
-          );
-
-        const actorRole =
-          action.playerRole === 'host'
-            ? 'host'
-            : 'guest';
-
-        const scoreField =
-          actorRole === 'host'
-            ? 'hostClassScores'
-            : 'guestClassScores';
-
-        const totalField =
-          actorRole === 'host'
-            ? 'hostTotalScore'
-            : 'guestTotalScore';
-
-        const usedField =
-          actorRole === 'host'
-            ? 'hostUsedSkills'
-            : 'guestUsedSkills';
-
-        const isLastTurn =
-          action.turnIndex >= 7;
-
-        const nextYear =
-          isLastTurn && action.year < 3
-            ? action.year + 1
-            : action.year;
-
-        const nextPhase =
-          isLastTurn
-            ? action.year < 3
-              ? 'setup'
-              : 'finished'
-            : 'battle';
-
-        void runTransaction(
-          db,
-          async (transaction) => {
-            const snapshot =
-              await transaction.get(
-                roomRef,
-              );
-
-            if (!snapshot.exists()) {
-              return;
-            }
-
-            const roomData =
-              snapshot.data() as Record<
-                string,
-                any
-              >;
-
-            // ------------------------------------------------
-            // 同じActionを二重処理しない
-            // ------------------------------------------------
-
-            const processedActionId =
-              roomData.lastProcessedActionId;
-
-            if (
-              processedActionId ===
-              action.actionId
-            ) {
-              return;
-            }
-
-            // ------------------------------------------------
-            // クラス別スコア
-            // ------------------------------------------------
-
-            const scores =
-              Array.isArray(
-                roomData[scoreField],
-              )
-                ? [
-                    ...roomData[
-                      scoreField
-                    ],
-                  ]
-                : [0, 0, 0];
-
-            scores[avatarIndex] =
-              Number(
-                scores[avatarIndex] ||
-                  0,
-              ) + gainedScore;
-
-            // ------------------------------------------------
-            // 合計スコア
-            // ------------------------------------------------
-
-            const nextTotal =
-              Number(
-                roomData[totalField] ||
-                  0,
-              ) + gainedScore;
-
-            // ------------------------------------------------
-            // 使用済み技
-            // ------------------------------------------------
-
-            const roomUsedSkills =
-              roomData[usedField] &&
-              typeof roomData[
-                usedField
-              ] === 'object'
-                ? {
-                    ...roomData[
-                      usedField
-                    ],
-                  }
-                : {};
-
-            const yearKey =
-              String(action.year);
-
-            const usedForYear =
-              Array.isArray(
-                roomUsedSkills[
-                  yearKey
-                ],
-              )
-                ? [
-                    ...roomUsedSkills[
-                      yearKey
-                    ],
-                  ]
-                : [];
-
-            if (
-              skill.maxUsesPerClass > 0 &&
-              !usedForYear.includes(
-                skill.id,
-              )
-            ) {
-              usedForYear.push(
-                skill.id,
-              );
-            }
-
-            roomUsedSkills[
-              yearKey
-            ] = usedForYear;
-
-            // ------------------------------------------------
-            // Firestore更新
-            // ------------------------------------------------
-
-            transaction.update(
-              roomRef,
-              {
-                [scoreField]: scores,
-
-                [totalField]:
-                  nextTotal,
-
-                [usedField]:
-                  roomUsedSkills,
-
-                lastProcessedActionId:
-                  action.actionId,
-
-                currentYear:
-                  nextYear,
-
-                turnIndex:
-                  isLastTurn
-                    ? 0
-                    : action.turnIndex + 1,
-
-                battlePhase:
-                  nextPhase,
-
-                firstPlayer:
-                  isLastTurn
-                    ? null
-                    : roomData.firstPlayer ??
-                      null,
-
-                startSeasonIdx:
-                  isLastTurn
-                    ? null
-                    : roomData.startSeasonIdx ??
-                      null,
-              },
-            );
-          },
-        ).catch((error) => {
-          console.error(
-            '相手の技結果同期エラー:',
-            error,
-          );
-        });
-      }
 
       return;
     }
@@ -3304,22 +3060,20 @@ useEffect(() => {
     // =====================================================
     // オンライン対戦
     // =====================================================
-    //
-    // 先にAction送信を成功させ、
-    // 成功した場合は使用者自身にも即時反映する。
-    //
-    // 相手側は pendingAction を受信して
-    // 同じルール計算を行う。
-    // =====================================================
+
+    const actionId =
+      `${Date.now()}-${Math.random()
+        .toString(36)
+        .slice(2)}`;
 
     const actionSubmitted =
       await submitBattleAction({
-        actionId:
-          `${Date.now()}-${Math.random().toString(36).slice(2)}`,
+        actionId,
 
         type: 'USE_SKILL',
 
         year: currentYear,
+
         turnIndex,
 
         avatarIndex: activeIndex,
@@ -3327,19 +3081,229 @@ useEffect(() => {
         skillId: skill.id,
 
         selectedBoostStat:
-        selectedBoostStat ?? undefined,
-     });
+          selectedBoostStat ??
+          undefined,
+      });
 
     if (!actionSubmitted) {
       addLog(
         `「${skill.name}」の送信に失敗しました。`,
       );
+
       return;
     }
 
-    // -----------------------------------------------------
-    // 使用者側にも即時反映
-    // -----------------------------------------------------
+    // =====================================================
+    // Roomの正式な試合状態を更新
+    // =====================================================
+    //
+    // 技を使用した本人が、
+    //
+    // ・クラス別スコア
+    // ・合計スコア
+    // ・使用済み技
+    // ・turnIndex
+    // ・currentYear
+    // ・battlePhase
+    //
+    // を確定する。
+    // =====================================================
+
+    if (isOnline && roomId) {
+      const roomRef =
+        doc(
+          db,
+          'rooms',
+          roomId,
+        );
+
+      const scoreField =
+        playerRole === 'host'
+          ? 'hostClassScores'
+          : 'guestClassScores';
+
+      const totalField =
+        playerRole === 'host'
+          ? 'hostTotalScore'
+          : 'guestTotalScore';
+
+      const usedField =
+        playerRole === 'host'
+          ? 'hostUsedSkills'
+          : 'guestUsedSkills';
+
+      try {
+        await runTransaction(
+          db,
+          async (transaction) => {
+            const snapshot =
+              await transaction.get(
+                roomRef,
+              );
+
+            if (!snapshot.exists()) {
+              throw new Error(
+                'Roomが存在しません。',
+              );
+            }
+
+            const roomData =
+              snapshot.data() as Record<
+                string,
+                any
+              >;
+
+            // ------------------------------------------------
+            // 二重処理防止
+            // ------------------------------------------------
+
+            if (
+              roomData.lastProcessedActionId ===
+              actionId
+            ) {
+              return;
+            }
+
+            // ------------------------------------------------
+            // クラス別スコア
+            // ------------------------------------------------
+
+            const scores =
+              Array.isArray(
+                roomData[scoreField],
+              )
+                ? [
+                    ...roomData[
+                      scoreField
+                    ],
+                  ]
+                : [0, 0, 0];
+
+            scores[activeIndex] =
+              Number(
+                scores[activeIndex] ||
+                  0,
+              ) + gainedScore;
+
+            // ------------------------------------------------
+            // 合計スコア
+            // ------------------------------------------------
+
+            const nextTotal =
+              Number(
+                roomData[totalField] ||
+                  0,
+              ) + gainedScore;
+
+            // ------------------------------------------------
+            // 使用済み技
+            // ------------------------------------------------
+
+            const roomUsedSkills =
+              roomData[usedField] &&
+              typeof roomData[
+                usedField
+              ] === 'object'
+                ? {
+                    ...roomData[
+                      usedField
+                    ],
+                  }
+                : {};
+
+            const yearKey =
+              String(currentYear);
+
+            const usedForYear =
+              Array.isArray(
+                roomUsedSkills[
+                  yearKey
+                ],
+              )
+                ? [
+                    ...roomUsedSkills[
+                      yearKey
+                    ],
+                  ]
+                : [];
+
+            if (
+              skill.maxUsesPerClass > 0 &&
+              !usedForYear.includes(
+                skill.id,
+              )
+            ) {
+              usedForYear.push(
+                skill.id,
+              );
+            }
+
+            roomUsedSkills[
+              yearKey
+            ] = usedForYear;
+
+            // ------------------------------------------------
+            // 次のターン状態
+            // ------------------------------------------------
+
+            transaction.update(
+              roomRef,
+              {
+                [scoreField]:
+                  scores,
+
+                [totalField]:
+                  nextTotal,
+
+                [usedField]:
+                  roomUsedSkills,
+
+                lastProcessedActionId:
+                  actionId,
+
+                currentYear:
+                  next.currentYear,
+
+                turnIndex:
+                  next.turnIndex,
+
+                battlePhase:
+                  next.nextPhase,
+
+                firstPlayer:
+                  next.nextPhase ===
+                  'setup'
+                    ? null
+                    : roomData.firstPlayer ??
+                      null,
+
+                startSeasonIdx:
+                  next.nextPhase ===
+                  'setup'
+                    ? null
+                    : roomData.startSeasonIdx ??
+                      null,
+              },
+            );
+          },
+        );
+      } catch (error) {
+        console.error(
+          '技の正式な試合状態更新エラー:',
+          error,
+        );
+
+        addLog(
+          `⚠️「${skill.name}」の試合状態更新に失敗しました。`,
+        );
+
+        return;
+      }
+    }
+
+    // =====================================================
+    // 使用者側へ即時反映
+    // =====================================================
 
     const nextScores =
       [...myClassScores];
@@ -3377,7 +3341,7 @@ useEffect(() => {
     );
 
     // =====================================================
-    // 使用者自身の正式状態をPlayerへ保存
+    // 自分自身のPlayer状態だけ保存
     // =====================================================
 
     await saveMyPlayerBattleState(
@@ -3388,12 +3352,82 @@ useEffect(() => {
       },
     );
 
+    // =====================================================
+    // ローカル表示も即時更新
+    // =====================================================
+
+    setCurrentYear(
+      next.currentYear,
+    );
+
+    setTurnIndex(
+      next.turnIndex,
+    );
+
+    setBattlePhase(
+      next.nextPhase,
+    );
+
+    if (
+      next.nextPhase ===
+      'battle'
+    ) {
+      setFirstPlayer(
+        playerRole,
+      );
+    }
+
+    if (
+      next.nextPhase ===
+      'setup'
+    ) {
+      setFirstPlayer(
+        null,
+      );
+
+      setStartSeasonIdx(
+        null,
+      );
+
+      setMyDeckReady(
+        false,
+      );
+
+      setPreparationMessage(
+        next.currentYear <= 3
+          ? `${next.currentYear}年目の準備を開始します。コイントスを行ってください。`
+          : '',
+      );
+    }
+
+    // =====================================================
+    // クラス切り替え時は使用済み技をリセット
+    // =====================================================
+
+    if (
+      next.currentYear !==
+      currentYear
+    ) {
+      setUsedSkillsByClass(
+        {},
+      );
+
+      setCpuUsedSkillsByClass(
+        {},
+      );
+    }
+
+    // =====================================================
+    // ログ
+    // =====================================================
+
     addLog(
       `「${skill.name}」発動！ +${gainedScore}スコア`,
     );
 
     if (
-      Object.keys(debuffs).length > 0 &&
+      Object.keys(debuffs).length >
+        0 &&
       !oppActiveAvatar.debuffImmune
     ) {
       const detail =
