@@ -1593,12 +1593,6 @@ export default function GameBoard({ roomId = '', isHost = true, onEditDeck }: Ga
         readyHost: false,
         readyGuest: false,
 
-        // 旧構造との互換用。
-        // 新Player構造ではPlayer側を正とする。
-        hostHandCount: 0,
-        guestHandCount: 0,
-        hostDeckCount: 0,
-        guestDeckCount: 0,
       });
     });
   }, [
@@ -2184,13 +2178,6 @@ const handleIncomingActionRef =
             // 同じActionを二重処理しない
             // -----------------------------------------------
 
-            if (
-              roomData.lastProcessedActionId ===
-              action.actionId
-            ) {
-              return;
-            }
-
             const scores =
               Array.isArray(
                 roomData[scoreField],
@@ -2222,9 +2209,6 @@ const handleIncomingActionRef =
 
                 [totalField]:
                   nextTotal,
-
-                lastProcessedActionId:
-                  action.actionId,
 
                 // サポートカードでは
                 // ターンを進めない
@@ -3040,16 +3024,6 @@ useEffect(() => {
                 any
               >;
 
-            // ------------------------------------------------
-            // 二重処理防止
-            // ------------------------------------------------
-
-            if (
-              roomData.lastProcessedActionId ===
-              actionId
-            ) {
-              return;
-            }
 
             // ------------------------------------------------
             // クラス別スコア
@@ -3095,9 +3069,6 @@ useEffect(() => {
 
                 [totalField]:
                   nextTotal,
-
-                lastProcessedActionId:
-                  actionId,
 
                 currentYear:
                   next.currentYear,
