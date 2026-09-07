@@ -2082,6 +2082,36 @@ const privatePlayerRef =
               privatePlayerRef,
             );
 
+          const playerSnapshot =
+            await transaction.get(
+              playerRef,
+            );
+
+          if (!playerSnapshot.exists()) {
+            throw new Error(
+              'Playerデータが存在しません。',
+            );
+          }
+
+          const publicPlayerData =
+            playerSnapshot.data() as Record<
+              string,
+              any
+            >;
+
+          const lastSupportActionId =
+            typeof publicPlayerData.lastSupportActionId === 'string'
+              ? publicPlayerData.lastSupportActionId
+              : '';
+
+          if (
+            lastSupportActionId === actionId
+          ) {
+            throw new Error(
+              'このSupport Actionはすでに処理済みです。',
+            );
+          }
+
           if (
             !snapshot.exists()
           ) {
@@ -4167,6 +4197,66 @@ if (
                 any
               >;
 
+const actorPlayerRef =
+  doc(
+    db,
+    'rooms',
+    roomId,
+    'players',
+    playerRole,
+  );
+
+const playerSnapshot =
+  await transaction.get(
+    actorPlayerRef,
+  );
+
+if (!playerSnapshot.exists()) {
+  throw new Error(
+    '自分のPlayerデータが存在しません。',
+  );
+}
+
+const playerData =
+  playerSnapshot.data() as Record<
+    string,
+    any
+  >;
+
+const pendingAction =
+  playerData.pendingAction;
+
+if (
+  !pendingAction ||
+  pendingAction.actionId !== actionId ||
+  pendingAction.type !== 'USE_SKILL' ||
+  pendingAction.skillId !== skill.id ||
+  Number(pendingAction.year) !== currentYear ||
+  Number(pendingAction.turnIndex) !== turnIndex ||
+  Number(pendingAction.avatarIndex) !== activeIndex
+) {
+  throw new Error(
+    '正式なSkill ActionとRoom更新の対応が確認できません。',
+  );
+}
+
+// =================================================
+// 同じSkill Actionの二重処理を禁止
+// =================================================
+
+const lastSkillActionId =
+  typeof playerData.lastSkillActionId === 'string'
+    ? playerData.lastSkillActionId
+    : '';
+
+if (
+  lastSkillActionId === actionId
+) {
+  throw new Error(
+    'このSkill Actionはすでに処理済みです。',
+  );
+}
+
 
             // ------------------------------------------------
             // クラス別スコア
@@ -4237,6 +4327,14 @@ if (
                       null,
               },
             );
+
+transaction.update(
+  actorPlayerRef,
+  {
+    lastSkillActionId:
+      actionId,
+  },
+);
           },
         );
       } catch (error) {
