@@ -211,6 +211,7 @@ allow update: if request.auth != null
     'hostDeckId',
     'readyHost',
     'rematchHost',
+    'rematchPlayerResetHost',
     'exitHost',
     'hostJoined',
     'hostLastSeenAt',
@@ -535,24 +536,19 @@ allow update: if request.auth != null
       && request.resource.data.readyGuest
         == false
 
-      && request.resource.data.diff(resource.data).affectedKeys().hasOnly([
-        'battlePhase',
-        'currentYear',
-        'turnIndex',
-        'firstPlayer',
-        'startSeasonIdx',
-        'hostTotalScore',
-        'guestTotalScore',
-        'hostClassScores',
-        'guestClassScores',
-        'rematchHost',
-        'rematchGuest',
-        'exitHost',
-        'exitGuest',
-        'readyHost',
-        'readyGuest'
-      ])
-    )
+&& request.resource.data.diff(resource.data).affectedKeys().hasOnly
+([
+  'battlePhase','currentYear','turnIndex','firstPlayer','startSeasonIdx',
+  'hostTotalScore','guestTotalScore','hostClassScores','guestClassScores',
+  'rematchHost','rematchGuest','exitHost','exitGuest',
+  'readyHost','readyGuest',
+  'rematchPlayerResetHost','rematchPlayerResetGuest'
+])
+
+&& request.resource.data.rematchPlayerResetHost == false
+&& request.resource.data.rematchPlayerResetGuest == false
+
+)
     ||
 
     // =====================================================
@@ -566,6 +562,7 @@ allow update: if request.auth != null
     'guestDeckId',
     'readyGuest',
     'rematchGuest',
+    'rematchPlayerResetGuest',
     'exitGuest',
     'guestJoined',
     'guestLastSeenAt',
@@ -872,6 +869,50 @@ allow update: if request.auth != null
             || playerRole == 'guest'
           );
 
+
+function isRematchPlayerReset() {
+  let room =
+    get(/databases/$(database)/documents/rooms/$(roomId)).data;
+
+  return
+    room.rematchHost == true
+    && room.rematchGuest == true
+    && request.resource.data.handCount == 4
+    && request.resource.data.deckCount == 14
+    && request.resource.data.usedSkills is map
+    && request.resource.data.usedSkills.keys().size() == 0
+    && request.resource.data.avatars is list
+    && request.resource.data.avatars.size() == 3
+    && request.resource.data.lastProcessedIncomingActionId == ''
+    && !request.resource.data.keys().hasAny([
+      'pendingAction',
+      'lastSkillActionId',
+      'lastSkillAction',
+      'lastSupportActionId',
+      'lastSupportCardId',
+      'lastSupportCardCountBefore',
+      'lastSupportCardCountAfter',
+      'lastSupportActionAt'
+    ])
+    && !request.resource.data.keys().hasAny([
+      'hand',
+      'deck'
+    ])
+    && request.resource.data.diff(resource.data)
+      .affectedKeys()
+      .hasAny([
+        'pendingAction',
+        'lastSkillActionId',
+        'lastSkillAction',
+        'lastSupportActionId',
+        'lastSupportCardId',
+        'lastSupportCardCountBefore',
+        'lastSupportCardCountAfter',
+        'lastSupportActionAt'
+      ]);
+}
+
+
         // 自分のプレイヤー情報だけ更新可能
 allow update: if request.auth != null
   && resource.data.uid == request.auth.uid
@@ -893,6 +934,7 @@ allow update: if request.auth != null
     'pendingAction',
     'lastProcessedIncomingActionId',
     'lastSkillActionId',
+    'lastSkillAction',
     'lastSupportActionId',
     'lastSupportCardId',
     'lastSupportCardCountBefore',
@@ -901,6 +943,16 @@ allow update: if request.auth != null
     'hand',
     'deck'
   ])
+
+  // lastSkillAction は通常プレイ中のクライアント変更を禁止
+  // 再戦初期化時の削除だけ許可
+  && (
+    !request.resource.data.diff(resource.data)
+      .affectedKeys()
+      .hasAny(['lastSkillAction'])
+    ||
+    isRematchPlayerReset()
+  )
 
   // hand / deck本体は公開Playerへ保存させない
   && !request.resource.data.keys().hasAny([
@@ -912,275 +964,146 @@ allow update: if request.auth != null
   // Stage 4-①-A
   // pendingAction を変更する場合の厳格チェック
   // =====================================================
-  && (
-    // pendingActionを変更しない通常更新
-    !request.resource.data.diff(resource.data)
-      .affectedKeys()
-      .hasAny(['pendingAction'])
-
-    ||
-
-    // pendingActionを変更する場合
-    (
-      request.resource.data.pendingAction is map
-
-      // -------------------------------------------------
-      // Actionに必要な共通フィールド
-      // -------------------------------------------------
-      && request.resource.data.pendingAction.keys().hasAll([
-        'actionId',
-        'type',
-        'playerRole',
-        'uid',
-        'year',
-        'turnIndex',
-        'avatarIndex',
-        'submittedAt'
-      ])
-
-      // -------------------------------------------------
-      // 許可されたActionフィールドだけに限定
-      // -------------------------------------------------
-      && request.resource.data.pendingAction.keys().hasOnly([
-        'actionId',
-        'type',
-        'playerRole',
-        'uid',
-        'year',
-        'turnIndex',
-        'avatarIndex',
-        'skillId',
-        'selectedBoostStat',
-        'supportCardId',
-        'submittedAt',
-        'supportCardConsumed',
-        'supportCardCountBefore',
-        'supportCardCountAfter'
-      ])
-
-      // -------------------------------------------------
-      // Action ID
-      // -------------------------------------------------
-      && request.resource.data.pendingAction.actionId is string
-      && request.resource.data.pendingAction.actionId != ''
-
-      // -------------------------------------------------
-      // Action type
-      // -------------------------------------------------
-      && (
-        request.resource.data.pendingAction.type == 'USE_SKILL'
-        ||
-        request.resource.data.pendingAction.type == 'PLAY_SUPPORT'
-      )
-
-      // -------------------------------------------------
-      // PlayerRole偽装防止
-      // -------------------------------------------------
-      && request.resource.data.pendingAction.playerRole == playerRole
-
-      // -------------------------------------------------
-      // UID偽装防止
-      // -------------------------------------------------
-      && request.resource.data.pendingAction.uid == request.auth.uid
-
-      // =================================================
-      // Room現在状態との一致
-      // =================================================
-
-      // year
-      && request.resource.data.pendingAction.year
-        == get(
-          /databases/$(database)/documents/rooms/$(roomId)
-        ).data.currentYear
-
-      // turnIndex
-      && request.resource.data.pendingAction.turnIndex
-        == get(
-          /databases/$(database)/documents/rooms/$(roomId)
-        ).data.turnIndex
-
-      // Action送信はbattle中のみ
-      && get(
-        /databases/$(database)/documents/rooms/$(roomId)
-      ).data.battlePhase == 'battle'
-
-      // =================================================
-      // 現在対戦中のキャラクターだけ対象にする
-      // =================================================
-
-      && request.resource.data.pendingAction.avatarIndex
-        == (
-          get(
-            /databases/$(database)/documents/rooms/$(roomId)
-          ).data.currentYear - 1
-        )
-
-      // avatarIndex自体の範囲
-      && request.resource.data.pendingAction.avatarIndex >= 0
-      && request.resource.data.pendingAction.avatarIndex <= 2
-
-      // =================================================
-      // 現在の手番プレイヤーと一致
-      // =================================================
-
-      && request.resource.data.pendingAction.playerRole
-        == (
-          get(
-            /databases/$(database)/documents/rooms/$(roomId)
-          ).data.turnIndex % 2 == 0
-
-          ?
-            get(
-              /databases/$(database)/documents/rooms/$(roomId)
-            ).data.firstPlayer
-
-          :
-            (
-              get(
-                /databases/$(database)/documents/rooms/$(roomId)
-              ).data.firstPlayer == 'host'
-              ? 'guest'
-              : 'host'
-            )
-        )
-
-      // =================================================
-      // USE_SKILL
-      // =================================================
-
-      && (
-        (
-          request.resource.data.pendingAction.type == 'USE_SKILL'
-
-          // skillId必須
-          && request.resource.data.pendingAction.keys().hasAll([
-            'skillId'
-          ])
-
-          && request.resource.data.pendingAction.skillId is string
-          && request.resource.data.pendingAction.skillId != ''
-
-          // Support専用項目は禁止
-          && !request.resource.data.pendingAction.keys().hasAny([
-            'supportCardId',
-            'supportCardConsumed',
-            'supportCardCountBefore',
-            'supportCardCountAfter'
-          ])
-
-          // selectedBoostStatは指定するなら4種類のみ
-          && (
-            !request.resource.data.pendingAction.keys().hasAny([
-              'selectedBoostStat'
-            ])
-            ||
-            request.resource.data.pendingAction.selectedBoostStat == 'hp'
-            ||
-            request.resource.data.pendingAction.selectedBoostStat == 'intellect'
-            ||
-            request.resource.data.pendingAction.selectedBoostStat == 'dexterity'
-            ||
-            request.resource.data.pendingAction.selectedBoostStat == 'charm'
+&& (
+  isRematchPlayerReset()
+  ||
+  !request.resource.data.diff(resource.data)
+    .affectedKeys()
+    .hasAny(['pendingAction'])
+  ||
+  (
+    request.resource.data.pendingAction is map
+    && request.resource.data.pendingAction.keys().hasAll([
+      'actionId','type','playerRole','uid','year','turnIndex',
+      'avatarIndex','submittedAt'
+    ])
+    && request.resource.data.pendingAction.keys().hasOnly([
+      'actionId','type','playerRole','uid','year','turnIndex',
+      'avatarIndex','skillId','selectedBoostStat','supportCardId',
+      'submittedAt','supportCardConsumed','supportCardCountBefore',
+      'supportCardCountAfter'
+    ])
+    && request.resource.data.pendingAction.actionId is string
+    && request.resource.data.pendingAction.actionId != ''
+    && (
+      request.resource.data.pendingAction.type == 'USE_SKILL'
+      ||
+      request.resource.data.pendingAction.type == 'PLAY_SUPPORT'
+    )
+    && request.resource.data.pendingAction.playerRole == playerRole
+    && request.resource.data.pendingAction.uid == request.auth.uid
+    && request.resource.data.pendingAction.year
+      == get(/databases/$(database)/documents/rooms/$(roomId)).data.currentYear
+    && request.resource.data.pendingAction.turnIndex
+      == get(/databases/$(database)/documents/rooms/$(roomId)).data.turnIndex
+    && get(/databases/$(database)/documents/rooms/$(roomId)).data.battlePhase == 'battle'
+    && request.resource.data.pendingAction.avatarIndex
+      == (get(/databases/$(database)/documents/rooms/$(roomId)).data.currentYear - 1)
+    && request.resource.data.pendingAction.avatarIndex >= 0
+    && request.resource.data.pendingAction.avatarIndex <= 2
+    && request.resource.data.pendingAction.playerRole
+      == (
+        get(/databases/$(database)/documents/rooms/$(roomId)).data.turnIndex % 2 == 0
+        ?
+          get(/databases/$(database)/documents/rooms/$(roomId)).data.firstPlayer
+        :
+          (
+            get(/databases/$(database)/documents/rooms/$(roomId)).data.firstPlayer == 'host'
+            ? 'guest'
+            : 'host'
           )
+      )
+    && (
+      (
+        request.resource.data.pendingAction.type == 'USE_SKILL'
+        && request.resource.data.pendingAction.keys().hasAll(['skillId'])
+        && request.resource.data.pendingAction.skillId is string
+        && request.resource.data.pendingAction.skillId != ''
+        && !request.resource.data.pendingAction.keys().hasAny([
+          'supportCardId',
+          'supportCardConsumed',
+          'supportCardCountBefore',
+          'supportCardCountAfter'
+        ])
+        && (
+          !request.resource.data.pendingAction.keys().hasAny(['selectedBoostStat'])
+          ||
+          request.resource.data.pendingAction.selectedBoostStat == 'hp'
+          ||
+          request.resource.data.pendingAction.selectedBoostStat == 'intellect'
+          ||
+          request.resource.data.pendingAction.selectedBoostStat == 'dexterity' ||
+          request.resource.data.pendingAction.selectedBoostStat == 'charm'
         )
-
-        ||
-
-        // =================================================
-        // PLAY_SUPPORT
-        // =================================================
-
-        (
-          request.resource.data.pendingAction.type == 'PLAY_SUPPORT'
-
-          // Support用必須項目
-          && request.resource.data.pendingAction.keys().hasAll([
-            'supportCardId',
-            'supportCardConsumed',
-            'supportCardCountBefore',
-            'supportCardCountAfter'
-          ])
-
-          && request.resource.data.pendingAction.supportCardId is string
-          && request.resource.data.pendingAction.supportCardId != ''
-
-          // 必ず「消費済み=true」
-          && request.resource.data.pendingAction.supportCardConsumed == true
-
-          // 使用前枚数
-          && request.resource.data.pendingAction.supportCardCountBefore >= 1
-
-          // 1枚だけ消費
-          && request.resource.data.pendingAction.supportCardCountAfter
-            == request.resource.data.pendingAction.supportCardCountBefore - 1
-
-          // Skill専用項目は禁止
-          && !request.resource.data.pendingAction.keys().hasAny([
-            'skillId',
-            'selectedBoostStat'
-          ])
-        )
+      )
+      ||
+      (
+        request.resource.data.pendingAction.type == 'PLAY_SUPPORT'
+        && request.resource.data.pendingAction.keys().hasAll([
+          'supportCardId',
+          'supportCardConsumed',
+          'supportCardCountBefore',
+          'supportCardCountAfter'
+        ])
+        && request.resource.data.pendingAction.supportCardId is string
+        && request.resource.data.pendingAction.supportCardId != ''
+        && request.resource.data.pendingAction.supportCardConsumed == true
+        && request.resource.data.pendingAction.supportCardCountBefore >= 1
+        && request.resource.data.pendingAction.supportCardCountAfter
+          == request.resource.data.pendingAction.supportCardCountBefore - 1
+        && !request.resource.data.pendingAction.keys().hasAny([
+          'skillId',
+          'selectedBoostStat'
+        ])
       )
     )
+  )
+)
+
 
 // =====================================================
 // Skill Action処理済みID
 // =====================================================
 
 && (
+  isRematchPlayerReset()
+  ||
   !request.resource.data.diff(resource.data)
     .affectedKeys()
-    .hasAny([
-      'lastSkillActionId'
-    ])
-
+    .hasAny(['lastSkillActionId'])
   ||
-
   (
     request.resource.data.lastSkillActionId is string
     && request.resource.data.lastSkillActionId != ''
-
     && request.resource.data.pendingAction is map
-
     && request.resource.data.pendingAction.actionId
       == request.resource.data.lastSkillActionId
-
-    && request.resource.data.pendingAction.type
-      == 'USE_SKILL'
+    && request.resource.data.pendingAction.type == 'USE_SKILL'
   )
 )
+
 
 // =====================================================
 // Support Action処理済みID
 // =====================================================
 
 && (
+  isRematchPlayerReset()
+  ||
   !request.resource.data.diff(resource.data)
     .affectedKeys()
-    .hasAny([
-      'lastSupportActionId'
-    ])
-
+    .hasAny(['lastSupportActionId'])
   ||
-
   (
     request.resource.data.lastSupportActionId is string
     && request.resource.data.lastSupportActionId != ''
-
     && request.resource.data.pendingAction is map
-
     && request.resource.data.pendingAction.actionId
       == request.resource.data.lastSupportActionId
-
-    && request.resource.data.pendingAction.type
-      == 'PLAY_SUPPORT'
-
-    && request.resource.data.pendingAction.supportCardConsumed
-      == true
+    && request.resource.data.pendingAction.type == 'PLAY_SUPPORT'
+    && request.resource.data.pendingAction.supportCardConsumed == true
   )
-)
-
-  );
+);
         allow delete: if false;
       }
 

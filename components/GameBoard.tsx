@@ -5535,11 +5535,6 @@ const handleUseSupportCard = async (
               readyGuest:
                 false,
 
-              hostAction:
-                null,
-
-              guestAction:
-                null,
             },
           ).catch((error) => {
             console.error(
