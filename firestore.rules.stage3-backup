@@ -1,0 +1,431 @@
+rules_version = '2';
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    match /rooms/{roomId} {
+      allow read: if request.auth != null;
+
+      // ルーム新規作成
+      allow create: if request.auth != null
+        && request.resource.data.hostUid == request.auth.uid;
+
+      // ルーム更新
+allow update: if request.auth != null
+  && (
+    // =====================================================
+    // Hostの更新
+    // =====================================================
+(
+  resource.data.hostUid == request.auth.uid
+  && request.resource.data.hostUid == resource.data.hostUid
+  && request.resource.data.diff(resource.data).affectedKeys().hasOnly([
+    'hostDeckId',
+    'readyHost',
+    'rematchHost',
+    'exitHost',
+    'hostJoined',
+    'hostLastSeenAt',
+    'hostClassScores',
+    'hostTotalScore',
+    'currentYear',
+    'firstPlayer',
+    'startSeasonIdx',
+    'turnIndex',
+    'battlePhase'
+  ])
+)
+    ||
+
+    // =====================================================
+    // 両者が「もう一回」を選択した後の再戦リセット
+    // Hostだけが実行可能
+    // =====================================================
+    (
+      resource.data.hostUid == request.auth.uid
+      && resource.data.rematchHost == true
+      && resource.data.rematchGuest == true
+
+      && request.resource.data.hostUid
+        == resource.data.hostUid
+
+      && request.resource.data.guestUid
+        == resource.data.guestUid
+
+      && request.resource.data.battlePhase
+        == 'setup'
+
+      && request.resource.data.currentYear
+        == 1
+
+      && request.resource.data.turnIndex
+        == 0
+
+      && request.resource.data.firstPlayer
+        == null
+
+      && request.resource.data.startSeasonIdx
+        == null
+
+      && request.resource.data.hostTotalScore
+        == 0
+
+      && request.resource.data.guestTotalScore
+        == 0
+
+      && request.resource.data.hostClassScores
+        == [0, 0, 0]
+
+      && request.resource.data.guestClassScores
+        == [0, 0, 0]
+
+      && request.resource.data.rematchHost
+        == false
+
+      && request.resource.data.rematchGuest
+        == false
+
+      && request.resource.data.exitHost
+        == false
+
+      && request.resource.data.exitGuest
+        == false
+
+      && request.resource.data.readyHost
+        == false
+
+      && request.resource.data.readyGuest
+        == false
+
+      && request.resource.data.diff(resource.data).affectedKeys().hasOnly([
+        'battlePhase',
+        'currentYear',
+        'turnIndex',
+        'firstPlayer',
+        'startSeasonIdx',
+        'hostTotalScore',
+        'guestTotalScore',
+        'hostClassScores',
+        'guestClassScores',
+        'rematchHost',
+        'rematchGuest',
+        'exitHost',
+        'exitGuest',
+        'readyHost',
+        'readyGuest'
+      ])
+    )
+    ||
+
+    // =====================================================
+    // Guestの更新
+    // =====================================================
+(
+  resource.data.guestUid == request.auth.uid
+  && request.resource.data.hostUid == resource.data.hostUid
+  && request.resource.data.guestUid == resource.data.guestUid
+  && request.resource.data.diff(resource.data).affectedKeys().hasOnly([
+    'guestDeckId',
+    'readyGuest',
+    'rematchGuest',
+    'exitGuest',
+    'guestJoined',
+    'guestLastSeenAt',
+    'guestRejoinedAt',
+    'guestClassScores',
+    'guestTotalScore',
+    'currentYear',
+    'firstPlayer',
+    'startSeasonIdx',
+    'turnIndex',
+    'battlePhase'
+  ])
+)
+
+    ||
+
+    // =====================================================
+    // Guestの初回入室
+    // =====================================================
+    (
+      resource.data.guestUid == null
+      && request.resource.data.guestUid == request.auth.uid
+      && request.resource.data.hostUid == resource.data.hostUid
+      && request.resource.data.diff(resource.data).affectedKeys().hasOnly([
+        'guestUid',
+        'guestJoined',
+        'guestRejoinedAt',
+        'guestLastSeenAt'
+      ])
+    )
+  );
+
+      allow delete: if false;
+
+      match /players/{playerRole} {
+        allow read: if request.auth != null;
+
+        // プレイヤー作成
+        allow create: if request.auth != null
+          && request.resource.data.uid == request.auth.uid
+          && (
+            playerRole == 'host'
+            || playerRole == 'guest'
+          );
+
+        // 自分のプレイヤー情報だけ更新可能
+allow update: if request.auth != null
+  && resource.data.uid == request.auth.uid
+  && request.resource.data.uid == resource.data.uid
+  && request.resource.data.role == resource.data.role
+  && request.resource.data.createdAt == resource.data.createdAt
+  && request.resource.data.diff(resource.data).affectedKeys().hasOnly([
+    'joined',
+    'ready',
+    'lastSeenAt',
+    'avatars',
+    'handCount',
+    'deckCount',
+    'usedSkills',
+    'pendingAction',
+    'lastProcessedIncomingActionId',
+    'lastSupportActionId',
+    'lastSupportCardId',
+    'lastSupportCardCountBefore',
+    'lastSupportCardCountAfter',
+    'lastSupportActionAt',
+    'hand',
+    'deck'
+  ])
+  && !request.resource.data.keys().hasAny([
+    'hand',
+    'deck'
+  ])
+
+  // =====================================================
+  // Stage 4-①-A
+  // pendingAction が書き込まれる場合、
+  // 「現在のRoom状態に対する正しいAction」であることを要求
+  // =====================================================
+
+  && (
+    // pendingActionを変更しない通常更新
+    !request.resource.data.diff(resource.data)
+      .affectedKeys()
+      .hasAny(['pendingAction'])
+
+    ||
+
+    // pendingActionを変更する場合の検証
+    (
+      request.resource.data.pendingAction is map
+
+      // 必須フィールド
+      && request.resource.data.pendingAction.keys().hasAll([
+        'actionId',
+        'type',
+        'playerRole',
+        'uid',
+        'year',
+        'turnIndex',
+        'avatarIndex',
+        'submittedAt'
+      ])
+
+      // 許可されたAction項目以外を書き込ませない
+      && request.resource.data.pendingAction.keys().hasOnly([
+        'actionId',
+        'type',
+        'playerRole',
+        'uid',
+        'year',
+        'turnIndex',
+        'avatarIndex',
+        'skillId',
+        'selectedBoostStat',
+        'supportCardId',
+        'submittedAt',
+        'supportCardConsumed',
+        'supportCardCountBefore',
+        'supportCardCountAfter'
+      ])
+
+      // Action ID
+      && request.resource.data.pendingAction.actionId is string
+      && request.resource.data.pendingAction.actionId != ''
+
+      // Action種別
+      && (
+        request.resource.data.pendingAction.type == 'USE_SKILL'
+        ||
+        request.resource.data.pendingAction.type == 'PLAY_SUPPORT'
+      )
+
+      // ActionのPlayerRoleは
+      // players/{playerRole} のパスと一致させる
+      && request.resource.data.pendingAction.playerRole == playerRole
+
+      // ActionのUIDは認証UIDと一致
+      && request.resource.data.pendingAction.uid == request.auth.uid
+
+      // 現在のRoom状態と year / turnIndex を一致させる
+      && request.resource.data.pendingAction.year
+        == get(
+          /databases/$(database)/documents/rooms/$(roomId)
+        ).data.currentYear
+
+      && request.resource.data.pendingAction.turnIndex
+        == get(
+          /databases/$(database)/documents/rooms/$(roomId)
+        ).data.turnIndex
+
+      // Actionは対戦中のみ
+      && get(
+        /databases/$(database)/documents/rooms/$(roomId)
+      ).data.battlePhase == 'battle'
+
+      // 現在対戦中のキャラだけを対象にできる
+      && request.resource.data.pendingAction.avatarIndex
+        == get(
+          /databases/$(database)/documents/rooms/$(roomId)
+        ).data.currentYear - 1
+
+      // avatarIndexの範囲
+      && request.resource.data.pendingAction.avatarIndex >= 0
+      && request.resource.data.pendingAction.avatarIndex <= 2
+
+      // -------------------------------------------------
+      // USE_SKILL
+      // -------------------------------------------------
+
+      && (
+        (
+          request.resource.data.pendingAction.type == 'USE_SKILL'
+          && request.resource.data.pendingAction.keys().hasAll([
+            'skillId'
+          ])
+          && request.resource.data.pendingAction.skillId is string
+          && request.resource.data.pendingAction.skillId != ''
+
+          // USE_SKILLではSupport専用情報を付けない
+          && !request.resource.data.pendingAction.keys().hasAny([
+            'supportCardId',
+            'supportCardConsumed',
+            'supportCardCountBefore',
+            'supportCardCountAfter'
+          ])
+
+          // selectedBoostStatは許可値だけ
+          && (
+            !request.resource.data.pendingAction.keys().hasAny([
+              'selectedBoostStat'
+            ])
+            ||
+            request.resource.data.pendingAction.selectedBoostStat == 'hp'
+            ||
+            request.resource.data.pendingAction.selectedBoostStat == 'intellect'
+            ||
+            request.resource.data.pendingAction.selectedBoostStat == 'dexterity'
+            ||
+            request.resource.data.pendingAction.selectedBoostStat == 'charm'
+          )
+        )
+
+        ||
+
+        // -------------------------------------------------
+        // PLAY_SUPPORT
+        // -------------------------------------------------
+
+        (
+          request.resource.data.pendingAction.type == 'PLAY_SUPPORT'
+          && request.resource.data.pendingAction.keys().hasAll([
+            'supportCardId',
+            'supportCardConsumed',
+            'supportCardCountBefore',
+            'supportCardCountAfter'
+          ])
+          && request.resource.data.pendingAction.supportCardId is string
+          && request.resource.data.pendingAction.supportCardId != ''
+          && request.resource.data.pendingAction.supportCardConsumed == true
+          && request.resource.data.pendingAction.supportCardCountBefore >= 1
+          && request.resource.data.pendingAction.supportCardCountAfter
+            == request.resource.data.pendingAction.supportCardCountBefore - 1
+
+          // PLAY_SUPPORTではSkill専用情報を付けない
+          && !request.resource.data.pendingAction.keys().hasAny([
+            'skillId',
+            'selectedBoostStat'
+          ])
+        )
+      )
+    )
+  );
+
+        allow delete: if false;
+      }
+
+match /privatePlayers/{playerRole} {
+
+  // -----------------------------------------
+  // 作成
+  // 自分自身のprivatePlayerだけ作成可能
+  // -----------------------------------------
+  allow create: if request.auth != null
+    && request.resource.data.uid == request.auth.uid
+    && (
+      (
+        playerRole == 'host'
+        && get(
+          /databases/$(database)/documents/rooms/$(roomId)
+        ).data.hostUid == request.auth.uid
+      )
+      ||
+      (
+        playerRole == 'guest'
+        && get(
+          /databases/$(database)/documents/rooms/$(roomId)
+        ).data.guestUid == request.auth.uid
+      )
+    );
+
+  // -----------------------------------------
+  // 読み取り
+  // 自分自身のprivatePlayerだけ読める
+  // -----------------------------------------
+  allow read: if request.auth != null
+    && (
+      (
+        playerRole == 'host'
+        && get(
+          /databases/$(database)/documents/rooms/$(roomId)
+        ).data.hostUid == request.auth.uid
+      )
+      ||
+      (
+        playerRole == 'guest'
+        && get(
+          /databases/$(database)/documents/rooms/$(roomId)
+        ).data.guestUid == request.auth.uid
+      )
+    );
+
+  // -----------------------------------------
+  // 更新
+  // hand / deckだけ変更可能
+  // uidは変更禁止
+  // -----------------------------------------
+  allow update: if request.auth != null
+    && resource.data.uid == request.auth.uid
+    && request.resource.data.uid == resource.data.uid
+    && request.resource.data.diff(resource.data).affectedKeys().hasOnly([
+      'hand',
+      'deck'
+    ]);
+
+  // 削除は禁止
+  allow delete: if false;
+}
+    }
+  }
+}
