@@ -513,6 +513,10 @@ export default function GameBoard({ roomId = '', isHost = true, onEditDeck }: Ga
   const lastObservedYearRef = useRef<number>(1);
   const initializedRef = useRef(false);
 
+  // 再戦時のPlayer完全初期化が同じRoom snapshotで
+  // 二重実行されないようにする。
+  const rematchPlayerResetInProgressRef =
+    useRef(false);
   const addLog = (message: string) => setLog((prev) => [...prev,message,]);
 
   // ===== CPU用一時デッキを自動構築 =====
@@ -1705,6 +1709,9 @@ if (
 
         rematchHost: false,
         rematchGuest: false,
+
+        rematchPlayerResetHost: false,
+        rematchPlayerResetGuest: false,
 
         exitHost: false,
         exitGuest: false,
@@ -4937,6 +4944,158 @@ const handleUseSupportCard = async (
   }
 };
 
+  // =========================================================
+  // ===== 新しいゲーム開始時のローカル状態完全初期化
+  // =========================================================
+  //
+  // 1戦目の終了後に残っている
+  //
+  //   avatars
+  //   hand
+  //   deck
+  //   usedSkills
+  //   デバフ
+  //   statBoost
+  //   Action重複防止用Ref
+  //   ドロー重複防止用Ref
+  //
+  // をすべて新しいゲームの初期状態へ戻す。
+  //
+  // オンラインでは、この後で
+  //   Player
+  //   privatePlayer
+  // へ正式保存する。
+  // =========================================================
+
+  const resetLocalGameStateForRematch = () => {
+    let selectedDeck: Deck | null = null;
+
+    try {
+      const raw =
+        localStorage.getItem(
+          'reality_decks',
+        );
+
+      const decks: Deck[] =
+        raw
+          ? JSON.parse(raw)
+          : [];
+
+      selectedDeck =
+        decks.find(
+          (deck) =>
+            deck.id === activeDeckId,
+        ) ||
+        decks[0] ||
+        null;
+    } catch {
+      selectedDeck = null;
+    }
+
+    // -------------------------------------------------------
+    // キャラ3人をデッキから完全再生成
+    // -------------------------------------------------------
+
+    const loadedAvatars =
+      loadDeckAndAvatars(
+        selectedDeck?.id ||
+          activeDeckId,
+      );
+
+    // -------------------------------------------------------
+    // サポート18枚を再構築
+    // 初期手札4枚 + 山札14枚
+    // -------------------------------------------------------
+
+    const supportState =
+      resetLocalSupportDeck(
+        selectedDeck,
+      );
+
+    // -------------------------------------------------------
+    // ローカルゲーム状態
+    // -------------------------------------------------------
+
+    setMyAvatars(
+      loadedAvatars,
+    );
+
+    setMyHand(
+      supportState.hand,
+    );
+
+    setMyDeck(
+      supportState.deck,
+    );
+
+    setCurrentYear(1);
+    setTurnIndex(0);
+    setFirstPlayer(null);
+    setStartSeasonIdx(null);
+
+    setMyClassScores(
+      [0, 0, 0],
+    );
+
+    setOppClassScores(
+      [0, 0, 0],
+    );
+
+    setHostTotalScore(0);
+    setGuestTotalScore(0);
+
+    setUsedSkillsByClass(
+      {},
+    );
+
+    setCpuUsedSkillsByClass(
+      {},
+    );
+
+    // 新しいゲームではデッキは既存選択を継続する。
+    // ただし「このデッキではじめる」は再度押せる状態へ戻す。
+    setMyDeckReady(
+      true,
+    );
+
+    setDeckConfirmed(
+      false,
+    );
+
+    // -------------------------------------------------------
+    // 旧Action / ドロー状態を完全リセット
+    // -------------------------------------------------------
+
+    lastActionRef.current =
+      '';
+
+    lastSkillActionRef.current =
+      '';
+
+    lastObservedBattlePhaseRef.current =
+      '';
+
+    lastObservedYearRef.current =
+      1;
+
+    initializedRef.current =
+      false;
+
+    previousTurnRef.current =
+      '';
+
+    drawInProgressRef.current =
+      '';
+
+    cpuTurnRef.current =
+      '';
+
+    return {
+      loadedAvatars,
+      supportState,
+    };
+  };
+
   // ===== クラス間の準備をホストがリセット =====
   const resetForNextClass = async () => {
     if (!isHost || battlePhase !== 'setup' || currentYear > 3) return;
@@ -4958,25 +5117,31 @@ const handleUseSupportCard = async (
     // CPU対戦はFirebaseを使わず、この画面内で新しい準備フェイズを開始します。
     if (!isOnline) {
       if (choice === 'exit') {
-        setWaitingMessage('CPU対戦を終了しました。');
-        setBattlePhase('waiting');
+        setWaitingMessage(
+          'CPU対戦を終了しました。',
+        );
+        setBattlePhase(
+          'waiting',
+        );
         return;
       }
-      setRematchChoice('rematch');
-      setBattlePhase('setup');
-      setCurrentYear(1);
-      setTurnIndex(0);
-      setFirstPlayer(null);
-      setStartSeasonIdx(null);
-      setDeckConfirmed(false);
-      setMyClassScores([0, 0, 0]);
-      setOppClassScores([0, 0, 0]);
-      setHostTotalScore(0);
-      setGuestTotalScore(0);
-      setUsedSkillsByClass({});
-      setCpuUsedSkillsByClass({});
-      setPreparationMessage('新しいゲームを始めます。\n先手・後手を決めるコイントスを行ってください。');
+
+      setRematchChoice(
+        'rematch',
+      );
+
+      resetLocalGameStateForRematch();
+
+      setBattlePhase(
+        'setup',
+      );
+
+      setPreparationMessage(
+        '新しいゲームを始めます。\n先手・後手を決めるコイントスを行ってください。',
+      );
+
       buildCpuDeck();
+
       return;
     }
 
@@ -5032,42 +5197,368 @@ const handleUseSupportCard = async (
     }
   };
 
-  // ===== 両者再戦なら最初から =====
-  // CPU戦にはroomIdがないため、このFirebase監視は完全にスキップする。
+  // =========================================================
+  // ===== 両者再戦時のPlayer完全初期化
+  // =========================================================
+  //
+  // 両者が「もう一回する」を選択したら、
+  // 各クライアントが「自分自身」の
+  //
+  //   players/{playerRole}
+  //   privatePlayers/{playerRole}
+  //
+  // を新しいゲーム用に初期化する。
+  //
+  // ホストは両者の初期化完了フラグを確認してから
+  // Roomをsetupへ戻す。
+  // =========================================================
+
   useEffect(() => {
-    if (!isOnline || battlePhase !== 'finished' || !isHost || !roomId) return;
+    if (
+      !isOnline ||
+      battlePhase !== 'finished' ||
+      !roomId ||
+      !authReady ||
+      !myPlayerRef ||
+      !myPrivatePlayerRef
+    ) {
+      return;
+    }
 
-    const roomRef = doc(db, 'rooms', roomId);
-    const unsubscribe = onSnapshot(roomRef, (snapshot) => {
-      const data = snapshot.data();
-      if (!data || !data.rematchHost || !data.rematchGuest) return;
-
-    void updateDoc(roomRef, {
-      battlePhase: 'setup',
-      currentYear: 1,
-      turnIndex: 0,
-      firstPlayer: null,
-      startSeasonIdx: null,
-      hostTotalScore: 0,
-      guestTotalScore: 0,
-      hostClassScores: [0, 0, 0],
-      guestClassScores: [0, 0, 0],
-      rematchHost: false,
-      rematchGuest: false,
-      exitHost: false,
-      exitGuest: false,
-      readyHost: false,
-      readyGuest: false,
-    }).catch((error) => {
-      console.error(
-        '再戦リセットRoom更新エラー:',
-        error,
+    const roomRef =
+      doc(
+        db,
+        'rooms',
+        roomId,
       );
-    });
-    });
 
-    return () => unsubscribe();
-  }, [battlePhase, isHost, roomId]);
+    const resetField =
+      playerRole === 'host'
+        ? 'rematchPlayerResetHost'
+        : 'rematchPlayerResetGuest';
+
+    const unsubscribe =
+      onSnapshot(
+        roomRef,
+        (snapshot) => {
+          const data =
+            snapshot.data();
+
+          if (!data) {
+            return;
+          }
+
+          const bothRematched =
+            Boolean(
+              data.rematchHost,
+            ) &&
+            Boolean(
+              data.rematchGuest,
+            );
+
+          // 「もう一回する」がまだ両者揃っていない。
+          if (!bothRematched) {
+            rematchPlayerResetInProgressRef.current =
+              false;
+
+            return;
+          }
+
+          // 自分のPlayer初期化がすでに完了している。
+          if (
+            data[resetField] === true
+          ) {
+            return;
+          }
+
+          // 同一snapshotによる二重初期化防止。
+          if (
+            rematchPlayerResetInProgressRef.current
+          ) {
+            return;
+          }
+
+          rematchPlayerResetInProgressRef.current =
+            true;
+
+          void (async () => {
+            try {
+              const {
+                loadedAvatars,
+                supportState,
+              } =
+                resetLocalGameStateForRematch();
+
+              const currentUser =
+                await ensureAnonymousAuth();
+
+              // -------------------------------------------------
+              // privatePlayers
+              //   hand / deck
+              // -------------------------------------------------
+
+              await setDoc(
+                myPrivatePlayerRef,
+                {
+                  uid:
+                    currentUser.uid,
+
+                  hand:
+                    supportState.hand,
+
+                  deck:
+                    supportState.deck,
+                },
+                {
+                  merge: true,
+                },
+              );
+
+              // -------------------------------------------------
+              // 公開Player
+              //   avatars / 枚数 / usedSkills
+              //
+              // 1戦目のAction履歴も完全に削除する。
+              // -------------------------------------------------
+
+              await setDoc(
+                myPlayerRef,
+                {
+                  uid:
+                    currentUser.uid,
+
+                  role:
+                    playerRole,
+
+                  joined:
+                    true,
+
+                  avatars:
+                    loadedAvatars,
+
+                  handCount:
+                    supportState.hand.length,
+
+                  deckCount:
+                    supportState.deck.length,
+
+                  usedSkills:
+                    {},
+
+                  lastProcessedIncomingActionId:
+                    '',
+
+                  pendingAction:
+                    deleteField(),
+
+                  lastSkillActionId:
+                    deleteField(),
+
+                  lastSkillAction:
+                    deleteField(),
+
+                  lastSupportActionId:
+                    deleteField(),
+
+                  lastSupportCardId:
+                    deleteField(),
+
+                  lastSupportCardCountBefore:
+                    deleteField(),
+
+                  lastSupportCardCountAfter:
+                    deleteField(),
+
+                  lastSupportActionAt:
+                    deleteField(),
+
+                  lastSeenAt:
+                    Date.now(),
+
+                  // 旧Player構造の秘密情報が残っていた場合も削除
+                  hand:
+                    deleteField(),
+
+                  deck:
+                    deleteField(),
+                },
+                {
+                  merge: true,
+                },
+              );
+
+              // -------------------------------------------------
+              // 自分の初期化完了をRoomへ通知
+              // -------------------------------------------------
+
+              await updateDoc(
+                roomRef,
+                {
+                  [resetField]:
+                    true,
+                },
+              );
+            } catch (error) {
+              rematchPlayerResetInProgressRef.current =
+                false;
+
+              console.error(
+                '再戦時Player完全初期化エラー:',
+                error,
+              );
+
+              addLog(
+                '⚠️ 再戦時のPlayer初期化に失敗しました。',
+              );
+            }
+          })();
+        },
+      );
+
+    return () =>
+      unsubscribe();
+  }, [
+    isOnline,
+    battlePhase,
+    roomId,
+    authReady,
+    playerRole,
+    myPlayerRef,
+    myPrivatePlayerRef,
+  ]);
+
+  // =========================================================
+  // ===== 両者のPlayer初期化完了後、ホストがRoomを再戦状態へ
+  // =========================================================
+
+  useEffect(() => {
+    if (
+      !isOnline ||
+      battlePhase !== 'finished' ||
+      !isHost ||
+      !roomId ||
+      !authReady
+    ) {
+      return;
+    }
+
+    const roomRef =
+      doc(
+        db,
+        'rooms',
+        roomId,
+      );
+
+    const unsubscribe =
+      onSnapshot(
+        roomRef,
+        (snapshot) => {
+          const data =
+            snapshot.data();
+
+          if (
+            !data ||
+            data.battlePhase !==
+              'finished'
+          ) {
+            return;
+          }
+
+          if (
+            !data.rematchHost ||
+            !data.rematchGuest
+          ) {
+            return;
+          }
+
+          if (
+            data.rematchPlayerResetHost !==
+              true ||
+            data.rematchPlayerResetGuest !==
+              true
+          ) {
+            // 両者のPlayer初期化がまだ完了していない。
+            return;
+          }
+
+          void updateDoc(
+            roomRef,
+            {
+              battlePhase:
+                'setup',
+
+              currentYear:
+                1,
+
+              turnIndex:
+                0,
+
+              firstPlayer:
+                null,
+
+              startSeasonIdx:
+                null,
+
+              hostTotalScore:
+                0,
+
+              guestTotalScore:
+                0,
+
+              hostClassScores:
+                [0, 0, 0],
+
+              guestClassScores:
+                [0, 0, 0],
+
+              rematchHost:
+                false,
+
+              rematchGuest:
+                false,
+
+              rematchPlayerResetHost:
+                false,
+
+              rematchPlayerResetGuest:
+                false,
+
+              exitHost:
+                false,
+
+              exitGuest:
+                false,
+
+              readyHost:
+                false,
+
+              readyGuest:
+                false,
+
+              hostAction:
+                null,
+
+              guestAction:
+                null,
+            },
+          ).catch((error) => {
+            console.error(
+              '再戦リセットRoom更新エラー:',
+              error,
+            );
+          });
+        },
+      );
+
+    return () =>
+      unsubscribe();
+  }, [
+    isOnline,
+    battlePhase,
+    isHost,
+    roomId,
+    authReady,
+  ]);
 
   const loadDeckDefinition = (deckId: string): Deck | null => {
     try {
