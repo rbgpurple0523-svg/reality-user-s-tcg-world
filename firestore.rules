@@ -5,6 +5,40 @@ service cloud.firestore {
 
     match /rooms/{roomId} {
 
+function isStageStale() {
+  let hostSeen =
+    resource.data.hostLastSeenAt is number
+      ? resource.data.hostLastSeenAt
+      : 0;
+
+  let guestSeen =
+    resource.data.guestLastSeenAt is number
+      ? resource.data.guestLastSeenAt
+      : 0;
+
+  let createdAt =
+    resource.data.createdAt is number
+      ? resource.data.createdAt
+      : 0;
+
+  let now =
+    request.time.toMillis();
+
+  return
+    (
+      (hostSeen == 0 || now - hostSeen > 60000)
+      &&
+      (guestSeen == 0 || now - guestSeen > 60000)
+    )
+    ||
+    (
+      hostSeen == 0
+      && guestSeen == 0
+      && createdAt > 0
+      && now - createdAt > 60000
+    );
+}
+
 function isValidBattleStateTransition() {
   return
 
@@ -856,7 +890,8 @@ allow update: if request.auth != null
     )
   );
 
-      allow delete: if false;
+     allow delete: if request.auth != null
+  && isStageStale();
 
       match /players/{playerRole} {
         allow read: if request.auth != null;
