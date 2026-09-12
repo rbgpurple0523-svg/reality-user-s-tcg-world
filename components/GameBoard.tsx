@@ -508,6 +508,7 @@ export default function GameBoard({ roomId = '', isHost = true, onEditDeck }: Ga
   const [opponentHandCount, setOpponentHandCount] = useState(0);
   const [opponentDeckCount, setOpponentDeckCount] = useState(0);
   const lastActionRef = useRef<string>('');
+  const lastSkillActionRef = useRef<string>('');
   const lastObservedBattlePhaseRef = useRef<string>('');
   const lastObservedYearRef = useRef<number>(1);
   const initializedRef = useRef(false);
@@ -1561,8 +1562,51 @@ export default function GameBoard({ roomId = '', isHost = true, onEditDeck }: Ga
           currentOpponentPlayerData =
             snapshot.data() as Record<string, any>;
 
-          const pendingAction =
-            currentOpponentPlayerData.pendingAction;
+const lastSkillAction =
+  currentOpponentPlayerData.lastSkillAction;
+
+if (
+  lastSkillAction?.actionId &&
+  lastSkillAction.actionId !==
+    lastSkillActionRef.current
+) {
+  lastSkillActionRef.current =
+    lastSkillAction.actionId;
+
+  addLog(
+    `相手が「${lastSkillAction.skillName || '技'}」を発動しました。`,
+  );
+}
+
+const pendingAction =
+  currentOpponentPlayerData.pendingAction;
+
+if (
+  pendingAction?.actionId &&
+  pendingAction.type ===
+    'PLAY_SUPPORT' &&
+  pendingAction.actionId !==
+    lastActionRef.current
+) {
+  lastActionRef.current =
+    pendingAction.actionId;
+
+  void Promise.resolve(
+    handleIncomingActionRef.current(
+      pendingAction,
+    ),
+  ).then(() => {
+    void updateDoc(myRef, {
+      lastProcessedIncomingActionId:
+        pendingAction.actionId,
+    }).catch((error) => {
+      console.error(
+        '受信済みAction ID保存エラー:',
+        error,
+      );
+    });
+  });
+}
 
           const lastProcessedIncomingActionId =
             typeof currentMyPlayerData?.lastProcessedIncomingActionId === 'string'
@@ -1998,6 +2042,8 @@ type BattleActionPayload = {
 
   selectedBoostStat?: StatKey;
 
+
+
   // =====================================================
   // サポートカード
   // =====================================================
@@ -2030,6 +2076,80 @@ const submitBattleAction = async (
         .toString(36)
         .slice(2)}`;
 
+    // =====================================================
+    // USE_SKILL
+    // =====================================================
+
+    if (action.type === 'USE_SKILL') {
+      try {
+        const idToken =
+          await currentUser.getIdToken();
+
+        const response =
+          await fetch(
+            '/api/battle/action',
+            {
+              method: 'POST',
+              headers: {
+                'Content-Type':
+                  'application/json',
+                Authorization:
+                  `Bearer ${idToken}`,
+              },
+              body: JSON.stringify({
+                roomId,
+                actionId,
+                type:
+                  action.type,
+                year:
+                  action.year,
+                turnIndex:
+                  action.turnIndex,
+                avatarIndex:
+                  action.avatarIndex,
+                skillId:
+                  action.skillId,
+                ...(action.selectedBoostStat
+                  ? {
+                      selectedBoostStat:
+                        action.selectedBoostStat,
+                    }
+                  : {}),
+              }),
+            },
+          );
+
+        const responseData =
+          (await response.json()) as {
+            ok?: boolean;
+            error?: string;
+          };
+
+        if (
+          !response.ok ||
+          responseData.ok !== true
+        ) {
+          throw new Error(
+            responseData.error ||
+              'Battle Action APIに失敗しました。',
+          );
+        }
+
+        return true;
+      } catch (error) {
+        console.error(
+          'Skill Action API送信エラー:',
+          error,
+        );
+
+        addLog(
+          '⚠️ 技の送信に失敗しました。',
+        );
+
+        return false;
+      }
+    }
+
     const playerRef =
       doc(
         db,
@@ -2039,14 +2159,14 @@ const submitBattleAction = async (
         playerRole,
       );
 
-const privatePlayerRef =
-  doc(
-    db,
-    'rooms',
-    roomId,
-    'privatePlayers',
-    playerRole,
-  );
+    const privatePlayerRef =
+      doc(
+        db,
+        'rooms',
+        roomId,
+        'privatePlayers',
+        playerRole,
+      );
 
     // =====================================================
     // PLAY_SUPPORT
@@ -4137,270 +4257,6 @@ if (
       return;
     }
 
-    // =====================================================
-    // Roomの正式な試合状態を更新
-    // =====================================================
-    //
-    // 技を使用した本人が、
-    //
-    // ・クラス別スコア
-    // ・合計スコア
-    // ・使用済み技
-    // ・turnIndex
-    // ・currentYear
-    // ・battlePhase
-    //
-    // を確定する。
-    // =====================================================
-
-    if (isOnline && roomId) {
-      const roomRef =
-        doc(
-          db,
-          'rooms',
-          roomId,
-        );
-
-      const scoreField =
-        playerRole === 'host'
-          ? 'hostClassScores'
-          : 'guestClassScores';
-
-      const totalField =
-        playerRole === 'host'
-          ? 'hostTotalScore'
-          : 'guestTotalScore';
-
-      const usedField =
-        playerRole === 'host'
-          ? 'hostUsedSkills'
-          : 'guestUsedSkills';
-
-      try {
-        await runTransaction(
-          db,
-          async (transaction) => {
-            const snapshot =
-              await transaction.get(
-                roomRef,
-              );
-
-            if (!snapshot.exists()) {
-              throw new Error(
-                'Roomが存在しません。',
-              );
-            }
-
-            const roomData =
-              snapshot.data() as Record<
-                string,
-                any
-              >;
-
-const actorPlayerRef =
-  doc(
-    db,
-    'rooms',
-    roomId,
-    'players',
-    playerRole,
-  );
-
-const playerSnapshot =
-  await transaction.get(
-    actorPlayerRef,
-  );
-
-if (!playerSnapshot.exists()) {
-  throw new Error(
-    '自分のPlayerデータが存在しません。',
-  );
-}
-
-const playerData =
-  playerSnapshot.data() as Record<
-    string,
-    any
-  >;
-
-const pendingAction =
-  playerData.pendingAction;
-
-if (
-  !pendingAction ||
-  pendingAction.actionId !== actionId ||
-  pendingAction.type !== 'USE_SKILL' ||
-  pendingAction.skillId !== skill.id ||
-  Number(pendingAction.year) !== currentYear ||
-  Number(pendingAction.turnIndex) !== turnIndex ||
-  Number(pendingAction.avatarIndex) !== activeIndex
-) {
-  throw new Error(
-    '正式なSkill ActionとRoom更新の対応が確認できません。',
-  );
-}
-
-// =================================================
-// 同じSkill Actionの二重処理を禁止
-// =================================================
-
-const lastSkillActionId =
-  typeof playerData.lastSkillActionId === 'string'
-    ? playerData.lastSkillActionId
-    : '';
-
-if (
-  lastSkillActionId === actionId
-) {
-  throw new Error(
-    'このSkill Actionはすでに処理済みです。',
-  );
-}
-
-
-            // ------------------------------------------------
-            // クラス別スコア
-            // ------------------------------------------------
-
-            const scores =
-              Array.isArray(
-                roomData[scoreField],
-              )
-                ? [
-                    ...roomData[
-                      scoreField
-                    ],
-                  ]
-                : [0, 0, 0];
-
-            scores[activeIndex] =
-              Number(
-                scores[activeIndex] ||
-                  0,
-              ) + gainedScore;
-
-            // ------------------------------------------------
-            // 合計スコア
-            // ------------------------------------------------
-
-            const nextTotal =
-              Number(
-                roomData[totalField] ||
-                  0,
-              ) + gainedScore;
-
-
-            // ------------------------------------------------
-            // 次のターン状態
-            // ------------------------------------------------
-
-            transaction.update(
-              roomRef,
-              {
-                [scoreField]:
-                  scores,
-
-                [totalField]:
-                  nextTotal,
-
-                currentYear:
-                  next.currentYear,
-
-                turnIndex:
-                  next.turnIndex,
-
-                battlePhase:
-                  next.nextPhase,
-
-                firstPlayer:
-                  next.nextPhase ===
-                  'setup'
-                    ? null
-                    : roomData.firstPlayer ??
-                      null,
-
-                startSeasonIdx:
-                  next.nextPhase ===
-                  'setup'
-                    ? null
-                    : roomData.startSeasonIdx ??
-                      null,
-              },
-            );
-
-transaction.update(
-  actorPlayerRef,
-  {
-    lastSkillActionId:
-      actionId,
-  },
-);
-          },
-        );
-      } catch (error) {
-        console.error(
-          '技の正式な試合状態更新エラー:',
-          error,
-        );
-
-        addLog(
-          `⚠️「${skill.name}」の試合状態更新に失敗しました。`,
-        );
-
-        return;
-      }
-    }
-
-    // =====================================================
-    // 使用者側へ即時反映
-    // =====================================================
-
-    const nextScores =
-      [...myClassScores];
-
-    nextScores[activeIndex] =
-      (nextScores[activeIndex] || 0) +
-      gainedScore;
-
-    setMyClassScores(
-      nextScores,
-    );
-
-    if (playerRole === 'host') {
-      setHostTotalScore(
-        (prev) =>
-          prev + gainedScore,
-      );
-    } else {
-      setGuestTotalScore(
-        (prev) =>
-          prev + gainedScore,
-      );
-    }
-
-    setMyAvatars(
-      nextMyAvatars,
-    );
-
-    setOppAvatars(
-      nextOppAvatars,
-    );
-
-    setUsedSkillsByClass(
-      nextUsed,
-    );
-
-    // =====================================================
-    // 自分自身のPlayer状態だけ保存
-    // =====================================================
-
-    await saveMyPlayerBattleState(
-      nextMyAvatars,
-      {
-        usedSkills:
-          nextUsed,
-      },
-    );
 
     // =====================================================
     // ローカル表示も即時更新
