@@ -525,6 +525,11 @@ export default function GameBoard({ roomId = '', isHost = true, onEditDeck }: Ga
   const rematchPlayerResetInProgressRef =
     useRef(false);
 
+// 技のAPI送信中に、同じターンの技が
+// 二重送信されないようにする。
+const skillSubmitInProgressRef =
+  useRef(false);
+
   const opponentDisconnectDismissedUntilRef =
     useRef<number>(0);
 
@@ -3539,19 +3544,7 @@ const handleIncomingActionRef =
                 [totalField]:
                   nextTotal,
 
-                // サポートカードでは
-                // ターンを進めない
-                turnIndex:
-                  roomData.turnIndex ?? 0,
-
-                currentYear:
-                  roomData.currentYear ??
-                  action.year,
-
-                battlePhase:
-                  roomData.battlePhase ??
-                  'battle',
-              },
+                },
             );
           },
         ).catch((error) => {
@@ -4402,38 +4395,65 @@ if (
     // オンライン対戦
     // =====================================================
 
-    const actionId =
-      `${Date.now()}-${Math.random()
-        .toString(36)
-        .slice(2)}`;
+// =====================================================
+// 技の二重送信防止
+// =====================================================
+//
+// API送信中は、同じターンの別の技送信を受け付けない。
+// =====================================================
 
-    const actionSubmitted =
-      await submitBattleAction({
-        actionId,
+if (
+  skillSubmitInProgressRef.current
+) {
+  return;
+}
 
-        type: 'USE_SKILL',
+skillSubmitInProgressRef.current =
+  true;
 
-        year: currentYear,
+const actionId =
+  `${Date.now()}-${Math.random()
+    .toString(36)
+    .slice(2)}`;
 
-        turnIndex,
+let actionSubmitted = false;
 
-        avatarIndex: activeIndex,
+try {
+  actionSubmitted =
+    await submitBattleAction({
+      actionId,
 
-        skillId: skill.id,
+      type: 'USE_SKILL',
 
-        ...(selectedBoostStat
-          ? { selectedBoostStat }
-          : {}),
-      });
+      year:
+        currentYear,
 
-    if (!actionSubmitted) {
-      addLog(
-        `「${skill.name}」の送信に失敗しました。`,
-      );
+      turnIndex,
 
-      return;
-    }
+      avatarIndex:
+        activeIndex,
 
+      skillId:
+        skill.id,
+
+      ...(selectedBoostStat
+        ? {
+            selectedBoostStat,
+          }
+        : {}),
+    });
+} finally {
+  skillSubmitInProgressRef.current =
+    false;
+}
+
+if (!actionSubmitted) {
+  addLog(
+    `「${skill.name}」の送信に失敗しました。`,
+  );
+
+  return;
+}
 
     // =====================================================
     // ローカル表示も即時更新
