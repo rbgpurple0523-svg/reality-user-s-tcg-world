@@ -1070,36 +1070,23 @@ useEffect(() => {
     const lastSeenAt =
       Date.now();
 
-    void Promise.all([
-      updateDoc(
-        myPlayerRef,
-        {
-          lastSeenAt,
-          joined: true,
-        },
-      ),
-      setDoc(
-        myPresenceRef,
-        {
-          uid:
-            currentUserUidRef.current,
-
-          role:
-            playerRole,
-
-          lastSeenAt,
-        },
-        {
-          merge: true,
-        },
-      ),
-    ]).catch((error) => {
-      console.warn(
-        'ハートビート保存エラー:',
-        error,
-      );
-    });
-  };
+void setDoc(
+  myPresenceRef,
+  {
+    uid: currentUserUidRef.current,
+    role: playerRole,
+    lastSeenAt,
+  },
+  {
+    merge: true,
+  },
+).catch((error) => {
+  console.warn(
+    'Presenceハートビート保存エラー:',
+    error,
+  );
+});
+};
 
   writeHeartbeat();
 
