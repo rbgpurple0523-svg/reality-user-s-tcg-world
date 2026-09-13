@@ -175,6 +175,8 @@ const isStageStale = (
       'guest',
     );
 
+
+
 const hostPresenceRef = doc(
   db,
   'rooms',
@@ -305,6 +307,19 @@ const guestPresenceRef = doc(
                 },
               );
 
+transaction.set(
+  hostPresenceRef,
+  {
+    uid:
+      currentUser.uid,
+
+    role:
+      'host',
+
+    lastSeenAt:
+      now,
+  },
+);
               return {
                 mode:
                   'created' as const,
@@ -411,6 +426,20 @@ const guestPresenceRef = doc(
                 },
               );
 
+transaction.set(
+  hostPresenceRef,
+  {
+    uid:
+      currentUser.uid,
+
+    role:
+      'host',
+
+    lastSeenAt:
+      now,
+  },
+);
+
               return {
                 mode:
                   'reused' as const,
@@ -442,6 +471,23 @@ const guestPresenceRef = doc(
                 },
               );
 
+transaction.set(
+  hostPresenceRef,
+  {
+    uid:
+      currentUser.uid,
+
+    role:
+      'host',
+
+    lastSeenAt:
+      now,
+  },
+  {
+    merge:
+      true,
+  },
+);
               return {
                 mode:
                   'rejoined' as const,
@@ -582,6 +628,21 @@ const stale =
                   0,
               },
             );
+
+
+transaction.set(
+  hostPresenceRef,
+  {
+    uid:
+      currentUser.uid,
+
+    role:
+      'host',
+
+    lastSeenAt:
+      now,
+  },
+);
 
             return {
               mode:
@@ -749,6 +810,14 @@ const stale =
         'guest',
       );
 
+const guestPresenceRef = doc(
+  db,
+  'rooms',
+  roomId,
+  'presence',
+  'guest',
+);
+
     const guestPrivatePlayerRef =
       doc(
         db,
@@ -835,6 +904,25 @@ const stale =
                     now,
                 },
               );
+
+
+transaction.set(
+  guestPresenceRef,
+  {
+    uid:
+      currentUser.uid,
+
+    role:
+      'guest',
+
+    lastSeenAt:
+      now,
+  },
+  {
+    merge:
+      true,
+  },
+);
 
               return {
                 mode:
@@ -944,27 +1032,41 @@ if (
             // 新しいGuestとして参加
             // -------------------------------------------------
 
-            transaction.update(
-              roomRef,
-              {
-                guestUid:
-                  currentUser.uid,
+transaction.update(
+  roomRef,
+  {
+    guestUid:
+      currentUser.uid,
 
-                guestJoined:
-                  true,
+    guestJoined:
+      true,
 
-                guestRejoinedAt:
-                  now,
+    guestRejoinedAt:
+      now,
 
-                guestLastSeenAt:
-                  now,
-              },
-            );
+    guestLastSeenAt:
+      now,
+  },
+);
 
-            return {
-              mode:
-                'joined' as const,
-            };
+transaction.set(
+  guestPresenceRef,
+  {
+    uid:
+      currentUser.uid,
+
+    role:
+      'guest',
+
+    lastSeenAt:
+      now,
+  },
+);
+
+return {
+  mode:
+    'joined' as const,
+};
           },
         );
 
