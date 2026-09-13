@@ -415,21 +415,22 @@ allow update: if request.auth != null
   && resource.data.roomClosed != true
   && request.resource.data.hostUid == resource.data.hostUid
   && request.resource.data.diff(resource.data).affectedKeys().hasOnly([
-    'hostDeckId',
-    'readyHost',
-    'rematchHost',
-    'rematchPlayerResetHost',
-    'exitHost',
-    'hostJoined',
-    'hostLastSeenAt',
-    'hostClassScores',
-    'hostTotalScore',
-    'currentYear',
-    'firstPlayer',
-    'startSeasonIdx',
-    'turnIndex',
-    'battlePhase'
-  ])
+  'hostDeckId',
+  'readyHost',
+  'rematchHost',
+  'rematchPlayerResetHost',
+  'exitHost',
+  'hostJoined',
+  'hostRejoinedAt',
+  'hostLastSeenAt',
+  'hostClassScores',
+  'hostTotalScore',
+  'currentYear',
+  'firstPlayer',
+  'startSeasonIdx',
+  'turnIndex',
+  'battlePhase'
+])
 
 && isValidBattleStateTransition()
 

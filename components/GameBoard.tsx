@@ -474,6 +474,7 @@ export default function GameBoard({ roomId = '', isHost = true, onEditDeck }: Ga
   const [cpuHand, setCpuHand] = useState<SupportCard[]>([]);
   const [cpuDeck, setCpuDeck] = useState<SupportCard[]>([]);
   const [myDeckReady, setMyDeckReady] = useState(false);
+
   // デッキを選択しただけでは準備完了にしない。「このデッキではじめる」で確定する。
   const [deckConfirmed, setDeckConfirmed] = useState(false);
   const [isCoinTossing, setIsCoinTossing] = useState(false);
@@ -482,6 +483,7 @@ export default function GameBoard({ roomId = '', isHost = true, onEditDeck }: Ga
   const [hostTotalScore, setHostTotalScore] = useState(0);
   const [guestTotalScore, setGuestTotalScore] = useState(0);
   const [usedSkillsByClass, setUsedSkillsByClass] = useState<Record<string, string[]>>({});
+
   // CPU側の「このクラス1回」の技使用状況。自分の技使用状況とは完全に分離する。
   const [cpuUsedSkillsByClass, setCpuUsedSkillsByClass] = useState<Record<string, string[]>>({});
   const [myHand, setMyHand] = useState<SupportCard[]>([]);
@@ -495,6 +497,10 @@ export default function GameBoard({ roomId = '', isHost = true, onEditDeck }: Ga
   const [rematchChoice, setRematchChoice] = useState<'rematch' | 'exit' | null>(null);
   const [waitingMessage, setWaitingMessage] = useState('');
   const [preparationMessage, setPreparationMessage] = useState('');
+  const [showOpponentDisconnectModal, setShowOpponentDisconnectModal] =
+    useState(false);
+  const [opponentDisconnectMessage, setOpponentDisconnectMessage] =
+    useState('');
   const [classResult, setClassResult] = useState<{
     completedYear: number;
     myScore: number;
@@ -504,6 +510,7 @@ export default function GameBoard({ roomId = '', isHost = true, onEditDeck }: Ga
   } | null>(null);
   const [readyHost, setReadyHost] = useState(false);
   const [readyGuest, setReadyGuest] = useState(false);
+
   // 相手の手札・山札枚数。オンラインではFirebaseから同期し、CPU戦ではCPUのローカル状態を表示する。
   const [opponentHandCount, setOpponentHandCount] = useState(0);
   const [opponentDeckCount, setOpponentDeckCount] = useState(0);
@@ -517,6 +524,9 @@ export default function GameBoard({ roomId = '', isHost = true, onEditDeck }: Ga
   // 二重実行されないようにする。
   const rematchPlayerResetInProgressRef =
     useRef(false);
+
+  const opponentDisconnectDismissedUntilRef =
+    useRef<number>(0);
 
 // Room終了時のホーム遷移が
 // onSnapshotの複数回発火で重複しないようにする。
@@ -1039,6 +1049,119 @@ const roomCloseRedirectRef =
     authReady,
     myPlayerRef,
   ]);
+
+// =========================================================
+// ===== 相手の接続監視
+// =========================================================
+//
+// Host / Guest の両方で同じ処理を行う。
+// 相手PlayerのlastSeenAtが30秒以上更新されなければ、
+// 一時的な通信断・ページ離脱の可能性として警告する。
+//
+// 「退出する」を選択した場合のみRoomを正式終了する。
+// =========================================================
+
+useEffect(() => {
+  if (
+    !isOnline ||
+    !roomId ||
+    !authReady
+  ) {
+    return;
+  }
+
+  const opponentRef = doc(
+    db,
+    'rooms',
+    roomId,
+    'players',
+    opponentRole,
+  );
+
+  let opponentLastSeenAt = 0;
+
+  const DISCONNECT_WARNING_MS = 30 * 1000;
+  const CHECK_INTERVAL_MS = 5 * 1000;
+
+  const unsubscribe = onSnapshot(
+    opponentRef,
+    (snapshot) => {
+      if (!snapshot.exists()) {
+        opponentLastSeenAt = 0;
+        return;
+      }
+
+      const data =
+        snapshot.data() as Record<string, unknown>;
+
+      opponentLastSeenAt =
+        Number(data.lastSeenAt || 0);
+
+      if (opponentLastSeenAt > 0) {
+        setShowOpponentDisconnectModal(false);
+
+        setOpponentDisconnectMessage('');
+
+        opponentDisconnectDismissedUntilRef.current =
+          0;
+      }
+    },
+    (error) => {
+      console.warn(
+        '相手Player監視エラー:',
+        error,
+      );
+    },
+  );
+
+  const timer = window.setInterval(() => {
+    if (
+      opponentLastSeenAt <= 0
+    ) {
+      return;
+    }
+
+    const elapsed =
+      Date.now() -
+      opponentLastSeenAt;
+
+    if (
+      elapsed <
+      DISCONNECT_WARNING_MS
+    ) {
+      return;
+    }
+
+    if (
+      Date.now() <
+      opponentDisconnectDismissedUntilRef.current
+    ) {
+      return;
+    }
+
+    const opponentLabel =
+      opponentRole === 'host'
+        ? 'ホスト'
+        : 'ゲスト';
+
+    setOpponentDisconnectMessage(
+      `${opponentLabel}との通信が30秒以上確認できません。通信切断やページ離脱の可能性があります。`,
+    );
+
+    setShowOpponentDisconnectModal(true);
+  }, CHECK_INTERVAL_MS);
+
+  return () => {
+    unsubscribe();
+    window.clearInterval(timer);
+  };
+}, [
+  isOnline,
+  roomId,
+  authReady,
+  opponentRole,
+]);
+
 
   // =========================================================
   // ===== Firebaseのゲーム状態を常時監視 =====
@@ -5198,6 +5321,77 @@ const handleUseSupportCard = async (
     addLog(`${currentYear}年目（${ROLE_NAMES[currentYear - 1]}戦）の準備を開始します。`);
   };
 
+// =========================================================
+// ===== 相手切断時の退出処理
+// =========================================================
+//
+// 相手の通信が一定時間確認できない場合に
+// 「退出する」を選んだときの処理。
+// Host / Guest の両方で使用する。
+// =========================================================
+
+const exitBecauseOpponentDisconnected =
+  async () => {
+    if (
+      !isOnline ||
+      !roomId ||
+      !authReady
+    ) {
+      return;
+    }
+
+    const exitField =
+      playerRole === 'host'
+        ? 'exitHost'
+        : 'exitGuest';
+
+    try {
+      await updateDoc(
+        doc(
+          db,
+          'rooms',
+          roomId,
+        ),
+        {
+          [exitField]: true,
+          roomClosed: true,
+        },
+      );
+
+      setShowOpponentDisconnectModal(
+        false,
+      );
+
+      setWaitingMessage(
+        '対戦を終了しました。ホームへ戻ります。',
+      );
+
+      setBattlePhase(
+        'waiting',
+      );
+
+      if (
+        roomCloseRedirectRef.current ===
+        null
+      ) {
+        roomCloseRedirectRef.current =
+          window.setTimeout(() => {
+            window.location.assign('/');
+          }, 1200);
+      }
+    } catch (error) {
+      console.error(
+        '切断時の退出処理エラー:',
+        error,
+      );
+
+      addLog(
+        '⚠️ 対戦終了処理に失敗しました。',
+      );
+    }
+  };
+
+
   // ===== 勝敗後の再戦・退出選択 =====
   // 先に選んだ側は待機、後から選んだ側は「新しいゲームを始めます」と案内します。
   const chooseRematch = async (choice: 'rematch' | 'exit') => {
@@ -6403,6 +6597,60 @@ if (choice === 'exit') {
             </div>
           </div>
         )}
+{/* ===== 相手切断警告 ===== */}
+{showOpponentDisconnectModal &&
+  battlePhase === 'battle' && (
+    <div className="fixed inset-0 z-[60] flex items-center justify-center bg-slate-950/60 p-4 backdrop-blur-sm">
+      <div className="w-full max-w-md rounded-3xl bg-white p-6 text-center shadow-2xl">
+        <div className="text-4xl">
+          ⚠️
+        </div>
+
+        <h3 className="mt-3 text-xl font-black text-slate-900">
+          相手との接続を確認できません
+        </h3>
+
+        <p className="mt-3 text-sm font-bold leading-relaxed text-slate-600">
+          {opponentDisconnectMessage}
+        </p>
+
+        <p className="mt-2 text-xs font-bold text-slate-400">
+          相手が復帰すれば、そのまま対戦を続けられます。
+        </p>
+
+        <div className="mt-6 grid grid-cols-2 gap-3">
+          <button
+            onClick={() => {
+              setShowOpponentDisconnectModal(
+                false,
+              );
+
+              opponentDisconnectDismissedUntilRef.current =
+                Date.now() + 30 * 1000;
+
+              setWaitingMessage(
+                '相手の復帰を待っています。',
+              );
+            }}
+            className="rounded-xl bg-indigo-600 px-4 py-3 text-sm font-black text-white shadow-lg hover:bg-indigo-700"
+          >
+            待機する
+          </button>
+
+          <button
+            onClick={() =>
+              void exitBecauseOpponentDisconnected()
+            }
+            className="rounded-xl bg-slate-200 px-4 py-3 text-sm font-black text-slate-900 hover:bg-slate-300"
+          >
+            退出する
+          </button>
+        </div>
+      </div>
+    </div>
+  )}
+
+
       </div>
     </div>
   );
