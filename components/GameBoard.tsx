@@ -450,11 +450,15 @@ export default function GameBoard({ roomId = '', isHost = true, onEditDeck }: Ga
       return;
     }
     let cancelled = false;
-    void ensureAnonymousAuth()
-      .then(() => {
-        if (!cancelled) setAuthReady(true);
-      })
-      .catch((error) => {
+void ensureAnonymousAuth()
+  .then((user) => {
+    currentUserUidRef.current =
+      user.uid;
+
+    if (!cancelled) {
+      setAuthReady(true);
+    }
+  })      .catch((error) => {
         console.error('Firebase Authentication 初期化エラー:', error);
         if (!cancelled) setAuthReady(false);
       });
@@ -529,6 +533,9 @@ export default function GameBoard({ roomId = '', isHost = true, onEditDeck }: Ga
 // 二重送信されないようにする。
 const skillSubmitInProgressRef =
   useRef(false);
+
+const currentUserUidRef =
+  useRef('');
 
   const opponentDisconnectDismissedUntilRef =
     useRef<number>(0);
@@ -866,6 +873,20 @@ const roomCloseRedirectRef =
     [isOnline, roomId, playerRole],
   );
 
+const myPresenceRef = useMemo(
+  () =>
+    isOnline && roomId
+      ? doc(
+          db,
+          'rooms',
+          roomId,
+          'presence',
+          playerRole,
+        )
+      : null,
+  [isOnline, roomId, playerRole],
+);
+
   const myPrivatePlayerRef = useMemo(
     () =>
       isOnline && roomId
@@ -1029,37 +1050,76 @@ const roomCloseRedirectRef =
   // Playerへ移す。
   // =========================================================
 
-  useEffect(() => {
-    if (!roomId || !authReady || !myPlayerRef) return;
-
-    const writeHeartbeat = () => {
-  // 技のAPI送信中は、同じPlayerドキュメントへの
-  // 書き込み競合を避けるためハートビートを一時停止する。
-  if (skillSubmitInProgressRef.current) {
+useEffect(() => {
+  if (
+    !roomId ||
+    !authReady ||
+    !myPlayerRef ||
+    !myPresenceRef
+  ) {
     return;
   }
 
-  void updateDoc(myPlayerRef, {
-    lastSeenAt: Date.now(),
-    joined: true,
-  }).catch(() => undefined);
-};
+  const writeHeartbeat = () => {
+    if (
+      skillSubmitInProgressRef.current
+    ) {
+      return;
+    }
 
-    writeHeartbeat();
+    const lastSeenAt =
+      Date.now();
 
-    const timer = window.setInterval(
+    void Promise.all([
+      updateDoc(
+        myPlayerRef,
+        {
+          lastSeenAt,
+          joined: true,
+        },
+      ),
+      setDoc(
+        myPresenceRef,
+        {
+          uid:
+            currentUserUidRef.current,
+
+          role:
+            playerRole,
+
+          lastSeenAt,
+        },
+        {
+          merge: true,
+        },
+      ),
+    ]).catch((error) => {
+      console.warn(
+        'ハートビート保存エラー:',
+        error,
+      );
+    });
+  };
+
+  writeHeartbeat();
+
+  const timer =
+    window.setInterval(
       writeHeartbeat,
       10000,
     );
 
-    return () => {
-      window.clearInterval(timer);
-    };
-  }, [
-    roomId,
-    authReady,
-    myPlayerRef,
-  ]);
+  return () => {
+    window.clearInterval(timer);
+  };
+}, [
+  roomId,
+  authReady,
+  myPlayerRef,
+  myPresenceRef,
+  playerRole,
+]);
+
 
 // =========================================================
 // ===== 相手の接続監視
