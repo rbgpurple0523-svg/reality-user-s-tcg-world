@@ -3,9 +3,11 @@
 import React, { useState } from 'react';
 import { db, ensureAnonymousAuth } from '@/lib/firebase';
 import {
+  deleteField,
   doc,
   onSnapshot,
   runTransaction,
+  setDoc,
 } from 'firebase/firestore';
 
 interface FriendMatchSetupProps {
@@ -13,39 +15,131 @@ interface FriendMatchSetupProps {
   onBack: () => void;
 }
 
+type PlayerRole = 'host' | 'guest';
+
+type RoomRecord = Record<string, unknown>;
+type PlayerRecord = Record<string, unknown>;
+
 export default function FriendMatchSetup({
   onMatchStart,
   onBack,
 }: FriendMatchSetupProps) {
-  const [mode, setMode] = useState<'menu' | 'create' | 'join'>('menu');
+  const [mode, setMode] =
+    useState<'menu' | 'create' | 'join'>('menu');
   const [roomKey, setRoomKey] = useState<string>('');
-  const [statusMessage, setStatusMessage] = useState<string>('');
-  const [isLoading, setIsLoading] = useState<boolean>(false);
-  const [showConfirmModal, setShowConfirmModal] = useState<boolean>(false);
-  const [isWaitingForGuest, setIsWaitingForGuest] = useState<boolean>(false);
+  const [statusMessage, setStatusMessage] =
+    useState<string>('');
+  const [isLoading, setIsLoading] =
+    useState<boolean>(false);
+  const [showConfirmModal, setShowConfirmModal] =
+    useState<boolean>(false);
+  const [isWaitingForGuest, setIsWaitingForGuest] =
+    useState<boolean>(false);
 
   // ===== 放置ステージの判定 =====
   const STALE_STAGE_MS = 60 * 1000;
 
-  const isStageStale = (data: Record<string, any>) => {
+  const isStageStale = (
+    roomData: RoomRecord,
+    hostPlayerData: PlayerRecord | null,
+    guestPlayerData: PlayerRecord | null,
+  ) => {
     const now = Date.now();
 
-    const hostSeen = Number(data.hostLastSeenAt || 0);
-    const guestSeen = Number(data.guestLastSeenAt || 0);
-    const createdAt = Number(data.createdAt || 0);
+    const hostSeen = Number(
+      hostPlayerData?.lastSeenAt ?? 0,
+    );
+
+    const guestSeen = Number(
+      guestPlayerData?.lastSeenAt ?? 0,
+    );
+
+    const createdAt = Number(
+      roomData.createdAt ?? 0,
+    );
 
     if (hostSeen || guestSeen) {
       const hostStale =
-        !hostSeen || now - hostSeen > STALE_STAGE_MS;
+        !hostSeen ||
+        now - hostSeen > STALE_STAGE_MS;
 
       const guestStale =
-        !guestSeen || now - guestSeen > STALE_STAGE_MS;
+        !guestSeen ||
+        now - guestSeen > STALE_STAGE_MS;
 
       return hostStale && guestStale;
     }
 
     // 旧バージョンのルーム
-    return createdAt > 0 && now - createdAt > STALE_STAGE_MS;
+    return (
+      createdAt > 0 &&
+      now - createdAt > STALE_STAGE_MS
+    );
+  };
+
+  const resetPlayerForNewStage = async (
+    playerRef: ReturnType<typeof doc>,
+    uid: string,
+    role: PlayerRole,
+    now: number,
+  ) => {
+    await setDoc(
+      playerRef,
+      {
+        uid,
+        role,
+        joined: true,
+        ready: false,
+        createdAt: now,
+        lastSeenAt: now,
+
+        avatars: [],
+
+        handCount: 0,
+        deckCount: 0,
+
+        usedSkills: {},
+
+        lastProcessedIncomingActionId: '',
+
+        pendingAction: deleteField(),
+
+        lastSkillActionId: deleteField(),
+        lastSkillAction: deleteField(),
+
+        lastSupportActionId: deleteField(),
+        lastSupportCardId: deleteField(),
+        lastSupportCardCountBefore:
+          deleteField(),
+        lastSupportCardCountAfter:
+          deleteField(),
+        lastSupportActionAt:
+          deleteField(),
+
+        hand: deleteField(),
+        deck: deleteField(),
+      },
+      {
+        merge: true,
+      },
+    );
+  };
+
+  const resetPrivatePlayerForNewStage = async (
+    privatePlayerRef: ReturnType<typeof doc>,
+    uid: string,
+  ) => {
+    await setDoc(
+      privatePlayerRef,
+      {
+        uid,
+        hand: [],
+        deck: [],
+      },
+      {
+        merge: true,
+      },
+    );
   };
 
   // =========================================================
@@ -54,146 +148,537 @@ export default function FriendMatchSetup({
 
   const handleCreateStage = async () => {
     if (!roomKey.trim()) {
-      setStatusMessage('⚠️ 合言葉を入力してください。');
+      setStatusMessage(
+        '⚠️ 合言葉を入力してください。',
+      );
       return;
     }
 
     setIsLoading(true);
-    setStatusMessage('ステージを作成中...');
+    setStatusMessage('ステージを確認中...');
 
     const roomId = roomKey.trim();
-    const roomRef = doc(db, 'rooms', roomId);
-    const hostPlayerRef = doc(db, 'rooms', roomId, 'players', 'host');
+
+    const roomRef = doc(
+      db,
+      'rooms',
+      roomId,
+    );
+
+    const hostPlayerRef = doc(
+      db,
+      'rooms',
+      roomId,
+      'players',
+      'host',
+    );
+
+    const guestPlayerRef = doc(
+      db,
+      'rooms',
+      roomId,
+      'players',
+      'guest',
+    );
+
+    const hostPrivatePlayerRef = doc(
+      db,
+      'rooms',
+      roomId,
+      'privatePlayers',
+      'host',
+    );
 
     try {
-      // Firebase匿名認証
-      const currentUser = await ensureAnonymousAuth();
+      const currentUser =
+        await ensureAnonymousAuth();
 
       const now = Date.now();
 
-      // =====================================================
-      // Room + Host Player 作成をTransaction化
-      //
-      // 既存のRoom構造は維持しつつ、
-      // プレイヤー固有データを players/host に分離する。
-      // =====================================================
+      const result =
+        await runTransaction(
+          db,
+          async (transaction) => {
+            const roomSnap =
+              await transaction.get(
+                roomRef,
+              );
 
-      await runTransaction(db, async (transaction) => {
-        const roomSnap = await transaction.get(roomRef);
+            // -------------------------------------------------
+            // Roomが存在しない
+            // -------------------------------------------------
 
-        if (roomSnap.exists()) {
-          const existingData =
-            roomSnap.data() as Record<string, any>;
+            if (!roomSnap.exists()) {
+              transaction.set(
+                roomRef,
+                {
+                  hostUid:
+                    currentUser.uid,
 
-          if (!isStageStale(existingData)) {
-            throw new Error('ROOM_ALREADY_IN_USE');
-          }
+                  guestUid:
+                    null,
 
-          // 古いルームを解放
-          transaction.delete(roomRef);
+                  hostJoined:
+                    true,
 
-          // 念のため旧playerドキュメントも削除対象にする。
-          transaction.delete(hostPlayerRef);
-          transaction.delete(
-            doc(db, 'rooms', roomId, 'players', 'guest'),
-          );
-        }
+                  guestJoined:
+                    false,
 
-        // ===================================================
-        // Room本体
-        // ===================================================
+                  battlePhase:
+                    'setup',
 
-        transaction.set(roomRef, {
-          // ===== Authentication =====
-          hostUid: currentUser.uid,
-          guestUid: null,
+                  currentYear:
+                    1,
 
-          // ===== 入室状態 =====
-          hostJoined: true,
-          guestJoined: false,
+                  turnIndex:
+                    0,
 
-          // ===== Battle state =====
-          battlePhase: 'setup',
-          currentYear: 1,
-          turnIndex: 0,
-          firstPlayer: null,
-          startSeasonIdx: null,
+                  firstPlayer:
+                    null,
 
-          // ===== Score =====
-          hostTotalScore: 0,
-          guestTotalScore: 0,
+                  startSeasonIdx:
+                    null,
 
-          hostClassScores: [0, 0, 0],
-          guestClassScores: [0, 0, 0],
+                  hostTotalScore:
+                    0,
 
-          // ===== Skill =====
-          hostUsedSkills: {},
-          guestUsedSkills: {},
+                  guestTotalScore:
+                    0,
 
-          // ===== Match control =====
-          rematchHost: false,
-          rematchGuest: false,
-          exitHost: false,
-          exitGuest: false,
+                  hostClassScores:
+                    [0, 0, 0],
 
-          // ===== Time =====
-          createdAt: now,
-          hostLastSeenAt: now,
-          guestLastSeenAt: 0,
-        });
+                  guestClassScores:
+                    [0, 0, 0],
 
-        // ===================================================
-        // Host Player
-        //
-        // キャラクター・デッキ等はGameBoard側で設定する。
-        // ここでは「このroomのhostである」という
-        // プレイヤー状態の土台だけを作る。
-        // ===================================================
+                  hostUsedSkills:
+                    {},
 
-        transaction.set(hostPlayerRef, {
-          uid: currentUser.uid,
-          role: 'host',
+                  guestUsedSkills:
+                    {},
 
-          joined: true,
-          ready: false,
+                  rematchHost:
+                    false,
 
-          createdAt: now,
-          lastSeenAt: now,
+                  rematchGuest:
+                    false,
 
-          // GameBoardで後から設定する領域
-          avatars: [],
-          deck: [],
-          hand: [],
-          usedSkills: {},
-        });
-      });
+                  rematchPlayerResetHost:
+                    false,
+
+                  rematchPlayerResetGuest:
+                    false,
+
+                  exitHost:
+                    false,
+
+                  exitGuest:
+                    false,
+
+                  readyHost:
+                    false,
+
+                  readyGuest:
+                    false,
+
+                  roomClosed:
+                    false,
+
+                  createdAt:
+                    now,
+
+                  hostLastSeenAt:
+                    now,
+
+                  guestLastSeenAt:
+                    0,
+                },
+              );
+
+              return {
+                mode:
+                  'created' as const,
+                guestJoined:
+                  false,
+              };
+            }
+
+            const roomData =
+              roomSnap.data() as RoomRecord;
+
+            // -------------------------------------------------
+            // 明示的に閉じられたRoom
+            // → 新しいHostとして再利用
+            // -------------------------------------------------
+
+            if (
+              roomData.roomClosed ===
+              true
+            ) {
+              transaction.set(
+                roomRef,
+                {
+                  hostUid:
+                    currentUser.uid,
+
+                  guestUid:
+                    null,
+
+                  hostJoined:
+                    true,
+
+                  guestJoined:
+                    false,
+
+                  battlePhase:
+                    'setup',
+
+                  currentYear:
+                    1,
+
+                  turnIndex:
+                    0,
+
+                  firstPlayer:
+                    null,
+
+                  startSeasonIdx:
+                    null,
+
+                  hostTotalScore:
+                    0,
+
+                  guestTotalScore:
+                    0,
+
+                  hostClassScores:
+                    [0, 0, 0],
+
+                  guestClassScores:
+                    [0, 0, 0],
+
+                  hostUsedSkills:
+                    {},
+
+                  guestUsedSkills:
+                    {},
+
+                  rematchHost:
+                    false,
+
+                  rematchGuest:
+                    false,
+
+                  rematchPlayerResetHost:
+                    false,
+
+                  rematchPlayerResetGuest:
+                    false,
+
+                  exitHost:
+                    false,
+
+                  exitGuest:
+                    false,
+
+                  readyHost:
+                    false,
+
+                  readyGuest:
+                    false,
+
+                  roomClosed:
+                    false,
+
+                  createdAt:
+                    now,
+
+                  hostLastSeenAt:
+                    now,
+
+                  guestLastSeenAt:
+                    0,
+                },
+              );
+
+              return {
+                mode:
+                  'reused' as const,
+                guestJoined:
+                  false,
+              };
+            }
+
+            // -------------------------------------------------
+            // 同じHost本人の一時離脱
+            // → 試合状態を維持して再入室
+            // -------------------------------------------------
+
+            if (
+              roomData.hostUid ===
+              currentUser.uid
+            ) {
+              transaction.update(
+                roomRef,
+                {
+                  hostJoined:
+                    true,
+
+                  hostRejoinedAt:
+                    now,
+
+                  hostLastSeenAt:
+                    now,
+                },
+              );
+
+              return {
+                mode:
+                  'rejoined' as const,
+                guestJoined:
+                  Boolean(
+                    roomData.guestJoined,
+                  ),
+              };
+            }
+
+            // -------------------------------------------------
+            // Player情報を取得してstale判定
+            // -------------------------------------------------
+
+            const hostPlayerSnap =
+              await transaction.get(
+                hostPlayerRef,
+              );
+
+            const guestPlayerSnap =
+              await transaction.get(
+                guestPlayerRef,
+              );
+
+            const hostPlayerData =
+              hostPlayerSnap.exists()
+                ? (hostPlayerSnap.data() as PlayerRecord)
+                : null;
+
+            const guestPlayerData =
+              guestPlayerSnap.exists()
+                ? (guestPlayerSnap.data() as PlayerRecord)
+                : null;
+
+            const stale =
+              isStageStale(
+                roomData,
+                hostPlayerData,
+                guestPlayerData,
+              );
+
+            if (!stale) {
+              throw new Error(
+                'ROOM_ALREADY_IN_USE',
+              );
+            }
+
+            // -------------------------------------------------
+            // stale Roomを新しいHostとして再利用
+            // -------------------------------------------------
+
+            transaction.set(
+              roomRef,
+              {
+                hostUid:
+                  currentUser.uid,
+
+                guestUid:
+                  null,
+
+                hostJoined:
+                  true,
+
+                guestJoined:
+                  false,
+
+                battlePhase:
+                  'setup',
+
+                currentYear:
+                  1,
+
+                turnIndex:
+                  0,
+
+                firstPlayer:
+                  null,
+
+                startSeasonIdx:
+                  null,
+
+                hostTotalScore:
+                  0,
+
+                guestTotalScore:
+                  0,
+
+                hostClassScores:
+                  [0, 0, 0],
+
+                guestClassScores:
+                  [0, 0, 0],
+
+                hostUsedSkills:
+                  {},
+
+                guestUsedSkills:
+                  {},
+
+                rematchHost:
+                  false,
+
+                rematchGuest:
+                  false,
+
+                rematchPlayerResetHost:
+                  false,
+
+                rematchPlayerResetGuest:
+                  false,
+
+                exitHost:
+                  false,
+
+                exitGuest:
+                  false,
+
+                readyHost:
+                  false,
+
+                readyGuest:
+                  false,
+
+                roomClosed:
+                  false,
+
+                createdAt:
+                  now,
+
+                hostLastSeenAt:
+                  now,
+
+                guestLastSeenAt:
+                  0,
+              },
+            );
+
+            return {
+              mode:
+                'reused' as const,
+              guestJoined:
+                false,
+            };
+          },
+        );
+
+      // -------------------------------------------------------
+      // 新規作成 / stale再利用時だけ
+      // Host Playerを初期化
+      // -------------------------------------------------------
+
+      if (
+        result.mode ===
+          'created' ||
+        result.mode ===
+          'reused'
+      ) {
+        await resetPlayerForNewStage(
+          hostPlayerRef,
+          currentUser.uid,
+          'host',
+          now,
+        );
+
+        await resetPrivatePlayerForNewStage(
+          hostPrivatePlayerRef,
+          currentUser.uid,
+        );
+      }
 
       setIsLoading(false);
       setIsWaitingForGuest(true);
 
       setStatusMessage(
-        `🎉 ステージ「${roomKey}」を作成しました！友達の参加を待っています...`,
+        result.mode === 'rejoined'
+          ? `🎮 ステージ「${roomKey}」へ再入室しました。対戦状態を維持しています。`
+          : `🎉 ステージ「${roomKey}」を作成しました！友達の参加を待っています...`,
       );
 
-      // =====================================================
-      // ゲスト参加監視
-      // =====================================================
+      // -------------------------------------------------------
+      // Guest参加監視
+      // -------------------------------------------------------
 
-      const unsubscribe = onSnapshot(roomRef, (docSnap) => {
-        const data = docSnap.data();
+      const unsubscribe =
+        onSnapshot(
+          roomRef,
+          (docSnap) => {
+            const data =
+              docSnap.data();
 
-        if (data && data.guestJoined && data.guestUid) {
-          unsubscribe();
-          onMatchStart(roomId, true);
-        }
-      });
+            if (
+              data &&
+              data.roomClosed ===
+                true
+            ) {
+              unsubscribe();
+              setIsWaitingForGuest(
+                false,
+              );
+              setStatusMessage(
+                'このステージは終了しました。',
+              );
+              return;
+            }
 
+            if (
+              data &&
+              data.guestJoined &&
+              data.guestUid
+            ) {
+              unsubscribe();
+              setIsWaitingForGuest(
+                false,
+              );
+              onMatchStart(
+                roomId,
+                true,
+              );
+            }
+          },
+        );
+
+      // Host再入室時にGuestがすでにいる場合
+      if (
+        result.mode ===
+          'rejoined' &&
+        result.guestJoined
+      ) {
+        unsubscribe();
+        setIsWaitingForGuest(
+          false,
+        );
+        onMatchStart(
+          roomId,
+          true,
+        );
+      }
     } catch (err) {
-      console.error('Create Room Error:', err);
+      console.error(
+        'Create Room Error:',
+        err,
+      );
 
       if (
         err instanceof Error &&
-        err.message === 'ROOM_ALREADY_IN_USE'
+        err.message ===
+          'ROOM_ALREADY_IN_USE'
       ) {
         setIsLoading(false);
         setStatusMessage(
@@ -215,7 +700,9 @@ export default function FriendMatchSetup({
 
   const handleConfirmJoin = () => {
     if (!roomKey.trim()) {
-      setStatusMessage('⚠️ 合言葉を入力してください。');
+      setStatusMessage(
+        '⚠️ 合言葉を入力してください。',
+      );
       return;
     }
 
@@ -229,130 +716,284 @@ export default function FriendMatchSetup({
   const handleJoinStage = async () => {
     setShowConfirmModal(false);
     setIsLoading(true);
-    setStatusMessage('ステージを探しています...');
-
-    const roomId = roomKey.trim();
-    const roomRef = doc(db, 'rooms', roomId);
-    const guestPlayerRef = doc(
-      db,
-      'rooms',
-      roomId,
-      'players',
-      'guest',
+    setStatusMessage(
+      'ステージを探しています...',
     );
 
+    const roomId =
+      roomKey.trim();
+
+    const roomRef =
+      doc(db, 'rooms', roomId);
+
+    const guestPlayerRef =
+      doc(
+        db,
+        'rooms',
+        roomId,
+        'players',
+        'guest',
+      );
+
+    const guestPrivatePlayerRef =
+      doc(
+        db,
+        'rooms',
+        roomId,
+        'privatePlayers',
+        'guest',
+      );
+
     try {
-      // Firebase匿名認証
-      const currentUser = await ensureAnonymousAuth();
+      const currentUser =
+        await ensureAnonymousAuth();
 
-      // =====================================================
-      // ゲスト参加をTransaction化
-      //
-      // 「空いている場合だけguestUidを取得する」
-      // 「同時にplayers/guestを作成する」
-      //
-      // を一つの原子的処理にする。
-      // =====================================================
+      const now =
+        Date.now();
 
-      await runTransaction(db, async (transaction) => {
-        const roomSnap = await transaction.get(roomRef);
+      const result =
+        await runTransaction(
+          db,
+          async (transaction) => {
+            const roomSnap =
+              await transaction.get(
+                roomRef,
+              );
 
-        if (!roomSnap.exists()) {
-          throw new Error('ROOM_NOT_FOUND');
-        }
+            if (
+              !roomSnap.exists()
+            ) {
+              throw new Error(
+                'ROOM_NOT_FOUND',
+              );
+            }
 
-        const roomData =
-          roomSnap.data() as Record<string, any>;
+            const roomData =
+              roomSnap.data() as RoomRecord;
 
-        // 古いルームなら削除
-        if (isStageStale(roomData)) {
-          transaction.delete(roomRef);
-          transaction.delete(guestPlayerRef);
+            // -------------------------------------------------
+            // 明示的に閉じられたRoom
+            // → 元ユーザーでも再入室不可
+            // -------------------------------------------------
 
-          throw new Error('ROOM_STALE');
-        }
+            if (
+              roomData.roomClosed ===
+              true
+            ) {
+              throw new Error(
+                'ROOM_CLOSED',
+              );
+            }
 
-        // ===================================================
-        // 自分自身のルームには参加できない
-        // ===================================================
+            // -------------------------------------------------
+            // Host本人がGuestとして入ろうとしている
+            // -------------------------------------------------
 
-        if (
-          roomData.hostUid &&
-          roomData.hostUid === currentUser.uid
-        ) {
-          throw new Error('SELF_JOIN');
-        }
+            if (
+              roomData.hostUid &&
+              roomData.hostUid ===
+                currentUser.uid
+            ) {
+              throw new Error(
+                'SELF_JOIN',
+              );
+            }
 
-        // ===================================================
-        // すでにゲストがいる場合
-        // ===================================================
+            // -------------------------------------------------
+            // 同じGuest本人の一時離脱
+            // → 対戦状態を維持して再入室
+            // -------------------------------------------------
 
-        if (
-          roomData.guestJoined === true ||
-          roomData.guestUid
-        ) {
-          throw new Error('ROOM_FULL');
-        }
+            if (
+              roomData.guestUid ===
+              currentUser.uid
+            ) {
+              transaction.update(
+                roomRef,
+                {
+                  guestJoined:
+                    true,
 
-        const now = Date.now();
+                  guestRejoinedAt:
+                    now,
 
-        // ===================================================
-        // Room側のゲスト参加状態
-        // ===================================================
+                  guestLastSeenAt:
+                    now,
+                },
+              );
 
-        transaction.update(roomRef, {
-          guestUid: currentUser.uid,
-          guestJoined: true,
-          guestRejoinedAt: now,
-          guestLastSeenAt: now,
-        });
+              return {
+                mode:
+                  'rejoined' as const,
+              };
+            }
 
-        // ===================================================
-        // Guest Player
-        //
-        // GameBoard側でキャラクター・デッキ等を設定する。
-        // ===================================================
+            // -------------------------------------------------
+            // 同じGuest以外はstale Roomへ参加不可
+            // stale Roomは新しいHostが引き継ぐ。
+            // -------------------------------------------------
 
-        transaction.set(guestPlayerRef, {
-          uid: currentUser.uid,
-          role: 'guest',
+            if (
+              roomData.guestJoined ===
+                false ||
+              !roomData.guestUid
+            ) {
+              const hostPlayerRef =
+                doc(
+                  db,
+                  'rooms',
+                  roomId,
+                  'players',
+                  'host',
+                );
 
-          joined: true,
-          ready: false,
+              const guestExistingPlayerRef =
+                doc(
+                  db,
+                  'rooms',
+                  roomId,
+                  'players',
+                  'guest',
+                );
 
-          createdAt: now,
-          lastSeenAt: now,
+              const hostPlayerSnap =
+                await transaction.get(
+                  hostPlayerRef,
+                );
 
-          // GameBoardで後から設定する領域
-          avatars: [],
-          deck: [],
-          hand: [],
-          usedSkills: {},
-        });
-      });
+              const guestPlayerSnap =
+                await transaction.get(
+                  guestExistingPlayerRef,
+                );
+
+              const hostPlayerData =
+                hostPlayerSnap.exists()
+                  ? (hostPlayerSnap.data() as PlayerRecord)
+                  : null;
+
+              const guestPlayerData =
+                guestPlayerSnap.exists()
+                  ? (guestPlayerSnap.data() as PlayerRecord)
+                  : null;
+
+              if (
+                isStageStale(
+                  roomData,
+                  hostPlayerData,
+                  guestPlayerData,
+                )
+              ) {
+                throw new Error(
+                  'ROOM_STALE',
+                );
+              }
+            }
+
+            // -------------------------------------------------
+            // すでにGuestがいる
+            // -------------------------------------------------
+
+            if (
+              roomData.guestJoined ===
+                true ||
+              roomData.guestUid
+            ) {
+              throw new Error(
+                'ROOM_FULL',
+              );
+            }
+
+            // -------------------------------------------------
+            // 新しいGuestとして参加
+            // -------------------------------------------------
+
+            transaction.update(
+              roomRef,
+              {
+                guestUid:
+                  currentUser.uid,
+
+                guestJoined:
+                  true,
+
+                guestRejoinedAt:
+                  now,
+
+                guestLastSeenAt:
+                  now,
+              },
+            );
+
+            return {
+              mode:
+                'joined' as const,
+            };
+          },
+        );
+
+      // -------------------------------------------------------
+      // 新規Guest時だけPlayerを初期化。
+      // 再入室時は既存状態を維持する。
+      // -------------------------------------------------------
+
+      if (
+        result.mode ===
+        'joined'
+      ) {
+        await resetPlayerForNewStage(
+          guestPlayerRef,
+          currentUser.uid,
+          'guest',
+          now,
+        );
+
+        await resetPrivatePlayerForNewStage(
+          guestPrivatePlayerRef,
+          currentUser.uid,
+        );
+      }
 
       setIsLoading(false);
 
-      // ゲストとして対戦開始
-      onMatchStart(roomId, false);
-
+      onMatchStart(
+        roomId,
+        false,
+      );
     } catch (err) {
-      console.error('Join Room Error:', err);
+      console.error(
+        'Join Room Error:',
+        err,
+      );
 
       setIsLoading(false);
 
-      if (err instanceof Error) {
-        switch (err.message) {
+      if (
+        err instanceof Error
+      ) {
+        switch (
+          err.message
+        ) {
           case 'ROOM_NOT_FOUND':
-          case 'ROOM_STALE':
             setStatusMessage(
               '❌ 一致するステージが見つかりません。合言葉を確認してください。',
             );
             return;
 
+          case 'ROOM_CLOSED':
+            setStatusMessage(
+              '❌ このステージは終了しています。新しいステージを作成してください。',
+            );
+            return;
+
+          case 'ROOM_STALE':
+            setStatusMessage(
+              '❌ このステージは放置されているため、新しいホストによる再利用待ちです。',
+            );
+            return;
+
           case 'SELF_JOIN':
             setStatusMessage(
-              '❌ 自分で作成したステージには参加できません。別のプレイヤーに参加してもらってください。',
+              '❌ 自分で作成したステージには参加できません。作成側から再入室してください。',
             );
             return;
 
@@ -427,9 +1068,14 @@ export default function FriendMatchSetup({
             <input
               type="text"
               value={roomKey}
-              onChange={(e) => setRoomKey(e.target.value)}
+              onChange={(e) =>
+                setRoomKey(e.target.value)
+              }
               placeholder="例: ともだち"
-              disabled={isLoading || isWaitingForGuest}
+              disabled={
+                isLoading ||
+                isWaitingForGuest
+              }
               className="w-full px-3 py-2 border rounded-xl text-sm bg-white text-gray-900 focus:ring-2 focus:ring-indigo-500"
             />
           </div>
@@ -440,7 +1086,9 @@ export default function FriendMatchSetup({
               disabled={isLoading}
               className="w-full py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white font-bold rounded-xl text-sm transition cursor-pointer disabled:opacity-50"
             >
-              {isLoading ? '作成中...' : 'ステージを作成'}
+              {isLoading
+                ? '確認中...'
+                : 'ステージを作成'}
             </button>
           ) : (
             <div className="text-center py-4 space-y-2">
@@ -478,7 +1126,9 @@ export default function FriendMatchSetup({
             <input
               type="text"
               value={roomKey}
-              onChange={(e) => setRoomKey(e.target.value)}
+              onChange={(e) =>
+                setRoomKey(e.target.value)
+              }
               placeholder="例: ともだち"
               disabled={isLoading}
               className="w-full px-3 py-2 border rounded-xl text-sm bg-white text-gray-900 focus:ring-2 focus:ring-emerald-500"
@@ -490,7 +1140,9 @@ export default function FriendMatchSetup({
             disabled={isLoading}
             className="w-full py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white font-bold rounded-xl text-sm transition cursor-pointer disabled:opacity-50"
           >
-            {isLoading ? '検索中...' : 'ステージに入る'}
+            {isLoading
+              ? '検索中...'
+              : 'ステージに入る'}
           </button>
 
           <button
@@ -523,7 +1175,9 @@ export default function FriendMatchSetup({
 
             <div className="flex space-x-2 pt-2">
               <button
-                onClick={() => setShowConfirmModal(false)}
+                onClick={() =>
+                  setShowConfirmModal(false)
+                }
                 className="flex-1 py-2 bg-gray-100 hover:bg-gray-200 text-gray-700 font-bold text-xs rounded-xl transition cursor-pointer"
               >
                 いいえ

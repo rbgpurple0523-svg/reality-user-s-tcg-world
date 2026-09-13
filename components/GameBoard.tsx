@@ -517,7 +517,13 @@ export default function GameBoard({ roomId = '', isHost = true, onEditDeck }: Ga
   // 二重実行されないようにする。
   const rematchPlayerResetInProgressRef =
     useRef(false);
-  const addLog = (message: string) => setLog((prev) => [...prev,message,]);
+
+// Room終了時のホーム遷移が
+// onSnapshotの複数回発火で重複しないようにする。
+const roomCloseRedirectRef =
+  useRef<number | null>(null);
+
+  const addLog = (message: string) => setLog((prev) => [...prev, message]);
 
   // ===== CPU用一時デッキを自動構築 =====
   // 6人の正式な仮キャラから3人をランダム選出し、35種の仮サポートから
@@ -1202,6 +1208,37 @@ export default function GameBoard({ roomId = '', isHost = true, onEditDeck }: Ga
         const data =
           snapshot.data() as Record<string, any>;
 
+
+    // ===================================================
+    // 明示的な退出によるRoom終了
+    // ===================================================
+
+    if (data.roomClosed === true) {
+      const otherExited =
+        playerRole === 'host'
+          ? data.exitGuest === true
+          : data.exitHost === true;
+
+      const message = otherExited
+        ? '相手が退出しました。この対戦は終了しました。ホームへ戻ります。'
+        : 'この対戦を終了しました。ホームへ戻ります。';
+
+      setBattlePhase('waiting');
+      setWaitingMessage(message);
+
+      if (
+        roomCloseRedirectRef.current === null
+      ) {
+        roomCloseRedirectRef.current =
+          window.setTimeout(() => {
+            window.location.assign('/');
+          }, 1200);
+      }
+
+      return;
+    }
+
+
         currentRoomData = data;
 
         // ===================================================
@@ -1439,6 +1476,26 @@ export default function GameBoard({ roomId = '', isHost = true, onEditDeck }: Ga
           setWaitingMessage('');
         }
 
+if (data.roomClosed === true) {
+  const otherExited =
+    playerRole === 'host'
+      ? data.exitGuest === true
+      : data.exitHost === true;
+
+  const message = otherExited
+    ? '相手が退出しました。この対戦は終了しました。ホームへ戻ります。'
+    : 'この対戦を終了しました。ホームへ戻ります。';
+
+  setBattlePhase('waiting');
+  setWaitingMessage(message);
+
+  window.setTimeout(() => {
+    window.location.assign('/');
+  }, 1200);
+
+  return;
+}
+
         if (
           data.exitHost &&
           data.exitGuest
@@ -1654,19 +1711,31 @@ if (
         },
       );
 
-    return () => {
-      unsubscribeRoom();
-      unsubscribeMyPlayer();
-      unsubscribeMyPrivatePlayer();
-      unsubscribeOpponentPlayer();
-    };
-  }, [
+return () => {
+  unsubscribeRoom();
+  unsubscribeMyPlayer();
+  unsubscribeMyPrivatePlayer();
+  unsubscribeOpponentPlayer();
+
+  if (roomCloseRedirectRef.current !== null) {
+    window.clearTimeout(
+      roomCloseRedirectRef.current,
+    );
+    roomCloseRedirectRef.current = null;
+  }
+};
+
+  }, 
+
+[
     roomId,
     playerRole,
     opponentRole,
     authReady,
     isOnline,
-  ]);
+]
+
+);
 
   // =========================================================
   // ===== 初回ルーム状態の作成 =====
@@ -5181,11 +5250,17 @@ const handleUseSupportCard = async (
           ? playerRole === 'host' ? 'rematchHost' : 'rematchGuest'
           : playerRole === 'host' ? 'exitHost' : 'exitGuest';
 
-        if (choice === 'exit' && otherChoice) {
-          transaction.delete(roomRef);
-          return { bothExited: true, otherChoice: true };
-        }
+if (choice === 'exit') {
+  transaction.update(roomRef, {
+    [field]: true,
+    roomClosed: true,
+  });
 
+  return {
+    bothExited: false,
+    otherChoice,
+  };
+}
         transaction.update(roomRef, { [field]: true });
         return { bothExited: false, otherChoice };
       });
