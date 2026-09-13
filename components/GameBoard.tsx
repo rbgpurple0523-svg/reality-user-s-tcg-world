@@ -1033,11 +1033,17 @@ const roomCloseRedirectRef =
     if (!roomId || !authReady || !myPlayerRef) return;
 
     const writeHeartbeat = () => {
-      void updateDoc(myPlayerRef, {
-        lastSeenAt: Date.now(),
-        joined: true,
-      }).catch(() => undefined);
-    };
+  // 技のAPI送信中は、同じPlayerドキュメントへの
+  // 書き込み競合を避けるためハートビートを一時停止する。
+  if (skillSubmitInProgressRef.current) {
+    return;
+  }
+
+  void updateDoc(myPlayerRef, {
+    lastSeenAt: Date.now(),
+    joined: true,
+  }).catch(() => undefined);
+};
 
     writeHeartbeat();
 
