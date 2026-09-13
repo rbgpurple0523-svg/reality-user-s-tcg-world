@@ -1218,6 +1218,9 @@ export async function POST(
               usedSkills:
                 nextUsedSkills,
 
+              battleStateVersion:
+                actorBattleStateVersion + 1,
+
               lastSkillActionId:
                 actionId,
 
@@ -1232,6 +1235,10 @@ export async function POST(
             {
               avatars:
                 opponentAvatars,
+
+              battleStateVersion:
+                opponentBattleStateVersion + 1,
+
             },
           );
 
