@@ -968,15 +968,6 @@ const hostPresenceRef =
     'host',
   );
 
-const guestPresenceRef =
-  doc(
-    db,
-    'rooms',
-    roomId,
-    'presence',
-    'guest',
-  );
-
 const hostPresenceSnap =
   await transaction.get(
     hostPresenceRef,
