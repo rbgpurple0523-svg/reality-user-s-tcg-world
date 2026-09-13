@@ -299,11 +299,6 @@ const guestPresenceRef = doc(
                   createdAt:
                     now,
 
-                  hostLastSeenAt:
-                    now,
-
-                  guestLastSeenAt:
-                    0,
                 },
               );
 
@@ -418,12 +413,7 @@ transaction.set(
                   createdAt:
                     now,
 
-                  hostLastSeenAt:
-                    now,
-
-                  guestLastSeenAt:
-                    0,
-                },
+                 },
               );
 
 transaction.set(
@@ -466,8 +456,6 @@ transaction.set(
                   hostRejoinedAt:
                     now,
 
-                  hostLastSeenAt:
-                    now,
                 },
               );
 
@@ -621,11 +609,6 @@ const stale =
                 createdAt:
                   now,
 
-                hostLastSeenAt:
-                  now,
-
-                guestLastSeenAt:
-                  0,
               },
             );
 
@@ -900,8 +883,6 @@ const guestPresenceRef = doc(
                   guestRejoinedAt:
                     now,
 
-                  guestLastSeenAt:
-                    now,
                 },
               );
 
@@ -941,23 +922,6 @@ transaction.set(
               !roomData.guestUid
             ) {
 
-              const hostPlayerRef =
-                doc(
-                  db,
-                  'rooms',
-                  roomId,
-                  'players',
-                  'host',
-                );
-
-              const guestExistingPlayerRef =
-                doc(
-                  db,
-                  'rooms',
-                  roomId,
-                  'players',
-                  'guest',
-                );
 
 const hostPresenceRef =
   doc(
@@ -1035,8 +999,6 @@ transaction.update(
     guestRejoinedAt:
       now,
 
-    guestLastSeenAt:
-      now,
   },
 );
 

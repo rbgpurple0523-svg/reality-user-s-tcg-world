@@ -1012,8 +1012,7 @@ const myPresenceRef = useMemo(
           handCount: initialSupportState.hand.length,
           deckCount: initialSupportState.deck.length,
 
-          lastSeenAt: Date.now(),
-        });
+       });
 
       } catch (error) {
         console.error(
@@ -1035,26 +1034,21 @@ const myPresenceRef = useMemo(
     myPlayerRef,
   ]);
 
-  // =========================================================
-  // ===== ステージ在席確認（ハートビート） =====
-  // =========================================================
-  //
-  // 現行：
-  //   rooms/{roomId}.hostLastSeenAt / guestLastSeenAt
-  //
-  // 今回：
-  //   rooms/{roomId}/players/{playerRole}.lastSeenAt
-  //
-  // Room本体の所有権情報は変更せず、
-  // 「現在このプレイヤーが生きている」という情報だけ
-  // Playerへ移す。
-  // =========================================================
-
+// =========================================================
+// ===== ステージ在席確認（ハートビート） =====
+// =========================================================
+//
+// 現在：
+//   rooms/{roomId}/presence/{playerRole}.lastSeenAt
+//
+// Room本体の対戦状態・所有権情報とは分離して、
+// 「現在このプレイヤーが接続している」という情報だけ
+// Presenceへ保存する。
+// =========================================================
 useEffect(() => {
   if (
     !roomId ||
     !authReady ||
-    !myPlayerRef ||
     !myPresenceRef
   ) {
     return;
@@ -1102,7 +1096,6 @@ void setDoc(
 }, [
   roomId,
   authReady,
-  myPlayerRef,
   myPresenceRef,
   playerRole,
 ]);
@@ -1113,7 +1106,7 @@ void setDoc(
 // =========================================================
 //
 // Host / Guest の両方で同じ処理を行う。
-// 相手PlayerのlastSeenAtが30秒以上更新されなければ、
+// 相手PresenceのlastSeenAtが30秒以上更新されなければ、
 // 一時的な通信断・ページ離脱の可能性として警告する。
 //
 // 「退出する」を選択した場合のみRoomを正式終了する。
@@ -2123,9 +2116,7 @@ useEffect(() => {
 
             deckCount:
               nextDeck.length,
-
-            lastSeenAt:
-              Date.now(),
+          
           },
         );
 
@@ -3454,8 +3445,6 @@ const handleIncomingActionRef =
             avatars:
               nextMyAvatars,
       
-            lastSeenAt:
-              Date.now(),
           },
         ).catch((error) => {
           console.error(
@@ -4218,9 +4207,6 @@ if (
 
         deckCount:
           nextSupportState.deck.length,
-
-        lastSeenAt:
-          Date.now(),
 
         // 旧構造の秘密情報を削除
         hand:
@@ -5713,9 +5699,7 @@ if (choice === 'exit') {
                   lastSupportActionAt:
                     deleteField(),
 
-                  lastSeenAt:
-                    Date.now(),
-
+            
                   // 旧Player構造の秘密情報が残っていた場合も削除
                   hand:
                     deleteField(),
@@ -5970,8 +5954,7 @@ if (choice === 'exit') {
         avatars: loaded,
         deckId,
         joined: true,
-        lastSeenAt: Date.now(),
-      },
+       },
     );
   
     const readyField =
