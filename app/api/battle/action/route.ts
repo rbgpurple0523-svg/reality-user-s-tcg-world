@@ -113,6 +113,8 @@ type PlayerData = {
   lastSkillActionId?: string;
 
   lastSkillAction?: LastSkillAction;
+
+  battleStateVersion?: number;
 };
 
 type RoomData = {
@@ -907,6 +909,19 @@ export async function POST(
           const opponentData =
             opponentSnapshot.data() as PlayerData;
 
+
+          const actorBattleStateVersion =
+            Number(
+              actorData.battleStateVersion ?? 0,
+            );
+
+          const opponentBattleStateVersion =
+            Number(
+              opponentData.battleStateVersion ?? 0,
+            );
+
+
+
           if (
             actorData.uid &&
             actorData.uid !== authUid
@@ -951,6 +966,12 @@ export async function POST(
               opponentAvatars:
                 opponentData.avatars ??
                 [],
+
+
+              actorBattleStateVersion,
+              opponentBattleStateVersion,
+
+
             };
           }
 
@@ -1235,6 +1256,12 @@ export async function POST(
             actorAvatars,
 
             opponentAvatars,
+
+
+            actorBattleStateVersion,
+            opponentBattleStateVersion,
+
+
           };
         },
       );
