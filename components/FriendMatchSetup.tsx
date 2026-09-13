@@ -20,6 +20,12 @@ type PlayerRole = 'host' | 'guest';
 type RoomRecord = Record<string, unknown>;
 type PlayerRecord = Record<string, unknown>;
 
+type PresenceRecord = {
+  uid?: string;
+  role?: PlayerRole;
+  lastSeenAt?: number;
+};
+
 export default function FriendMatchSetup({
   onMatchStart,
   onBack,
@@ -36,46 +42,34 @@ export default function FriendMatchSetup({
   const [isWaitingForGuest, setIsWaitingForGuest] =
     useState<boolean>(false);
 
-  // ===== 放置ステージの判定 =====
-  const STALE_STAGE_MS = 60 * 1000;
+// ===== 放置ステージの判定 =====
+const STALE_STAGE_MS = 60 * 1000;
 
-  const isStageStale = (
-    roomData: RoomRecord,
-    hostPlayerData: PlayerRecord | null,
-    guestPlayerData: PlayerRecord | null,
-  ) => {
-    const now = Date.now();
+const isStageStale = (
+  roomData: RoomRecord,
+  hostPresenceData: PresenceRecord | null,
+  guestPresenceData: PresenceRecord | null,
+) => {
+  const now = Date.now();
 
-    const hostSeen = Number(
-      hostPlayerData?.lastSeenAt ?? 0,
-    );
+  const hostSeen = Number(
+    hostPresenceData?.lastSeenAt ?? 0,
+  );
 
-    const guestSeen = Number(
-      guestPlayerData?.lastSeenAt ?? 0,
-    );
+  const guestSeen = Number(
+    guestPresenceData?.lastSeenAt ?? 0,
+  );
 
-    const createdAt = Number(
-      roomData.createdAt ?? 0,
-    );
+  const hostStale =
+    !hostSeen ||
+    now - hostSeen > STALE_STAGE_MS;
 
-    if (hostSeen || guestSeen) {
-      const hostStale =
-        !hostSeen ||
-        now - hostSeen > STALE_STAGE_MS;
+  const guestStale =
+    !guestSeen ||
+    now - guestSeen > STALE_STAGE_MS;
 
-      const guestStale =
-        !guestSeen ||
-        now - guestSeen > STALE_STAGE_MS;
-
-      return hostStale && guestStale;
-    }
-
-    // 旧バージョンのルーム
-    return (
-      createdAt > 0 &&
-      now - createdAt > STALE_STAGE_MS
-    );
-  };
+  return hostStale && guestStale;
+};
 
   const resetPlayerForNewStage = async (
     playerRef: ReturnType<typeof doc>,
@@ -180,6 +174,22 @@ export default function FriendMatchSetup({
       'players',
       'guest',
     );
+
+const hostPresenceRef = doc(
+  db,
+  'rooms',
+  roomId,
+  'presence',
+  'host',
+);
+
+const guestPresenceRef = doc(
+  db,
+  'rooms',
+  roomId,
+  'presence',
+  'guest',
+);
 
     const hostPrivatePlayerRef = doc(
       db,
@@ -446,32 +456,36 @@ export default function FriendMatchSetup({
             // Player情報を取得してstale判定
             // -------------------------------------------------
 
-            const hostPlayerSnap =
-              await transaction.get(
-                hostPlayerRef,
-              );
+const hostPresenceSnap =
+  await transaction.get(
+    hostPresenceRef,
+  );
 
-            const guestPlayerSnap =
-              await transaction.get(
-                guestPlayerRef,
-              );
+const guestPresenceSnap =
+  await transaction.get(
+    guestPresenceRef,
+  );
 
-            const hostPlayerData =
-              hostPlayerSnap.exists()
-                ? (hostPlayerSnap.data() as PlayerRecord)
-                : null;
+const hostPresenceData =
+  hostPresenceSnap.exists()
+    ? (
+        hostPresenceSnap.data() as PresenceRecord
+      )
+    : null;
 
-            const guestPlayerData =
-              guestPlayerSnap.exists()
-                ? (guestPlayerSnap.data() as PlayerRecord)
-                : null;
+const guestPresenceData =
+  guestPresenceSnap.exists()
+    ? (
+        guestPresenceSnap.data() as PresenceRecord
+      )
+    : null;
 
-            const stale =
-              isStageStale(
-                roomData,
-                hostPlayerData,
-                guestPlayerData,
-              );
+const stale =
+  isStageStale(
+    roomData,
+    hostPresenceData,
+    guestPresenceData,
+  );
 
             if (!stale) {
               throw new Error(
@@ -838,6 +852,7 @@ export default function FriendMatchSetup({
                 false ||
               !roomData.guestUid
             ) {
+
               const hostPlayerRef =
                 doc(
                   db,
@@ -856,37 +871,59 @@ export default function FriendMatchSetup({
                   'guest',
                 );
 
-              const hostPlayerSnap =
-                await transaction.get(
-                  hostPlayerRef,
-                );
+const hostPresenceRef =
+  doc(
+    db,
+    'rooms',
+    roomId,
+    'presence',
+    'host',
+  );
 
-              const guestPlayerSnap =
-                await transaction.get(
-                  guestExistingPlayerRef,
-                );
+const guestPresenceRef =
+  doc(
+    db,
+    'rooms',
+    roomId,
+    'presence',
+    'guest',
+  );
 
-              const hostPlayerData =
-                hostPlayerSnap.exists()
-                  ? (hostPlayerSnap.data() as PlayerRecord)
-                  : null;
+const hostPresenceSnap =
+  await transaction.get(
+    hostPresenceRef,
+  );
 
-              const guestPlayerData =
-                guestPlayerSnap.exists()
-                  ? (guestPlayerSnap.data() as PlayerRecord)
-                  : null;
+const guestPresenceSnap =
+  await transaction.get(
+    guestPresenceRef,
+  );
 
-              if (
-                isStageStale(
-                  roomData,
-                  hostPlayerData,
-                  guestPlayerData,
-                )
-              ) {
-                throw new Error(
-                  'ROOM_STALE',
-                );
-              }
+const hostPresenceData =
+  hostPresenceSnap.exists()
+    ? (
+        hostPresenceSnap.data() as PresenceRecord
+      )
+    : null;
+
+const guestPresenceData =
+  guestPresenceSnap.exists()
+    ? (
+        guestPresenceSnap.data() as PresenceRecord
+      )
+    : null;
+
+if (
+  isStageStale(
+    roomData,
+    hostPresenceData,
+    guestPresenceData,
+  )
+) {
+  throw new Error(
+    'ROOM_STALE',
+  );
+}
             }
 
             // -------------------------------------------------

@@ -6,46 +6,32 @@ service cloud.firestore {
     match /rooms/{roomId} {
 
 function isStageStale() {
-  let now =
-    request.time.toMillis();
+  let now = request.time.toMillis();
 
   let hostLastSeen =
     exists(
-      /databases/$(database)/documents/rooms/$(roomId)/players/host
+      /databases/$(database)/documents/rooms/$(roomId)/presence/host
     )
       ? get(
-          /databases/$(database)/documents/rooms/$(roomId)/players/host
+          /databases/$(database)/documents/rooms/$(roomId)/presence/host
         ).data.lastSeenAt
       : 0;
 
   let guestLastSeen =
     exists(
-      /databases/$(database)/documents/rooms/$(roomId)/players/guest
+      /databases/$(database)/documents/rooms/$(roomId)/presence/guest
     )
       ? get(
-          /databases/$(database)/documents/rooms/$(roomId)/players/guest
+          /databases/$(database)/documents/rooms/$(roomId)/presence/guest
         ).data.lastSeenAt
       : 0;
 
-  let createdAt =
-    resource.data.createdAt is number
-      ? resource.data.createdAt
-      : 0;
-
   return
-    (
-      (hostLastSeen == 0 || now - hostLastSeen > 60000)
-      &&
-      (guestLastSeen == 0 || now - guestLastSeen > 60000)
-    )
-    ||
-    (
-      hostLastSeen == 0
-      && guestLastSeen == 0
-      && createdAt > 0
-      && now - createdAt > 60000
-    );
+    (hostLastSeen == 0 || now - hostLastSeen > 60000)
+    &&
+    (guestLastSeen == 0 || now - guestLastSeen > 60000);
 }
+
 
 function isStageTakeover() {
   return
