@@ -1141,11 +1141,12 @@ useEffect(() => {
     return;
   }
 
-  const opponentRef = doc(
+const opponentPresenceRef =
+  doc(
     db,
     'rooms',
     roomId,
-    'players',
+    'presence',
     opponentRole,
   );
 
@@ -1155,7 +1156,7 @@ useEffect(() => {
   const CHECK_INTERVAL_MS = 5 * 1000;
 
   const unsubscribe = onSnapshot(
-    opponentRef,
+    opponentPresenceRef,
     (snapshot) => {
       if (!snapshot.exists()) {
         opponentLastSeenAt = 0;
