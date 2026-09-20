@@ -5368,6 +5368,207 @@ const handleUseSupportCard = async (
 // Host / Guest の両方で使用する。
 // =========================================================
 
+// =========================================================
+// ===== Room終了・削除
+// =========================================================
+//
+// ① Roomをclosed状態にする
+// ② closedになったRoom一式を削除する
+//
+// 明示退出・切断時の退出で共通利用する。
+// =========================================================
+
+const deleteRoomData = async () => {
+  if (
+    !isOnline ||
+    !roomId ||
+    !authReady
+  ) {
+    return;
+  }
+
+  const currentUser =
+    await ensureAnonymousAuth();
+
+  const roomRef =
+    doc(
+      db,
+      'rooms',
+      roomId,
+    );
+
+  const hostPlayerRef =
+    doc(
+      db,
+      'rooms',
+      roomId,
+      'players',
+      'host',
+    );
+
+  const guestPlayerRef =
+    doc(
+      db,
+      'rooms',
+      roomId,
+      'players',
+      'guest',
+    );
+
+  const hostPrivatePlayerRef =
+    doc(
+      db,
+      'rooms',
+      roomId,
+      'privatePlayers',
+      'host',
+    );
+
+  const guestPrivatePlayerRef =
+    doc(
+      db,
+      'rooms',
+      roomId,
+      'privatePlayers',
+      'guest',
+    );
+
+  const hostPresenceRef =
+    doc(
+      db,
+      'rooms',
+      roomId,
+      'presence',
+      'host',
+    );
+
+  const guestPresenceRef =
+    doc(
+      db,
+      'rooms',
+      roomId,
+      'presence',
+      'guest',
+    );
+
+  // =======================================================
+  // ① Roomを閉鎖状態へ変更
+  // =======================================================
+
+  await runTransaction(
+    db,
+    async (transaction) => {
+      const roomSnapshot =
+        await transaction.get(
+          roomRef,
+        );
+
+      if (
+        !roomSnapshot.exists()
+      ) {
+        return;
+      }
+
+      const roomData =
+        roomSnapshot.data() as Record<
+          string,
+          unknown
+        >;
+
+      const isRoomMember =
+        roomData.hostUid ===
+          currentUser.uid ||
+        roomData.guestUid ===
+          currentUser.uid;
+
+      if (!isRoomMember) {
+        throw new Error(
+          'ROOM_CLOSE_NOT_ALLOWED',
+        );
+      }
+
+      const exitField =
+        playerRole === 'host'
+          ? 'exitHost'
+          : 'exitGuest';
+
+      transaction.update(
+        roomRef,
+        {
+          [exitField]:
+            true,
+
+          roomClosed:
+            true,
+        },
+      );
+    },
+  );
+
+  // =======================================================
+  // ② 閉鎖済みRoom一式を削除
+  // =======================================================
+
+  await runTransaction(
+    db,
+    async (transaction) => {
+      const roomSnapshot =
+        await transaction.get(
+          roomRef,
+        );
+
+      if (
+        !roomSnapshot.exists()
+      ) {
+        return;
+      }
+
+      const roomData =
+        roomSnapshot.data() as Record<
+          string,
+          unknown
+        >;
+
+      if (
+        roomData.roomClosed !==
+        true
+      ) {
+        throw new Error(
+          'ROOM_IS_NOT_CLOSED',
+        );
+      }
+
+      transaction.delete(
+        hostPlayerRef,
+      );
+
+      transaction.delete(
+        guestPlayerRef,
+      );
+
+      transaction.delete(
+        hostPrivatePlayerRef,
+      );
+
+      transaction.delete(
+        guestPrivatePlayerRef,
+      );
+
+      transaction.delete(
+        hostPresenceRef,
+      );
+
+      transaction.delete(
+        guestPresenceRef,
+      );
+
+      transaction.delete(
+        roomRef,
+      );
+    },
+  );
+};
+
 const exitBecauseOpponentDisconnected =
   async () => {
     if (
@@ -5468,46 +5669,68 @@ const exitBecauseOpponentDisconnected =
 
     const roomRef = doc(db, 'rooms', roomId);
 
+if (choice === 'exit') {
+  try {
+    await deleteRoomData();
+
+    setRematchChoice('exit');
+
+    setWaitingMessage(
+      '対戦を終了しました。ホームへ戻ります。',
+    );
+
+    setBattlePhase('waiting');
+
+    if (
+      roomCloseRedirectRef.current ===
+      null
+    ) {
+      roomCloseRedirectRef.current =
+        window.setTimeout(() => {
+          window.location.assign('/');
+        }, 1200);
+    }
+
+    return;
+  } catch (error) {
+    console.error(
+      '再戦終了・Room削除エラー:',
+      error,
+    );
+
+    addLog(
+      '⚠️ 対戦終了処理に失敗しました。',
+    );
+
+    return;
+  }
+}
+
     try {
       const result = await runTransaction(db, async (transaction) => {
         const snapshot = await transaction.get(roomRef);
         if (!snapshot.exists()) throw new Error('ステージが終了しています。');
         const data = snapshot.data();
         const otherRole: PlayerRole = playerRole === 'host' ? 'guest' : 'host';
-        const otherChoice = choice === 'rematch'
-          ? Boolean(data[otherRole === 'host' ? 'rematchHost' : 'rematchGuest'])
-          : Boolean(data[otherRole === 'host' ? 'exitHost' : 'exitGuest']);
+const otherChoice = Boolean(
+  data[
+    otherRole === 'host'
+      ? 'rematchHost'
+      : 'rematchGuest'
+  ],
+);
 
-        const field = choice === 'rematch'
-          ? playerRole === 'host' ? 'rematchHost' : 'rematchGuest'
-          : playerRole === 'host' ? 'exitHost' : 'exitGuest';
+const field =
+  playerRole === 'host'
+    ? 'rematchHost'
+    : 'rematchGuest';
 
-if (choice === 'exit') {
-  transaction.update(roomRef, {
-    [field]: true,
-    roomClosed: true,
-  });
-
-  return {
-    bothExited: false,
-    otherChoice,
-  };
-}
         transaction.update(roomRef, { [field]: true });
-        return { bothExited: false, otherChoice };
+        return { otherChoice };
       });
 
-      setRematchChoice(choice);
 
-      if (choice === 'exit') {
-        if (result.bothExited) {
-          setWaitingMessage('両者が退出を選択しました。このステージでのゲームは終了しました。合言葉は解放されました。');
-          setBattlePhase('waiting');
-        } else {
-          addLog('退出するを選択しました。');
-        }
-        return;
-      }
+      setRematchChoice(choice);
 
       if (result.otherChoice) {
         const message = playerRole === 'host'

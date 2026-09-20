@@ -37,11 +37,7 @@ function isStageTakeover() {
   return
     request.auth != null
     &&
-    (
-      resource.data.roomClosed == true
-      ||
-      isStageStale()
-    )
+    isStageStale()
     &&
     request.resource.data.hostUid
       == request.auth.uid
@@ -1051,7 +1047,16 @@ allow update: if request.auth != null
     )
   );
 
-    allow delete: if false;
+    allow delete: if
+  request.auth != null
+  &&
+  resource.data.roomClosed == true
+  &&
+  (
+    resource.data.hostUid == request.auth.uid
+    ||
+    resource.data.guestUid == request.auth.uid
+  );
 
       match /players/{playerRole} {
         allow read: if request.auth != null;
@@ -1363,7 +1368,22 @@ allow update: if request.auth != null
     && request.resource.data.pendingAction.supportCardConsumed == true
   )
 );
-        allow delete: if false;
+        allow delete: if
+  request.auth != null
+  &&
+  get(
+    /databases/$(database)/documents/rooms/$(roomId)
+  ).data.roomClosed == true
+  &&
+  (
+    get(
+      /databases/$(database)/documents/rooms/$(roomId)
+    ).data.hostUid == request.auth.uid
+    ||
+    get(
+      /databases/$(database)/documents/rooms/$(roomId)
+    ).data.guestUid == request.auth.uid
+  );
       }
 
 
@@ -1402,7 +1422,22 @@ allow create: if
       'lastSeenAt'
     ]);
 
-  allow delete: if false;
+  allow delete: if
+  request.auth != null
+  &&
+  get(
+    /databases/$(database)/documents/rooms/$(roomId)
+  ).data.roomClosed == true
+  &&
+  (
+    get(
+      /databases/$(database)/documents/rooms/$(roomId)
+    ).data.hostUid == request.auth.uid
+    ||
+    get(
+      /databases/$(database)/documents/rooms/$(roomId)
+    ).data.guestUid == request.auth.uid
+  );
 }
 
 
@@ -1497,8 +1532,22 @@ allow update: if request.auth != null
     )
   );
 
-  // 削除は禁止
-  allow delete: if false;
+  allow delete: if
+  request.auth != null
+  &&
+  get(
+    /databases/$(database)/documents/rooms/$(roomId)
+  ).data.roomClosed == true
+  &&
+  (
+    get(
+      /databases/$(database)/documents/rooms/$(roomId)
+    ).data.hostUid == request.auth.uid
+    ||
+    get(
+      /databases/$(database)/documents/rooms/$(roomId)
+    ).data.guestUid == request.auth.uid
+  );
 }
     }
   }
