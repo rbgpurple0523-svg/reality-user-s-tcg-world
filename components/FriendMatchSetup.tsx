@@ -193,13 +193,22 @@ const guestPresenceRef = doc(
   'guest',
 );
 
-    const hostPrivatePlayerRef = doc(
-      db,
-      'rooms',
-      roomId,
-      'privatePlayers',
-      'host',
-    );
+const hostPrivatePlayerRef = doc(
+  db,
+  'rooms',
+  roomId,
+  'privatePlayers',
+  'host',
+);
+
+const guestPrivatePlayerRef = doc(
+  db,
+  'rooms',
+  roomId,
+  'privatePlayers',
+  'guest',
+);
+
 
     try {
       const currentUser =
@@ -530,6 +539,15 @@ const stale =
             // -------------------------------------------------
             // stale Roomを新しいHostとして再利用
             // -------------------------------------------------
+
+transaction.delete(hostPlayerRef);
+transaction.delete(guestPlayerRef);
+
+transaction.delete(hostPrivatePlayerRef);
+transaction.delete(guestPrivatePlayerRef);
+
+transaction.delete(hostPresenceRef);
+transaction.delete(guestPresenceRef);
 
             transaction.set(
               roomRef,
