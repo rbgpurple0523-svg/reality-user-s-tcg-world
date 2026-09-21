@@ -5,12 +5,18 @@ import CardGenerator from '@/components/CardGenerator';
 import SupportCardGenerator from '@/components/SupportCardGenerator';
 import DeckBuilder from '@/components/DeckBuilder';
 import GameBoard from '@/components/GameBoard';
-import EntryHub from '@/components/EntryHub';
+import EntryHub, {
+  COORDINATE_PRESETS,
+  type CoordinatePreset,
+} from '@/components/EntryHub';
+import { EMOTION_PRESETS, type EmotionPreset } from '@/components/emotionPresets';
 import FriendMatchSetup from '@/components/FriendMatchSetup';
 
 type CurrentView =
   | 'menu'
   | 'cardRegisterSelect'
+  | 'coordinateSelect'
+  | 'emotionSelect'
   | 'cardGen'
   | 'supportGen'
   | 'entryHub'
@@ -22,7 +28,16 @@ type CurrentView =
 export default function Home() {
   const [currentView, setCurrentView] = useState<CurrentView>('menu');
   const [editingDeckId, setEditingDeckId] = useState<string | null>(null);
-  const [deckBuilderReturnView, setDeckBuilderReturnView] = useState<CurrentView>('menu');
+  const [deckBuilderReturnView, setDeckBuilderReturnView] =
+    useState<CurrentView>('menu');
+
+  // ===== カード登録時の選択状態 =====
+  // 選択するのは公式マスターデータ上のプリセットのみ。
+  const [selectedCoordinate, setSelectedCoordinate] =
+    useState<CoordinatePreset | null>(null);
+
+  const [selectedEmotion, setSelectedEmotion] =
+    useState<EmotionPreset | null>(null);
 
   // ===== CPU対戦への共通遷移 =====
   // DeckBuilderからもメニューと同じ遷移先を使います。
@@ -36,7 +51,9 @@ export default function Home() {
   const handleEditDeck = (deckId: string) => {
     setEditingDeckId(deckId);
     setDeckBuilderReturnView(
-      currentView === 'friendGameBoard' ? 'friendGameBoard' : 'gameBoard'
+      currentView === 'friendGameBoard'
+        ? 'friendGameBoard'
+        : 'gameBoard',
     );
     setCurrentView('deckBuilder');
   };
@@ -63,7 +80,35 @@ export default function Home() {
     setIsHostPlayer(false);
     setEditingDeckId(null);
     setDeckBuilderReturnView('menu');
+
+    setSelectedCoordinate(null);
+    setSelectedEmotion(null);
+
     setCurrentView('menu');
+  };
+
+  // ===== キャラカード登録開始 =====
+  const handleStartCharacterRegistration = () => {
+    setSelectedCoordinate(null);
+    setCurrentView('coordinateSelect');
+  };
+
+  // ===== サポートカード登録開始 =====
+  const handleStartSupportRegistration = () => {
+    setSelectedEmotion(null);
+    setCurrentView('emotionSelect');
+  };
+
+  // ===== コーデ選択確定 =====
+  const handleSelectCoordinate = (coordinate: CoordinatePreset) => {
+    setSelectedCoordinate(coordinate);
+    setCurrentView('cardGen');
+  };
+
+  // ===== エモーション選択確定 =====
+  const handleSelectEmotion = (emotion: EmotionPreset) => {
+    setSelectedEmotion(emotion);
+    setCurrentView('supportGen');
   };
 
   return (
@@ -99,6 +144,7 @@ export default function Home() {
               <h2 className="text-3xl font-extrabold text-gray-900">
                 REALITY TCG WORLD
               </h2>
+
               <p className="text-sm text-gray-600">
                 あなたの分身となるアバターをカードにして、世界に参加しよう！
               </p>
@@ -120,6 +166,7 @@ export default function Home() {
                     <div className="font-bold text-indigo-900 group-hover:text-indigo-950 text-base">
                       自分のアバターをカードにしよう
                     </div>
+
                     <span className="text-lg">→</span>
                   </div>
 
@@ -144,6 +191,7 @@ export default function Home() {
                     <div className="font-bold text-gray-900 group-hover:text-indigo-700 text-sm">
                       みんなのカードを見てみる
                     </div>
+
                     <span className="text-sm">→</span>
                   </div>
 
@@ -189,6 +237,7 @@ export default function Home() {
                     <div className="font-bold text-emerald-900 text-sm">
                       CPUと対戦する
                     </div>
+
                     <div className="text-xs text-emerald-700">
                       AIを相手にシングルプレイバトル
                     </div>
@@ -201,6 +250,7 @@ export default function Home() {
                     <div className="font-bold text-emerald-900 group-hover:text-emerald-950 text-sm">
                       友達と対戦する
                     </div>
+
                     <div className="text-xs text-emerald-700">
                       合言葉を使ってリアルタイム対戦
                     </div>
@@ -215,6 +265,7 @@ export default function Home() {
                     <div className="font-bold text-gray-700 text-sm">
                       世界のだれかと対戦する
                     </div>
+
                     <div className="text-xs text-gray-400">
                       オンラインマッチ (予定)
                     </div>
@@ -245,11 +296,12 @@ export default function Home() {
             <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
               {/* キャラカード */}
               <button
-                onClick={() => setCurrentView('cardGen')}
+                onClick={handleStartCharacterRegistration}
                 className="group bg-white border-2 border-gray-200 hover:border-indigo-400 hover:bg-indigo-50 rounded-2xl p-6 text-left transition shadow-sm hover:shadow-md cursor-pointer"
               >
                 <div className="flex items-center justify-between mb-5">
                   <span className="text-4xl">🧑‍🎤</span>
+
                   <span className="text-indigo-500 text-xl group-hover:translate-x-1 transition">
                     →
                   </span>
@@ -269,6 +321,7 @@ export default function Home() {
                   <div className="text-xs font-bold text-gray-800">
                     ゲームでは…
                   </div>
+
                   <ul className="text-xs text-gray-600 space-y-1">
                     <li>・ステータスを持って戦う</li>
                     <li>・季節によって能力が変化</li>
@@ -277,17 +330,18 @@ export default function Home() {
                 </div>
 
                 <div className="mt-5 text-sm font-bold text-indigo-700">
-                  キャラカードを作る →
+                  コーデを選ぶ →
                 </div>
               </button>
 
               {/* サポートカード */}
               <button
-                onClick={() => setCurrentView('supportGen')}
+                onClick={handleStartSupportRegistration}
                 className="group bg-white border-2 border-gray-200 hover:border-emerald-400 hover:bg-emerald-50 rounded-2xl p-6 text-left transition shadow-sm hover:shadow-md cursor-pointer"
               >
                 <div className="flex items-center justify-between mb-5">
                   <span className="text-4xl">💫</span>
+
                   <span className="text-emerald-500 text-xl group-hover:translate-x-1 transition">
                     →
                   </span>
@@ -307,6 +361,7 @@ export default function Home() {
                   <div className="text-xs font-bold text-gray-800">
                     ゲームでは…
                   </div>
+
                   <ul className="text-xs text-gray-600 space-y-1">
                     <li>・デッキに入れて使用する</li>
                     <li>・キャラの力を引き出す</li>
@@ -315,7 +370,7 @@ export default function Home() {
                 </div>
 
                 <div className="mt-5 text-sm font-bold text-emerald-700">
-                  サポートカードを作る →
+                  エモーションを選ぶ →
                 </div>
               </button>
             </div>
@@ -331,11 +386,199 @@ export default function Home() {
           </div>
         )}
 
+        {/* ===== コーデ選択 ===== */}
+        {currentView === 'coordinateSelect' && (
+          <div className="max-w-5xl w-full space-y-6">
+            <div className="text-center space-y-3">
+              <div className="text-4xl">👕</div>
+
+              <h2 className="text-3xl font-extrabold text-gray-900">
+                あなたのコーデを選ぼう
+              </h2>
+
+              <p className="text-sm text-gray-600 leading-relaxed">
+                コーデによって、キャラカードの個性や得意な方向が変わります。
+                <br />
+                あなたのアバターに合いそうなものを選んでみましょう。
+              </p>
+            </div>
+
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+              {COORDINATE_PRESETS.map((coordinate) => (
+                <button
+                  key={coordinate.id}
+                  onClick={() => handleSelectCoordinate(coordinate)}
+                  className="group bg-white border border-gray-200 hover:border-indigo-400 hover:bg-indigo-50 rounded-2xl p-5 text-left transition shadow-sm hover:shadow-md cursor-pointer"
+                >
+                  <div className="flex items-start justify-between gap-3">
+                    <div>
+                      <div className="text-xs font-bold text-indigo-600 mb-1">
+                        コーデ {coordinate.code.toUpperCase()}
+                      </div>
+
+                      <h3 className="font-extrabold text-gray-900 group-hover:text-indigo-800">
+                        {coordinate.name}
+                      </h3>
+                    </div>
+
+                    <span className="text-gray-400 group-hover:text-indigo-500 group-hover:translate-x-1 transition">
+                      →
+                    </span>
+                  </div>
+
+                  <div className="mt-4 rounded-xl bg-gray-50 group-hover:bg-white p-3">
+                    <div className="text-xs font-bold text-gray-700 mb-1">
+                      特徴
+                    </div>
+
+                    <div className="text-sm font-bold text-gray-900">
+                      {coordinate.tendency}
+                    </div>
+                  </div>
+
+                  <div className="mt-3 text-xs text-gray-500">
+                    {coordinate.archetype}
+                  </div>
+
+                  <div className="mt-3 text-xs text-gray-600 line-clamp-2">
+                    {coordinate.skillDescriptions[0]}
+                  </div>
+
+                  <div className="mt-4 text-xs font-bold text-indigo-700">
+                    このコーデを見る →
+                  </div>
+                </button>
+              ))}
+            </div>
+
+            <div className="flex justify-center gap-3">
+              <button
+                onClick={() => setCurrentView('cardRegisterSelect')}
+                className="px-5 py-2.5 text-sm font-bold text-gray-500 hover:text-gray-800 transition cursor-pointer"
+              >
+                ← カードの種類を選び直す
+              </button>
+
+              <button
+                onClick={() => setCurrentView('menu')}
+                className="px-5 py-2.5 text-sm font-bold text-gray-500 hover:text-gray-800 transition cursor-pointer"
+              >
+                ホームへ
+              </button>
+            </div>
+          </div>
+        )}
+
+        {/* ===== エモーション選択 ===== */}
+        {currentView === 'emotionSelect' && (
+          <div className="max-w-5xl w-full space-y-6">
+            <div className="text-center space-y-3">
+              <div className="text-4xl">✨</div>
+
+              <h2 className="text-3xl font-extrabold text-gray-900">
+                あなたのエモーションを選ぼう
+              </h2>
+
+              <p className="text-sm text-gray-600 leading-relaxed">
+                エモーションによって、キャラをどう支えるかが変わります。
+                <br />
+                あなたのアバターらしい関わり方を選んでみましょう。
+              </p>
+            </div>
+
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+              {EMOTION_PRESETS.map((emotion) => (
+                <button
+                  key={emotion.id}
+                  onClick={() => handleSelectEmotion(emotion)}
+                  className="group bg-white border border-gray-200 hover:border-emerald-400 hover:bg-emerald-50 rounded-2xl p-5 text-left transition shadow-sm hover:shadow-md cursor-pointer"
+                >
+                  <div className="flex items-start justify-between gap-3">
+                    <div>
+                      <div className="text-xs font-bold text-emerald-600 mb-1">
+                        EMOTION
+                      </div>
+
+                      <h3 className="font-extrabold text-gray-900 group-hover:text-emerald-800">
+                        {emotion.name}
+                      </h3>
+                    </div>
+
+                    <span className="text-gray-400 group-hover:text-emerald-500 group-hover:translate-x-1 transition">
+                      →
+                    </span>
+                  </div>
+
+                  <div className="mt-4 flex flex-wrap gap-2">
+                    <span className="text-[11px] font-bold bg-gray-100 text-gray-700 px-2 py-1 rounded-full">
+                      {emotion.target}
+                    </span>
+
+                    <span className="text-[11px] font-bold bg-gray-100 text-gray-700 px-2 py-1 rounded-full">
+                      {emotion.effectCategory}
+                    </span>
+
+                    <span className="text-[11px] font-bold bg-gray-100 text-gray-700 px-2 py-1 rounded-full">
+                      {emotion.duration}
+                    </span>
+                  </div>
+
+                  <div className="mt-4 rounded-xl bg-gray-50 group-hover:bg-white p-3">
+                    <div className="text-xs font-bold text-gray-700 mb-1">
+                      こんなサポート
+                    </div>
+
+                    <div className="text-xs text-gray-600 leading-relaxed">
+                      {emotion.description}
+                    </div>
+                  </div>
+
+                  <div className="mt-4 text-xs font-bold text-emerald-700">
+                    このエモーションを選ぶ →
+                  </div>
+                </button>
+              ))}
+            </div>
+
+            <div className="flex justify-center gap-3">
+              <button
+                onClick={() => setCurrentView('cardRegisterSelect')}
+                className="px-5 py-2.5 text-sm font-bold text-gray-500 hover:text-gray-800 transition cursor-pointer"
+              >
+                ← カードの種類を選び直す
+              </button>
+
+              <button
+                onClick={() => setCurrentView('menu')}
+                className="px-5 py-2.5 text-sm font-bold text-gray-500 hover:text-gray-800 transition cursor-pointer"
+              >
+                ホームへ
+              </button>
+            </div>
+          </div>
+        )}
+
         {/* ===== キャラカード登録 ===== */}
-        {currentView === 'cardGen' && <CardGenerator />}
+        {currentView === 'cardGen' && (
+          <CardGenerator
+            selectedCoordinate={selectedCoordinate}
+            onBackToHub={() => {
+              setSelectedCoordinate(null);
+              setCurrentView('coordinateSelect');
+            }}
+          />
+        )}
 
         {/* ===== サポートカード登録 ===== */}
-        {currentView === 'supportGen' && <SupportCardGenerator />}
+        {currentView === 'supportGen' && (
+          <SupportCardGenerator
+            selectedEmotion={selectedEmotion}
+            onBackToHub={() => {
+              setSelectedEmotion(null);
+              setCurrentView('emotionSelect');
+            }}
+          />
+        )}
 
         {/* ===== カード一覧 ===== */}
         {currentView === 'entryHub' && <EntryHub />}
@@ -345,7 +588,9 @@ export default function Home() {
           <DeckBuilder
             initialDeckId={editingDeckId}
             onGoToCpuBattle={
-              editingDeckId ? handleReturnFromDeckBuilder : handleStartCpuBattle
+              editingDeckId
+                ? handleReturnFromDeckBuilder
+                : handleStartCpuBattle
             }
             battleButtonLabel={
               editingDeckId ? '⚔️ 対戦へ戻る' : '⚔️ CPU対戦へ'
