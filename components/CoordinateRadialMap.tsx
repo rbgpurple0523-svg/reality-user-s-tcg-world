@@ -21,8 +21,8 @@ const STAT_LABELS: Record<StatKey, string> = {
 };
 
 const RADIAL_CODES = [
-  'd', 'f', 'e', 'c', 'b', 'a',
-  'h', 'g', 'n', 't', 's', 'm',
+  'f', 'd', 'e', 'c', 'b', 'a',
+  'h', 'g', 'n', 't', 'm', 's',
   'o', 'u', 'i', 'k', 'w', 'q',
   'x', 'r', 'v', 'p', 'l', 'j',
 ] as const;
