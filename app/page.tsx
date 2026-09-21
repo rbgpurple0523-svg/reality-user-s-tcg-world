@@ -243,7 +243,7 @@ export default function Home() {
           </span>
 
           <h1 className="text-xl font-extrabold tracking-wider text-indigo-600">
-            REALITY TCG WORLD
+            REALITY USER'S TCG WORLD
           </h1>
         </div>
 
@@ -265,9 +265,9 @@ export default function Home() {
         {currentView === 'menu' && (
           <div className="max-w-2xl w-full space-y-8 text-center">
             <div className="space-y-3">
-              <h2 className="text-3xl font-extrabold text-gray-900">REALITY TCG WORLD</h2>
+              <h2 className="text-3xl font-extrabold text-gray-900">REALITY USER'S TCG WORLD</h2>
               <p className="text-sm text-gray-600">
-                あなたの分身となるアバターをカードにして、ゲームの世界に参加しよう！
+                あなたのREALITYアバターをカードにして、ゲームの世界に参加しよう！
               </p>
             </div>
 
@@ -356,7 +356,7 @@ export default function Home() {
                     </div>
 
                     <div className="text-xs text-emerald-700">
-                      AIを相手にシングルプレイバトル
+                      CPUを相手にシングルプレイバトル
                     </div>
                   </button>
 
@@ -404,85 +404,112 @@ export default function Home() {
         {/* ================================================= */}
         {/* カード種類選択 */}
         {/* ================================================= */}
-        {currentView ===
-          'cardRegisterSelect' && (
-          <div className="w-full max-w-4xl space-y-6">
-            <div className="text-center space-y-2">
-              <div className="text-xs font-black tracking-[0.2em] text-indigo-500">
-                CARD TYPE
-              </div>
+        {/* ===== カード登録：キャラ / サポート選択 ===== */}
+        {currentView === 'cardRegisterSelect' && (
+          <div className="max-w-3xl w-full space-y-8">
+            <div className="text-center space-y-3">
+              <div className="text-4xl">✨</div>
 
-              <h2 className="text-3xl font-black">
-                どちらのカードを作る？
+              <h2 className="text-3xl font-extrabold text-gray-900">
+                どんなカードで参加する？
               </h2>
 
-              <p className="text-sm text-gray-600">
-                キャラカードはアバター自身、
-                サポートカードはゲーム中の応援・感情表現を担当します。
+              <p className="text-sm text-gray-600 leading-relaxed">
+                REALITYアバターは、ゲームの主役にも、
+                <br />
+                仲間を支えるサポートにもなれます。
               </p>
             </div>
 
             <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
+              {/* キャラカード */}
               <button
-                type="button"
-                onClick={
-                  handleStartCharacterRegistrationFromMenu
-                }
-                className="group text-left rounded-3xl border border-indigo-200 bg-indigo-50 hover:bg-indigo-100 p-6 transition shadow-sm"
+                onClick={() => setCurrentView('cardGen')}
+                className="group bg-white border-2 border-gray-200 hover:border-indigo-400 hover:bg-indigo-50 rounded-2xl p-6 text-left transition shadow-sm hover:shadow-md cursor-pointer"
               >
-                <div className="text-5xl">
-                  👤
+                <div className="flex items-center justify-between mb-5">
+                  <span className="text-4xl">🧑‍🎤</span>
+                  <span className="text-indigo-500 text-xl group-hover:translate-x-1 transition">
+                    →
+                  </span>
                 </div>
 
-                <div className="mt-4 text-xs font-black tracking-[0.15em] text-indigo-500">
-                  CHARACTER CARD
-                </div>
-
-                <div className="mt-1 text-2xl font-black text-indigo-950">
+                <h3 className="text-xl font-extrabold text-gray-900 group-hover:text-indigo-800 mb-2">
                   キャラカード
-                </div>
+                </h3>
 
-                <p className="mt-3 text-sm text-indigo-800 leading-relaxed">
-                  あなたのアバターを、
-                  公式コーデ性能に乗せてキャラクターとして登録します。
+                <p className="text-sm text-gray-600 leading-relaxed mb-5">
+                  あなたのアバター自身が、
+                  <br />
+                  ゲームの主役になるカードです。
                 </p>
 
-                <div className="mt-5 inline-flex items-center rounded-xl bg-indigo-600 px-4 py-3 text-xs font-black text-white group-hover:bg-indigo-700">
-                  コーデを選ぶ →
+                <div className="bg-gray-50 group-hover:bg-white rounded-xl p-4 space-y-2">
+                  <div className="text-xs font-bold text-gray-800">
+                    ゲームでは…
+                  </div>
+                  <ul className="text-xs text-gray-600 space-y-1">
+                    <li>・スコアバトルのステージに立ちます</li>
+                    <li>・個性に合わせたステータスと</li>
+                    <li>・4種の技を使って得点を競います</li>
+                  </ul>
+                </div>
+
+                <div className="mt-5 text-sm font-bold text-indigo-700">
+                  キャラカードを作る →
                 </div>
               </button>
 
+              {/* サポートカード */}
               <button
-                type="button"
-                onClick={
-                  handleStartSupportRegistrationFromMenu
-                }
-                className="group text-left rounded-3xl border border-purple-200 bg-purple-50 hover:bg-purple-100 p-6 transition shadow-sm"
+                onClick={() => setCurrentView('supportGen')}
+                className="group bg-white border-2 border-gray-200 hover:border-emerald-400 hover:bg-emerald-50 rounded-2xl p-6 text-left transition shadow-sm hover:shadow-md cursor-pointer"
               >
-                <div className="text-5xl">
-                  ✨
+                <div className="flex items-center justify-between mb-5">
+                  <span className="text-4xl">💫</span>
+                  <span className="text-emerald-500 text-xl group-hover:translate-x-1 transition">
+                    →
+                  </span>
                 </div>
 
-                <div className="mt-4 text-xs font-black tracking-[0.15em] text-purple-500">
-                  SUPPORT CARD
-                </div>
-
-                <div className="mt-1 text-2xl font-black text-purple-950">
+                <h3 className="text-xl font-extrabold text-gray-900 group-hover:text-emerald-800 mb-2">
                   サポートカード
-                </div>
+                </h3>
 
-                <p className="mt-3 text-sm text-purple-800 leading-relaxed">
-                  あなたのエモーションを、
-                  ゲーム中に使える公式効果へ紐づけて登録します。
+                <p className="text-sm text-gray-600 leading-relaxed mb-5">
+                  あなたのアバターが、
+                  <br />
+                  キャラを助けるサポートカードです。
                 </p>
 
-                <div className="mt-5 inline-flex items-center rounded-xl bg-purple-600 px-4 py-3 text-xs font-black text-white group-hover:bg-purple-700">
-                  エモーションを選ぶ →
+                <div className="bg-gray-50 group-hover:bg-white rounded-xl p-4 space-y-2">
+                  <div className="text-xs font-bold text-gray-800">
+                    ゲームでは…
+                  </div>
+                  <ul className="text-xs text-gray-600 space-y-1">
+                    <li>・デッキに入れて使用されます</li>
+                    <li>・キャラの力を引き出したり</li>
+                    <li>・相手に影響を与えることも</li>
+                  </ul>
                 </div>
+
+                <div className="mt-5 text-sm font-bold text-emerald-700">
+                  サポートカードを作る →
+                </div>
+              </button>
+            </div>
+
+            <div className="text-center">
+              <button
+                onClick={() => setCurrentView('menu')}
+                className="px-5 py-2.5 text-sm font-bold text-gray-500 hover:text-gray-800 transition cursor-pointer"
+              >
+                ← ホームに戻る
               </button>
             </div>
           </div>
         )}
+
 
         {/* ================================================= */}
         {/* コーデ選択 */}
@@ -899,7 +926,7 @@ export default function Home() {
       </div>
 
       <footer className="bg-white border-t border-gray-200 py-3 text-center text-xs text-gray-500">
-        REALITY TCG Project &copy; 2026
+        REALITY USER'S TCG Project &copy; 2026
       </footer>
     </main>
   );
