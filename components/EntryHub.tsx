@@ -5,6 +5,7 @@ import CardGenerator from './CardGenerator';
 import SupportCardGenerator from './SupportCardGenerator';
 import { EMOTION_PRESETS } from './emotionPresets';
 import type { EmotionPreset } from './emotionPresets';
+import CoordinateRadialMap from './CoordinateRadialMap';
 
 // =========================================================
 // 型定義
@@ -1262,571 +1263,54 @@ export default function EntryHub({
       {/* ===================================================== */}
       {/* コーデ枠 */}
       {/* ===================================================== */}
-      {libraryMode ===
-        'coordinate' && (
-        <section className="bg-white rounded-3xl border border-gray-200 shadow-sm overflow-hidden">
-          <div className="p-6 border-b border-gray-200">
-            <div className="flex flex-col md:flex-row md:items-start md:justify-between gap-4">
-              <div>
-                <div className="text-xs font-black tracking-[0.15em] text-indigo-500">
-                  CHARACTER CARDS
-                </div>
-
-                <h2 className="mt-1 text-2xl font-black">
-                  コーデ一覧
-                </h2>
-
-                <p className="mt-2 text-xs text-gray-500 leading-relaxed">
-                  コーデ性能は公式マスターで固定されています。
-                  ここでは枠を確認し、選んだコーデからアバター登録へ進みます。
-                </p>
-              </div>
-
-              {onStartCharacterRegistration && (
-                <button
-                  type="button"
-                  onClick={() =>
-                    onStartCharacterRegistration()
-                  }
-                  className="shrink-0 px-4 py-3 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-black transition"
-                >
-                  ＋ キャラカードを登録する
-                </button>
-              )}
-            </div>
+{libraryMode === 'coordinate' && (
+  <section className="bg-white rounded-3xl border border-gray-200 shadow-sm overflow-hidden">
+    <div className="p-6 border-b border-gray-200">
+      <div className="flex flex-col md:flex-row md:items-start md:justify-between gap-4">
+        <div>
+          <div className="text-xs font-black tracking-[0.15em] text-indigo-500">
+            CHARACTER CARDS
           </div>
 
-          <div className="p-6 space-y-6">
-            <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
-              <div className="rounded-xl bg-indigo-50 border border-indigo-100 p-3 text-center">
-                <div className="text-[10px] text-indigo-500 font-bold">
-                  総枠
-                </div>
-                <div className="text-xl font-black text-indigo-900">
-                  {COORDINATE_PRESETS.length}
-                </div>
-              </div>
+          <h2 className="mt-1 text-2xl font-black">
+            コーデ一覧
+          </h2>
 
-              <div className="rounded-xl bg-green-50 border border-green-100 p-3 text-center">
-                <div className="text-[10px] text-green-600 font-bold">
-                  空きあり
-                </div>
-                <div className="text-xl font-black text-green-900">
-                  {
-                    COORDINATE_PRESETS.filter(
-                      (preset) =>
-                        getEntryCount(
-                          preset.id,
-                        ) <
-                        maxEntryLimit,
-                    ).length
-                  }
-                </div>
-              </div>
+          <p className="mt-2 text-xs text-gray-500 leading-relaxed">
+            中央の均等型を基準に、
+            4ステータスの順位による24種類のコーデを放射状に配置しています。
+          </p>
+        </div>
 
-              <div className="rounded-xl bg-red-50 border border-red-100 p-3 text-center">
-                <div className="text-[10px] text-red-600 font-bold">
-                  満員
-                </div>
-                <div className="text-xl font-black text-red-900">
-                  {
-                    COORDINATE_PRESETS.filter(
-                      (preset) =>
-                        getEntryCount(
-                          preset.id,
-                        ) >=
-                        maxEntryLimit,
-                    ).length
-                  }
-                </div>
-              </div>
+        {onStartCharacterRegistration && (
+          <button
+            type="button"
+            onClick={() =>
+              onStartCharacterRegistration()
+            }
+            className="shrink-0 px-4 py-3 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-black transition"
+          >
+            ＋ キャラカードを登録する
+          </button>
+        )}
+      </div>
+    </div>
 
-              <div className="rounded-xl bg-gray-50 border border-gray-200 p-3 text-center">
-                <div className="text-[10px] text-gray-500 font-bold">
-                  現在の上限
-                </div>
-                <div className="text-xl font-black text-gray-900">
-                  {maxEntryLimit}人
-                </div>
-              </div>
-            </div>
-
-            <div className="p-4 bg-gray-50 rounded-2xl border border-gray-200 flex flex-wrap gap-3 items-center text-xs">
-              <span className="font-black">
-                🔍 絞り込み
-              </span>
-
-              <input
-                value={
-                  coordSearchFilter
-                }
-                onChange={(e) =>
-                  setCoordSearchFilter(
-                    e.target.value,
-                  )
-                }
-                placeholder="a〜y / 傾向で検索"
-                className="px-3 py-2.5 border border-gray-200 rounded-xl bg-white min-w-52 outline-none focus:border-indigo-400"
-              />
-
-              <select
-                value={
-                  coordArchetypeFilter
-                }
-                onChange={(e) =>
-                  setCoordArchetypeFilter(
-                    e.target.value,
-                  )
-                }
-                className="px-3 py-2.5 border border-gray-200 rounded-xl bg-white"
-              >
-                <option value="ALL">
-                  タイプ：すべて
-                </option>
-                <option value="マッスル型">
-                  マッスル型
-                </option>
-                <option value="頭脳型">
-                  頭脳型
-                </option>
-                <option value="ディーバ型">
-                  ディーバ型
-                </option>
-                <option value="職人型">
-                  職人型
-                </option>
-              </select>
-            </div>
-
-            <div className="overflow-x-auto rounded-2xl border border-gray-200">
-              <div className="min-w-[760px]">
-                <div className="grid grid-cols-5 bg-indigo-50 text-[10px] font-black text-indigo-900">
-                  <div className="p-3">
-                    1位 ＼ 2位
-                  </div>
-
-                  {(
-                    [
-                      'hp',
-                      'intellect',
-                      'dexterity',
-                      'charm',
-                    ] as StatKey[]
-                  ).map((key) => (
-                    <div
-                      key={key}
-                      className="p-3 text-center"
-                    >
-                      {
-                        STAT_LABELS[
-                          key
-                        ]
-                      }
-                    </div>
-                  ))}
-                </div>
-
-                {coordinateMatrix.map(
-                  (row) => (
-                    <div
-                      key={
-                        row.primary
-                      }
-                      className="grid grid-cols-5 border-t border-gray-200"
-                    >
-                      <div className="p-3 bg-gray-50 text-[10px] font-black">
-                        {
-                          STAT_LABELS[
-                            row.primary
-                          ]
-                        }
-                      </div>
-
-                      {row.cells.map(
-                        (
-                          cell,
-                          index,
-                        ) => (
-                          <div
-                            key={`${row.primary}-${index}`}
-                            className="min-h-24 border-l border-gray-200 p-1.5 space-y-1"
-                          >
-                            {cell.map(
-                              (
-                                coordinate,
-                              ) => {
-                                const count =
-                                  getEntryCount(
-                                    coordinate.id,
-                                  );
-
-                                const isFull =
-                                  count >=
-                                  maxEntryLimit;
-
-                                return (
-                                  <button
-                                    key={
-                                      coordinate.id
-                                    }
-                                    type="button"
-                                    disabled={
-                                      isFull
-                                    }
-                                    onClick={() => {
-                                      if (
-                                        !isFull
-                                      ) {
-                                        setActiveGenerator(
-                                          {
-                                            type: 'coordinate',
-                                            preset:
-                                              coordinate,
-                                          },
-                                        );
-                                      }
-                                    }}
-                                    className={`w-full rounded-xl border px-2 py-2 text-left text-[9px] transition ${
-                                      isFull
-                                        ? 'border-gray-200 bg-gray-100 text-gray-400 cursor-not-allowed'
-                                        : 'border-indigo-100 bg-white hover:border-indigo-400 hover:bg-indigo-50'
-                                    }`}
-                                  >
-                                    <div className="font-black text-indigo-900">
-                                      {coordinate.code.toUpperCase()}{' '}
-                                      <span className="font-normal">
-                                        {
-                                          coordinate.tendency
-                                        }
-                                      </span>
-                                    </div>
-
-                                    <div className="text-gray-500 mt-0.5">
-                                      {
-                                        coordinate
-                                          .stats
-                                          .hp
-                                      }
-                                      /
-                                      {
-                                        coordinate
-                                          .stats
-                                          .intellect
-                                      }
-                                      /
-                                      {
-                                        coordinate
-                                          .stats
-                                          .dexterity
-                                      }
-                                      /
-                                      {
-                                        coordinate
-                                          .stats
-                                          .charm
-                                      }
-                                    </div>
-
-                                    <div className="mt-1 font-bold">
-                                      {count}/
-                                      {
-                                        maxEntryLimit
-                                      }
-                                      人
-                                    </div>
-                                  </button>
-                                );
-                              },
-                            )}
-                          </div>
-                        ),
-                      )}
-                    </div>
-                  ),
-                )}
-
-                <div className="border-t border-gray-200 p-2">
-                  {(() => {
-                    const y =
-                      COORDINATE_PRESETS.find(
-                        (
-                          coordinate,
-                        ) =>
-                          coordinate.code ===
-                          'y',
-                      );
-
-                    if (!y) {
-                      return null;
-                    }
-
-                    const count =
-                      getEntryCount(
-                        y.id,
-                      );
-
-                    const isFull =
-                      count >=
-                      maxEntryLimit;
-
-                    return (
-                      <button
-                        type="button"
-                        disabled={
-                          isFull
-                        }
-                        onClick={() => {
-                          if (
-                            !isFull
-                          ) {
-                            setActiveGenerator(
-                              {
-                                type: 'coordinate',
-                                preset:
-                                  y,
-                              },
-                            );
-                          }
-                        }}
-                        className={`w-full rounded-xl border p-3 text-left text-xs transition ${
-                          isFull
-                            ? 'border-gray-200 bg-gray-100 text-gray-400 cursor-not-allowed'
-                            : 'border-purple-200 bg-purple-50 hover:bg-purple-100'
-                        }`}
-                      >
-                        <span className="font-black">
-                          Y
-                        </span>
-                        ：体力＝知略＝器用＝特技
-                        （均等型）
-                        <span className="ml-2 font-bold">
-                          {count}/
-                          {
-                            maxEntryLimit
-                          }
-                          人
-                        </span>
-                      </button>
-                    );
-                  })()}
-                </div>
-              </div>
-            </div>
-
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              {filteredCoordinates.map(
-                (coordinate) => {
-                  const count =
-                    getEntryCount(
-                      coordinate.id,
-                    );
-
-                  const isFull =
-                    count >=
-                    maxEntryLimit;
-
-                  const presetEntries =
-                    entries.filter(
-                      (entry) =>
-                        entry.presetId ===
-                        coordinate.id,
-                    );
-
-                  return (
-                    <article
-                      key={
-                        coordinate.id
-                      }
-                      className="border border-gray-200 rounded-2xl p-5 bg-white shadow-sm space-y-4"
-                    >
-                      <div className="flex justify-between items-start gap-3">
-                        <div>
-                          <span className="text-xs font-black px-2.5 py-1 bg-indigo-100 text-indigo-800 rounded-lg">
-                            {coordinate.code.toUpperCase()}
-                          </span>
-
-                          <h3 className="font-black text-lg mt-2">
-                            {
-                              coordinate.name
-                            }
-                          </h3>
-
-                          <div className="text-[11px] text-indigo-700 font-bold mt-1">
-                            傾向：
-                            {
-                              coordinate.tendency
-                            }
-                          </div>
-                        </div>
-
-                        <span className="text-[10px] font-black text-gray-400">
-                          性能固定
-                        </span>
-                      </div>
-
-                      <div className="text-[11px] bg-gray-50 p-3 rounded-xl border border-gray-200 grid grid-cols-2 gap-2">
-                        <div>
-                          体力：
-                          <b>
-                            {
-                              coordinate
-                                .stats.hp
-                            }
-                          </b>
-                        </div>
-
-                        <div>
-                          知略：
-                          <b>
-                            {
-                              coordinate
-                                .stats
-                                .intellect
-                            }
-                          </b>
-                        </div>
-
-                        <div>
-                          特技：
-                          <b>
-                            {
-                              coordinate
-                                .stats
-                                .charm
-                            }
-                          </b>
-                        </div>
-
-                        <div>
-                          器用：
-                          <b>
-                            {
-                              coordinate
-                                .stats
-                                .dexterity
-                            }
-                          </b>
-                        </div>
-                      </div>
-
-                      <div className="text-[10px] bg-indigo-50/60 p-3 rounded-xl border border-indigo-100 space-y-1.5">
-                        <div className="font-black text-indigo-800">
-                          固定されている4技
-                        </div>
-
-                        {coordinate.defaultSkills.map(
-                          (
-                            skill,
-                            index,
-                          ) => (
-                            <div
-                              key={`${coordinate.id}-skill-${index}`}
-                            >
-                              <span className="font-bold">
-                                技
-                                {index +
-                                  1}{' '}
-                                {skill}
-                              </span>
-
-                              <span className="text-gray-600">
-                                ：
-                                {
-                                  coordinate
-                                    .skillDescriptions[
-                                    index
-                                  ]
-                                }
-                              </span>
-                            </div>
-                          ),
-                        )}
-                      </div>
-
-                      <div className="text-xs space-y-2">
-                        <div className="flex justify-between font-semibold">
-                          <span>
-                            エントリー状況
-                          </span>
-
-                          <span
-                            className={
-                              isFull
-                                ? 'text-red-600'
-                                : 'text-green-600'
-                            }
-                          >
-                            {count} /{' '}
-                            {
-                              maxEntryLimit
-                            }
-                            人
-                            {isFull &&
-                              ' (満員)'}
-                          </span>
-                        </div>
-
-                        {presetEntries.length >
-                          0 && (
-                          <div className="text-[11px] bg-indigo-50 p-3 rounded-xl border border-indigo-100 text-indigo-900">
-                            <div>
-                              👑 先駆者：
-                              <span className="font-black">
-                                {
-                                  presetEntries[0]
-                                    .userName
-                                }
-                              </span>{' '}
-                              さん
-                            </div>
-
-                            <div className="text-gray-500 mt-0.5">
-                              現在{' '}
-                              {
-                                presetEntries.length
-                              }
-                              人がエントリー
-                            </div>
-                          </div>
-                        )}
-                      </div>
-
-                      <button
-                        type="button"
-                        disabled={
-                          isFull
-                        }
-                        onClick={() => {
-                          if (
-                            !isFull
-                          ) {
-                            setActiveGenerator(
-                              {
-                                type: 'coordinate',
-                                preset:
-                                  coordinate,
-                              },
-                            );
-                          }
-                        }}
-                        className={`w-full py-3 rounded-xl text-xs font-black transition ${
-                          isFull
-                            ? 'bg-gray-100 text-gray-400 cursor-not-allowed'
-                            : 'bg-indigo-600 hover:bg-indigo-700 text-white'
-                        }`}
-                      >
-                        {isFull
-                          ? 'エントリー満員'
-                          : 'このコーデからエントリーする'}
-                      </button>
-                    </article>
-                  );
-                },
-              )}
-            </div>
-          </div>
-        </section>
-      )}
+    <div className="p-6">
+      <CoordinateRadialMap
+        coordinates={COORDINATE_PRESETS}
+        entries={entries}
+        maxEntryLimit={maxEntryLimit}
+        onSelect={(coordinate) => {
+          setActiveGenerator({
+            type: 'coordinate',
+            preset: coordinate,
+          });
+        }}
+      />
+    </div>
+  </section>
+)}
 
       {/* ===================================================== */}
       {/* エモーション枠 */}
