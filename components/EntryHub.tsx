@@ -19,7 +19,6 @@ export interface CoordinatePreset {
   id: string;
   code: string;
   name: string;
-  // 既存カード/ゲーム側との互換性のため残す。コーデ性能そのものではない。
   color: CardColor;
   archetype: Archetype;
   season: Season;
@@ -43,28 +42,70 @@ export interface EntryRecord {
   imageDataUrl: string;
   passwordHash: string;
   firstUser: string;
+
+  // 既存サポートカード所有者管理用
   ownerToken?: string;
+
+  // 既存サポートカードのユーザー編集用
   customEffectName?: string;
+
   customSkills?: [string, string, string, string];
   skillDescriptions?: [string, string, string, string];
   color?: CardColor;
   season?: Season;
   archetype?: Archetype;
-  // 既存GameBoardとの互換性のため optional のまま保持。
-  // 新しいCardGeneratorは、性能の正本としてpresetIdを保存する。
+
+  // 既存GameBoardとの互換性
   hp?: number;
   ap?: number;
+
   createdAt: string;
   updatedAt?: string;
 }
 
+interface EntryHubProps {
+  onBackToMenu?: () => void;
+  onGoToDeckBuilder?: () => void;
+  onStartCharacterRegistration?: (
+    preset?: CoordinatePreset,
+  ) => void;
+  onStartSupportRegistration?: (
+    preset?: EmotionPreset,
+  ) => void;
+}
+
+const ENTRIES_KEY = 'reality_world_entries';
+
 // =========================================================
 // コーデ25種（a〜y）
-// 「性能」はここで固定。ユーザーは性能を編集できない。
 // =========================================================
+
 const COORD_CODES = [
-  'a', 'b', 'c', 'd', 'e', 'f', 'g', 'h', 'i', 'j', 'k', 'l', 'm',
-  'n', 'o', 'p', 'q', 'r', 's', 't', 'u', 'v', 'w', 'x', 'y',
+  'a',
+  'b',
+  'c',
+  'd',
+  'e',
+  'f',
+  'g',
+  'h',
+  'i',
+  'j',
+  'k',
+  'l',
+  'm',
+  'n',
+  'o',
+  'p',
+  'q',
+  'r',
+  's',
+  't',
+  'u',
+  'v',
+  'w',
+  'x',
+  'y',
 ] as const;
 
 const STAT_LABELS: Record<StatKey, string> = {
@@ -74,7 +115,6 @@ const STAT_LABELS: Record<StatKey, string> = {
   charm: '特技',
 };
 
-// 各コードの「1位 → 2位 → 3位 → 4位」。
 const STAT_RANKS: Record<string, StatKey[]> = {
   a: ['hp', 'intellect', 'dexterity', 'charm'],
   b: ['hp', 'intellect', 'charm', 'dexterity'],
@@ -103,8 +143,10 @@ const STAT_RANKS: Record<string, StatKey[]> = {
   y: ['hp', 'intellect', 'dexterity', 'charm'],
 };
 
-// 順位をそのまま4段階の数値へ変換。
-const STATS_BY_CODE: Record<string, [number, number, number, number]> = {
+const STATS_BY_CODE: Record<
+  string,
+  [number, number, number, number]
+> = {
   a: [80, 60, 40, 20],
   b: [80, 60, 20, 40],
   c: [80, 40, 60, 20],
@@ -139,7 +181,9 @@ const ARCHETYPE_BY_PRIMARY: Record<StatKey, Archetype> = {
   charm: 'ディーバ型',
 };
 
-const skillNamesFor = (code: string): [string, string, string, string] => {
+const skillNamesFor = (
+  code: string,
+): [string, string, string, string] => {
   if (code === 'y') {
     return [
       'オールラウンド・スコア',
@@ -148,7 +192,9 @@ const skillNamesFor = (code: string): [string, string, string, string] => {
       'オールダウン・クラッシュ',
     ];
   }
+
   const rank = STAT_RANKS[code];
+
   return [
     `${STAT_LABELS[rank[0]]}ブースト`,
     `${STAT_LABELS[rank[2]]}×${STAT_LABELS[rank[3]]}スコア`,
@@ -157,7 +203,9 @@ const skillNamesFor = (code: string): [string, string, string, string] => {
   ];
 };
 
-const skillDescriptionsFor = (code: string): [string, string, string, string] => {
+const skillDescriptionsFor = (
+  code: string,
+): [string, string, string, string] => {
   if (code === 'y') {
     return [
       '総合値×5でスコアを獲得する。',
@@ -166,7 +214,9 @@ const skillDescriptionsFor = (code: string): [string, string, string, string] =>
       '総合値×2でスコアを獲得し、相手の全ステータスを25%減らす（1回のみ）。',
     ];
   }
+
   const rank = STAT_RANKS[code];
+
   return [
     `${STAT_LABELS[rank[0]]}×10でスコアを獲得する。`,
     `${STAT_LABELS[rank[2]]}×${STAT_LABELS[rank[3]]}でスコアを獲得する。`,
@@ -175,442 +225,1412 @@ const skillDescriptionsFor = (code: string): [string, string, string, string] =>
   ];
 };
 
-export const COORDINATE_PRESETS: CoordinatePreset[] = COORD_CODES.map((code) => {
-  const [hp, intellect, dexterity, charm] = STATS_BY_CODE[code];
-  const primary = STAT_RANKS[code][0];
-  return {
-    id: `coord_${code}`,
-    code,
-    name: `コーデ ${code}`,
-    // 既存UI/カード型との互換値。性能計算には使わない。
-    color: '赤',
-    archetype: ARCHETYPE_BY_PRIMARY[primary],
-    season: '春',
-    stats: { hp, intellect, dexterity, charm },
-    defaultSkills: skillNamesFor(code),
-    skillDescriptions: skillDescriptionsFor(code),
-    tendency:
-      code === 'y'
-        ? '体力＝知略＝器用＝特技'
-        : STAT_RANKS[code].map((key) => STAT_LABELS[key]).join(' ＞ '),
-  };
-});
+export const COORDINATE_PRESETS: CoordinatePreset[] =
+  COORD_CODES.map((code) => {
+    const [hp, intellect, dexterity, charm] =
+      STATS_BY_CODE[code];
 
-interface EntryHubProps {
-  onBackToMenu?: () => void;
-}
+    const primary = STAT_RANKS[code][0];
 
-const ENTRIES_KEY = 'reality_world_entries';
-
-export default function EntryHub({ onBackToMenu }: EntryHubProps) {
-  const [activeTab, setActiveTab] = useState<'coordinate' | 'emotion'>('coordinate');
-  const [entries, setEntries] = useState<EntryRecord[]>(() => {
-    if (typeof window === 'undefined') return [];
-    try {
-      const saved = localStorage.getItem(ENTRIES_KEY);
-      return saved ? JSON.parse(saved) : [];
-    } catch {
-      return [];
-    }
+    return {
+      id: `coord_${code}`,
+      code,
+      name: `コーデ ${code}`,
+      color: '赤',
+      archetype:
+        ARCHETYPE_BY_PRIMARY[primary],
+      season: '春',
+      stats: {
+        hp,
+        intellect,
+        dexterity,
+        charm,
+      },
+      defaultSkills:
+        skillNamesFor(code),
+      skillDescriptions:
+        skillDescriptionsFor(code),
+      tendency:
+        code === 'y'
+          ? '体力＝知略＝器用＝特技'
+          : STAT_RANKS[code]
+              .map(
+                (key) => STAT_LABELS[key],
+              )
+              .join(' ＞ '),
+    };
   });
 
-  const [coordSearchFilter, setCoordSearchFilter] = useState('');
-  const [coordArchetypeFilter, setCoordArchetypeFilter] = useState('ALL');
-  const [emoTargetFilter, setEmoTargetFilter] = useState('ALL');
-  const [emoStatFilter, setEmoStatFilter] = useState('ALL');
-  const [emoDurationFilter, setEmoDurationFilter] = useState('ALL');
+export default function EntryHub({
+  onBackToMenu,
+  onGoToDeckBuilder,
+  onStartCharacterRegistration,
+  onStartSupportRegistration,
+}: EntryHubProps) {
+  const [activeTab, setActiveTab] =
+    useState<'coordinate' | 'emotion'>(
+      'coordinate',
+    );
 
-  const [activeGenerator, setActiveGenerator] = useState<{
-    type: 'coordinate' | 'emotion';
-    preset: CoordinatePreset | EmotionPreset;
-  } | null>(null);
+  const [entries, setEntries] =
+    useState<EntryRecord[]>(() => {
+      if (typeof window === 'undefined') {
+        return [];
+      }
+
+      try {
+        const saved =
+          localStorage.getItem(
+            ENTRIES_KEY,
+          );
+        return saved
+          ? JSON.parse(saved)
+          : [];
+      } catch {
+        return [];
+      }
+    });
+
+  const [coordSearchFilter, setCoordSearchFilter] =
+    useState('');
+
+  const [coordArchetypeFilter, setCoordArchetypeFilter] =
+    useState('ALL');
+
+  const [emoTargetFilter, setEmoTargetFilter] =
+    useState('ALL');
+
+  const [emoStatFilter, setEmoStatFilter] =
+    useState('ALL');
+
+  const [emoDurationFilter, setEmoDurationFilter] =
+    useState('ALL');
+
+  const [activeGenerator, setActiveGenerator] =
+    useState<{
+      type: 'coordinate' | 'emotion';
+      preset:
+        | CoordinatePreset
+        | EmotionPreset;
+    } | null>(null);
 
   const reloadEntries = () => {
     try {
-      const saved = localStorage.getItem(ENTRIES_KEY);
-      setEntries(saved ? JSON.parse(saved) : []);
+      const saved =
+        localStorage.getItem(
+          ENTRIES_KEY,
+        );
+
+      setEntries(
+        saved
+          ? JSON.parse(saved)
+          : [],
+      );
     } catch {
       setEntries([]);
     }
   };
 
-  const getEntryCount = (presetId: string) =>
-    entries.filter((entry) => entry.presetId === presetId).length;
+  const getEntryCount = (
+    presetId: string,
+  ) =>
+    entries.filter(
+      (entry) =>
+        entry.presetId ===
+        presetId,
+    ).length;
 
-  const totalPossibleSlots = COORDINATE_PRESETS.length + EMOTION_PRESETS.length;
+  const totalPossibleSlots =
+    COORDINATE_PRESETS.length +
+    EMOTION_PRESETS.length;
 
-  // 「1人以上が登録された枠」の充足率を基準にする。
   const filledPresetCount = useMemo(
     () =>
-      [...COORDINATE_PRESETS, ...EMOTION_PRESETS].filter(
-        (preset) => getEntryCount(preset.id) >= 1,
+      [
+        ...COORDINATE_PRESETS,
+        ...EMOTION_PRESETS,
+      ].filter(
+        (preset) =>
+          getEntryCount(
+            preset.id,
+          ) >= 1,
       ).length,
     [entries],
   );
-  const fillRate = filledPresetCount / Math.max(1, totalPossibleSlots);
 
-  const countAtLeastOneRate = filledPresetCount / Math.max(1, totalPossibleSlots);
-  const countAtLeastTwo = useMemo(
-    () =>
-      [...COORDINATE_PRESETS, ...EMOTION_PRESETS].filter(
-        (preset) => getEntryCount(preset.id) >= 2,
-      ).length,
-    [entries],
-  );
-  const countAtLeastTwoRate = countAtLeastTwo / Math.max(1, totalPossibleSlots);
+  const fillRate =
+    filledPresetCount /
+    Math.max(
+      1,
+      totalPossibleSlots,
+    );
+
+  const countAtLeastOneRate =
+    filledPresetCount /
+    Math.max(
+      1,
+      totalPossibleSlots,
+    );
+
+  const countAtLeastTwo =
+    useMemo(
+      () =>
+        [
+          ...COORDINATE_PRESETS,
+          ...EMOTION_PRESETS,
+        ].filter(
+          (preset) =>
+            getEntryCount(
+              preset.id,
+            ) >= 2,
+        ).length,
+      [entries],
+    );
+
+  const countAtLeastTwoRate =
+    countAtLeastTwo /
+    Math.max(
+      1,
+      totalPossibleSlots,
+    );
 
   const maxEntryLimit =
-    countAtLeastOneRate >= 0.9 && countAtLeastTwoRate >= 0.5
+    countAtLeastOneRate >=
+      0.9 &&
+    countAtLeastTwoRate >=
+      0.5
       ? 3
-      : countAtLeastOneRate >= 0.5
+      : countAtLeastOneRate >=
+          0.5
         ? 2
         : 1;
 
-  const coordinateMatrix = useMemo(() => {
-    const stats: StatKey[] = ['hp', 'intellect', 'dexterity', 'charm'];
-    return stats.map((primary) => ({
-      primary,
-      cells: stats.map((secondary) => {
-        if (primary === secondary) return [];
-        return COORDINATE_PRESETS.filter((coordinate) => {
-          const rank = STAT_RANKS[coordinate.code];
-          return rank[0] === primary && rank[1] === secondary;
-        });
-      }),
-    }));
-  }, []);
+  const totalRegisteredCards =
+    entries.length;
 
-  const filteredCoordinates = useMemo(() => {
-    const q = coordSearchFilter.trim().toLowerCase();
-    return COORDINATE_PRESETS.filter((coordinate) => {
-      const matchSearch =
-        !q ||
-        coordinate.code.includes(q) ||
-        coordinate.name.toLowerCase().includes(q) ||
-        coordinate.tendency.toLowerCase().includes(q);
-      const matchArchetype =
-        coordArchetypeFilter === 'ALL' || coordinate.archetype === coordArchetypeFilter;
-      return matchSearch && matchArchetype;
-    });
-  }, [coordSearchFilter, coordArchetypeFilter]);
+  const availableCoordinateCount =
+    useMemo(
+      () =>
+        COORDINATE_PRESETS.filter(
+          (coordinate) =>
+            getEntryCount(
+              coordinate.id,
+            ) <
+            maxEntryLimit,
+        ).length,
+      [entries, maxEntryLimit],
+    );
 
-  const filteredEmotions = useMemo(
-    () =>
-      EMOTION_PRESETS.filter((emotion) => {
-        const matchTarget = emoTargetFilter === 'ALL' || emotion.target === emoTargetFilter;
-        const matchStat = emoStatFilter === 'ALL' || emotion.effectCategory === emoStatFilter;
-        const matchDuration = emoDurationFilter === 'ALL' || emotion.duration === emoDurationFilter;
-        return matchTarget && matchStat && matchDuration;
-      }),
-    [emoTargetFilter, emoStatFilter, emoDurationFilter],
-  );
+  const availableEmotionCount =
+    useMemo(
+      () =>
+        EMOTION_PRESETS.filter(
+          (emotion) =>
+            getEntryCount(
+              emotion.id,
+            ) <
+            maxEntryLimit,
+        ).length,
+      [entries, maxEntryLimit],
+    );
 
+  const coordinateMatrix =
+    useMemo(() => {
+      const stats: StatKey[] = [
+        'hp',
+        'intellect',
+        'dexterity',
+        'charm',
+      ];
+
+      return stats.map(
+        (primary) => ({
+          primary,
+          cells: stats.map(
+            (secondary) => {
+              if (
+                primary ===
+                secondary
+              ) {
+                return [];
+              }
+
+              return COORDINATE_PRESETS.filter(
+                (coordinate) => {
+                  const rank =
+                    STAT_RANKS[
+                      coordinate.code
+                    ];
+
+                  return (
+                    rank[0] ===
+                      primary &&
+                    rank[1] ===
+                      secondary
+                  );
+                },
+              );
+            },
+          ),
+        }),
+      );
+    }, []);
+
+  const filteredCoordinates =
+    useMemo(() => {
+      const q =
+        coordSearchFilter
+          .trim()
+          .toLowerCase();
+
+      return COORDINATE_PRESETS.filter(
+        (coordinate) => {
+          const matchSearch =
+            !q ||
+            coordinate.code.includes(
+              q,
+            ) ||
+            coordinate.name
+              .toLowerCase()
+              .includes(q) ||
+            coordinate.tendency
+              .toLowerCase()
+              .includes(q);
+
+          const matchArchetype =
+            coordArchetypeFilter ===
+              'ALL' ||
+            coordinate.archetype ===
+              coordArchetypeFilter;
+
+          return (
+            matchSearch &&
+            matchArchetype
+          );
+        },
+      );
+    }, [
+      coordSearchFilter,
+      coordArchetypeFilter,
+    ]);
+
+  const filteredEmotions =
+    useMemo(
+      () =>
+        EMOTION_PRESETS.filter(
+          (emotion) => {
+            const matchTarget =
+              emoTargetFilter ===
+                'ALL' ||
+              emotion.target ===
+                emoTargetFilter;
+
+            const matchStat =
+              emoStatFilter ===
+                'ALL' ||
+              emotion.effectCategory ===
+                emoStatFilter;
+
+            const matchDuration =
+              emoDurationFilter ===
+                'ALL' ||
+              emotion.duration ===
+                emoDurationFilter;
+
+            return (
+              matchTarget &&
+              matchStat &&
+              matchDuration
+            );
+          },
+        ),
+      [
+        emoTargetFilter,
+        emoStatFilter,
+        emoDurationFilter,
+      ],
+    );
+
+  // =========================================================
+  // 生成画面
+  // =========================================================
   if (activeGenerator) {
-    if (activeGenerator.type === 'coordinate') {
+    if (
+      activeGenerator.type ===
+      'coordinate'
+    ) {
       return (
         <CardGenerator
-          selectedCoordinate={activeGenerator.preset as CoordinatePreset}
+          selectedCoordinate={
+            activeGenerator.preset as CoordinatePreset
+          }
           onBackToHub={() => {
             reloadEntries();
-            setActiveGenerator(null);
+            setActiveGenerator(
+              null,
+            );
           }}
         />
       );
     }
+
     return (
       <SupportCardGenerator
-        selectedEmotion={activeGenerator.preset as EmotionPreset}
+        selectedEmotion={
+          activeGenerator.preset as EmotionPreset
+        }
         onBackToHub={() => {
           reloadEntries();
-          setActiveGenerator(null);
+          setActiveGenerator(
+            null,
+          );
         }}
       />
     );
   }
 
   return (
-    <div className="max-w-5xl mx-auto p-6 space-y-6 text-gray-900 bg-gray-50 min-h-screen rounded-2xl">
-      <div className="bg-white p-6 rounded-2xl border border-gray-200 shadow-sm space-y-4">
-        <div className="flex justify-between items-start gap-4">
-          <div>
-            <h1 className="text-2xl font-extrabold">コーデ・エモーション一覧から選んでエントリー</h1>
-            <p className="text-xs text-gray-500 mt-1">
-              公式に用意された性能枠へ、自分のアバターを登録します。性能そのものは編集できません。
-            </p>
+    <div className="w-full max-w-6xl mx-auto p-4 sm:p-6 space-y-6 text-gray-900">
+      {/* ===================================================== */}
+      {/* ヘッダー */}
+      {/* ===================================================== */}
+      <section className="bg-white rounded-3xl border border-gray-200 shadow-sm overflow-hidden">
+        <div className="p-6 sm:p-7 bg-gradient-to-br from-indigo-950 via-indigo-900 to-purple-900 text-white">
+          <div className="flex flex-col gap-5 lg:flex-row lg:items-start lg:justify-between">
+            <div>
+              <div className="text-xs font-black tracking-[0.2em] text-indigo-200">
+                CARD LIBRARY
+              </div>
+
+              <h1 className="mt-2 text-3xl sm:text-4xl font-black">
+                カード一覧
+              </h1>
+
+              <p className="mt-3 max-w-2xl text-sm leading-relaxed text-indigo-100">
+                みんなが登録したアバターカードと、
+                これから参加できる公式性能枠をここで確認できます。
+                気になる枠を見つけたら、そのままアバターエントリーへ進めます。
+              </p>
+            </div>
+
+            <div className="flex flex-wrap gap-2">
+              {onGoToDeckBuilder && (
+                <button
+                  type="button"
+                  onClick={
+                    onGoToDeckBuilder
+                  }
+                  className="px-4 py-3 rounded-xl bg-white text-indigo-900 hover:bg-indigo-50 text-xs font-black shadow-sm transition"
+                >
+                  🃏 デッキを構築する
+                </button>
+              )}
+
+              {onStartCharacterRegistration && (
+                <button
+                  type="button"
+                  onClick={() =>
+                    onStartCharacterRegistration()
+                  }
+                  className="px-4 py-3 rounded-xl bg-indigo-500 hover:bg-indigo-400 text-white text-xs font-black transition border border-indigo-300"
+                >
+                  👤 キャラカードを登録
+                </button>
+              )}
+
+              {onStartSupportRegistration && (
+                <button
+                  type="button"
+                  onClick={() =>
+                    onStartSupportRegistration()
+                  }
+                  className="px-4 py-3 rounded-xl bg-purple-500 hover:bg-purple-400 text-white text-xs font-black transition border border-purple-300"
+                >
+                  ✨ サポートカードを登録
+                </button>
+              )}
+
+              {onBackToMenu && (
+                <button
+                  type="button"
+                  onClick={
+                    onBackToMenu
+                  }
+                  className="px-4 py-3 rounded-xl bg-white/10 hover:bg-white/20 text-white text-xs font-black transition border border-white/20"
+                >
+                  ← メニューへ
+                </button>
+              )}
+            </div>
           </div>
-          {onBackToMenu && (
-            <button
-              type="button"
-              onClick={onBackToMenu}
-              className="px-3 py-2 rounded-lg bg-gray-100 hover:bg-gray-200 text-xs font-bold"
+        </div>
+
+        <div className="grid grid-cols-2 lg:grid-cols-5 gap-3 p-4 bg-gray-50 border-t border-gray-200">
+          <div className="rounded-2xl bg-white border border-gray-200 p-4">
+            <div className="text-[10px] font-bold text-gray-500">
+              登録カード数
+            </div>
+            <div className="mt-1 text-2xl font-black text-gray-900">
+              {totalRegisteredCards}
+            </div>
+          </div>
+
+          <div className="rounded-2xl bg-white border border-gray-200 p-4">
+            <div className="text-[10px] font-bold text-gray-500">
+              コーデ枠
+            </div>
+            <div className="mt-1 text-2xl font-black text-indigo-700">
+              {COORDINATE_PRESETS.length}
+            </div>
+          </div>
+
+          <div className="rounded-2xl bg-white border border-gray-200 p-4">
+            <div className="text-[10px] font-bold text-gray-500">
+              エモーション枠
+            </div>
+            <div className="mt-1 text-2xl font-black text-purple-700">
+              {EMOTION_PRESETS.length}
+            </div>
+          </div>
+
+          <div className="rounded-2xl bg-white border border-gray-200 p-4">
+            <div className="text-[10px] font-bold text-gray-500">
+              現在の上限
+            </div>
+            <div className="mt-1 text-2xl font-black text-emerald-700">
+              {maxEntryLimit}人
+            </div>
+          </div>
+
+          <div className="rounded-2xl bg-white border border-gray-200 p-4 col-span-2 lg:col-span-1">
+            <div className="text-[10px] font-bold text-gray-500">
+              参加可能枠
+            </div>
+            <div className="mt-1 text-sm font-black text-gray-900">
+              コーデ{' '}
+              {
+                availableCoordinateCount
+              }
+              <br />
+              エモーション{' '}
+              {
+                availableEmotionCount
+              }
+            </div>
+          </div>
+        </div>
+
+        <div className="p-4 border-t border-gray-200">
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-2 text-xs">
+            <div className="p-3 rounded-xl border bg-indigo-50 border-indigo-200 text-indigo-800 font-bold text-center">
+              🔓 上限1人
+            </div>
+
+            <div
+              className={`p-3 rounded-xl border text-center ${
+                maxEntryLimit >= 2
+                  ? 'bg-indigo-50 border-indigo-200 text-indigo-800 font-bold'
+                  : 'bg-gray-50 border-gray-200 text-gray-400'
+              }`}
             >
-              ← メニューへ
-            </button>
-          )}
-        </div>
+              🔓 上限2人{' '}
+              {maxEntryLimit >=
+              2
+                ? '✨解放'
+                : '(50%以上で解放)'}
+            </div>
 
-        <div className="grid grid-cols-3 gap-2 pt-2 border-t border-gray-100 text-xs">
-          <div className="p-2 rounded-lg border bg-indigo-50 border-indigo-200 text-indigo-800 font-bold text-center">
-            🔓 上限1人
+            <div
+              className={`p-3 rounded-xl border text-center ${
+                maxEntryLimit >= 3
+                  ? 'bg-purple-50 border-purple-200 text-purple-800 font-bold'
+                  : 'bg-gray-50 border-gray-200 text-gray-400'
+              }`}
+            >
+              🌟 上限3人{' '}
+              {maxEntryLimit >=
+              3
+                ? '✨解放'
+                : '(90%/50%条件で解放)'}
+            </div>
           </div>
-          <div className={`p-2 rounded-lg border text-center ${maxEntryLimit >= 2 ? 'bg-indigo-50 border-indigo-200 text-indigo-800 font-bold' : 'bg-gray-50 text-gray-400'}`}>
-            🔓 上限2人 {maxEntryLimit >= 2 ? '✨解放' : '(50%以上で解放)'}
-          </div>
-          <div className={`p-2 rounded-lg border text-center ${maxEntryLimit >= 3 ? 'bg-purple-50 border-purple-200 text-purple-800 font-bold' : 'bg-gray-50 text-gray-400'}`}>
-            🌟 上限3人 {maxEntryLimit >= 3 ? '✨解放' : '(90%/50%条件で解放)'}
-          </div>
-        </div>
-        <div className="text-xs text-gray-500">
-          現在の枠充足率：<span className="font-bold text-indigo-700">{(fillRate * 100).toFixed(1)}%</span>
-          <span className="ml-3">1人以上：{filledPresetCount}/{totalPossibleSlots}</span>
-          <span className="ml-3">2人以上：{countAtLeastTwo}/{totalPossibleSlots}</span>
-        </div>
-      </div>
 
-      {/* コーデ */}
-      <section className="bg-white rounded-2xl border border-gray-200 shadow-sm overflow-hidden">
+          <div className="mt-3 text-xs text-gray-500">
+            現在の枠充足率：
+            <span className="font-black text-indigo-700">
+              {(fillRate * 100).toFixed(
+                1,
+              )}
+              %
+            </span>
+
+            <span className="ml-3">
+              1人以上：
+              {filledPresetCount}/
+              {totalPossibleSlots}
+            </span>
+
+            <span className="ml-3">
+              2人以上：
+              {countAtLeastTwo}/
+              {totalPossibleSlots}
+            </span>
+          </div>
+        </div>
+      </section>
+
+      {/* ===================================================== */}
+      {/* タブ */}
+      {/* ===================================================== */}
+      <div className="grid grid-cols-2 gap-2">
         <button
           type="button"
-          onClick={() => setActiveTab('coordinate')}
-          className="w-full p-5 bg-indigo-900 text-white flex justify-between items-center text-left font-bold"
+          onClick={() =>
+            setActiveTab(
+              'coordinate',
+            )
+          }
+          className={`rounded-2xl px-4 py-4 text-sm font-black transition border ${
+            activeTab === 'coordinate'
+              ? 'bg-indigo-900 text-white border-indigo-900 shadow-sm'
+              : 'bg-white text-gray-700 border-gray-200 hover:bg-indigo-50'
+          }`}
         >
-          <div>
-            <div className="text-lg">👗 コーデ一覧（キャラカードの性能）</div>
-            <div className="text-xs font-normal text-indigo-200 mt-1">1位ステータス × 2位ステータスの25枠</div>
-          </div>
-          <span className="text-xs">{activeTab === 'coordinate' ? '▼ 開き中' : '▶ 開く'}</span>
+          👤 キャラカード
+          <span className="block mt-1 text-[10px] font-normal opacity-80">
+            コーデ性能
+          </span>
         </button>
 
-        {activeTab === 'coordinate' && (
+        <button
+          type="button"
+          onClick={() =>
+            setActiveTab('emotion')
+          }
+          className={`rounded-2xl px-4 py-4 text-sm font-black transition border ${
+            activeTab === 'emotion'
+              ? 'bg-purple-900 text-white border-purple-900 shadow-sm'
+              : 'bg-white text-gray-700 border-gray-200 hover:bg-purple-50'
+          }`}
+        >
+          ✨ サポートカード
+          <span className="block mt-1 text-[10px] font-normal opacity-80">
+            エモーション性能
+          </span>
+        </button>
+      </div>
+
+      {/* ===================================================== */}
+      {/* コーデ一覧 */}
+      {/* ===================================================== */}
+      {activeTab ===
+        'coordinate' && (
+        <section className="bg-white rounded-3xl border border-gray-200 shadow-sm overflow-hidden">
+          <div className="p-6 border-b border-gray-200">
+            <div className="flex flex-col md:flex-row md:items-start md:justify-between gap-4">
+              <div>
+                <div className="text-xs font-black tracking-[0.15em] text-indigo-500">
+                  CHARACTER CARDS
+                </div>
+
+                <h2 className="mt-1 text-2xl font-black">
+                  コーデ一覧
+                </h2>
+
+                <p className="mt-2 text-xs text-gray-500 leading-relaxed">
+                  コーデ性能は公式マスターで固定されています。
+                  アバター登録時に性能値そのものを編集することはできません。
+                </p>
+              </div>
+
+              {onStartCharacterRegistration && (
+                <button
+                  type="button"
+                  onClick={() =>
+                    onStartCharacterRegistration()
+                  }
+                  className="shrink-0 px-4 py-3 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-black transition"
+                >
+                  ＋ キャラカードを登録する
+                </button>
+              )}
+            </div>
+          </div>
+
           <div className="p-6 space-y-6">
-            <div className="p-4 bg-gray-50 rounded-xl border border-gray-200 flex flex-wrap gap-3 items-center text-xs">
-              <span className="font-bold">🔍 絞り込み</span>
+            <div className="p-4 bg-gray-50 rounded-2xl border border-gray-200 flex flex-wrap gap-3 items-center text-xs">
+              <span className="font-black">
+                🔍 絞り込み
+              </span>
+
               <input
-                value={coordSearchFilter}
-                onChange={(e) => setCoordSearchFilter(e.target.value)}
+                value={
+                  coordSearchFilter
+                }
+                onChange={(e) =>
+                  setCoordSearchFilter(
+                    e.target.value,
+                  )
+                }
                 placeholder="a〜y / 傾向で検索"
-                className="px-3 py-2 border rounded-lg bg-white min-w-52"
+                className="px-3 py-2.5 border border-gray-200 rounded-xl bg-white min-w-52 outline-none focus:border-indigo-400"
               />
+
               <select
-                value={coordArchetypeFilter}
-                onChange={(e) => setCoordArchetypeFilter(e.target.value)}
-                className="px-3 py-2 border rounded-lg bg-white"
+                value={
+                  coordArchetypeFilter
+                }
+                onChange={(e) =>
+                  setCoordArchetypeFilter(
+                    e.target.value,
+                  )
+                }
+                className="px-3 py-2.5 border border-gray-200 rounded-xl bg-white"
               >
-                <option value="ALL">タイプ：すべて</option>
-                <option value="マッスル型">マッスル型</option>
-                <option value="頭脳型">頭脳型</option>
-                <option value="ディーバ型">ディーバ型</option>
-                <option value="職人型">職人型</option>
+                <option value="ALL">
+                  タイプ：すべて
+                </option>
+                <option value="マッスル型">
+                  マッスル型
+                </option>
+                <option value="頭脳型">
+                  頭脳型
+                </option>
+                <option value="ディーバ型">
+                  ディーバ型
+                </option>
+                <option value="職人型">
+                  職人型
+                </option>
               </select>
             </div>
 
-            <div className="overflow-x-auto rounded-xl border border-gray-200">
+            <div className="overflow-x-auto rounded-2xl border border-gray-200">
               <div className="min-w-[760px]">
                 <div className="grid grid-cols-5 bg-indigo-50 text-[10px] font-black text-indigo-900">
-                  <div className="p-2">1位 ＼ 2位</div>
-                  {(['hp', 'intellect', 'dexterity', 'charm'] as StatKey[]).map((key) => (
-                    <div key={key} className="p-2 text-center">{STAT_LABELS[key]}</div>
-                  ))}
-                </div>
-                {coordinateMatrix.map((row) => (
-                  <div key={row.primary} className="grid grid-cols-5 border-t border-gray-200">
-                    <div className="p-2 bg-gray-50 text-[10px] font-black">{STAT_LABELS[row.primary]}</div>
-                    {row.cells.map((cell, index) => (
-                      <div key={index} className="min-h-20 border-l border-gray-200 p-1.5 space-y-1">
-                        {cell.map((coordinate) => (
-                          <button
-                            key={coordinate.id}
-                            type="button"
-                            onClick={() => setActiveGenerator({ type: 'coordinate', preset: coordinate })}
-                            className="w-full rounded-lg border border-indigo-100 bg-white px-2 py-2 text-left text-[9px] hover:border-indigo-400 hover:bg-indigo-50"
-                          >
-                            <div className="font-black text-indigo-900">
-                              {coordinate.code.toUpperCase()} <span className="font-normal">{coordinate.tendency}</span>
-                            </div>
-                            <div className="text-gray-500 mt-0.5">
-                              {coordinate.stats.hp}/{coordinate.stats.intellect}/{coordinate.stats.dexterity}/{coordinate.stats.charm}
-                            </div>
-                          </button>
-                        ))}
-                      </div>
-                    ))}
+                  <div className="p-3">
+                    1位 ＼ 2位
                   </div>
-                ))}
+
+                  {(
+                    [
+                      'hp',
+                      'intellect',
+                      'dexterity',
+                      'charm',
+                    ] as StatKey[]
+                  ).map(
+                    (key) => (
+                      <div
+                        key={key}
+                        className="p-3 text-center"
+                      >
+                        {
+                          STAT_LABELS[
+                            key
+                          ]
+                        }
+                      </div>
+                    ),
+                  )}
+                </div>
+
+                {coordinateMatrix.map(
+                  (row) => (
+                    <div
+                      key={
+                        row.primary
+                      }
+                      className="grid grid-cols-5 border-t border-gray-200"
+                    >
+                      <div className="p-3 bg-gray-50 text-[10px] font-black">
+                        {
+                          STAT_LABELS[
+                            row.primary
+                          ]
+                        }
+                      </div>
+
+                      {row.cells.map(
+                        (
+                          cell,
+                          index,
+                        ) => (
+                          <div
+                            key={`${row.primary}-${index}`}
+                            className="min-h-24 border-l border-gray-200 p-1.5 space-y-1"
+                          >
+                            {cell.map(
+                              (
+                                coordinate,
+                              ) => {
+                                const count =
+                                  getEntryCount(
+                                    coordinate.id,
+                                  );
+
+                                const isFull =
+                                  count >=
+                                  maxEntryLimit;
+
+                                return (
+                                  <button
+                                    key={
+                                      coordinate.id
+                                    }
+                                    type="button"
+                                    disabled={
+                                      isFull
+                                    }
+                                    onClick={() => {
+                                      if (
+                                        !isFull
+                                      ) {
+                                        setActiveGenerator(
+                                          {
+                                            type: 'coordinate',
+                                            preset:
+                                              coordinate,
+                                          },
+                                        );
+                                      }
+                                    }}
+                                    className={`w-full rounded-xl border px-2 py-2 text-left text-[9px] transition ${
+                                      isFull
+                                        ? 'border-gray-200 bg-gray-100 text-gray-400 cursor-not-allowed'
+                                        : 'border-indigo-100 bg-white hover:border-indigo-400 hover:bg-indigo-50'
+                                    }`}
+                                  >
+                                    <div className="font-black text-indigo-900">
+                                      {coordinate.code.toUpperCase()}{' '}
+                                      <span className="font-normal">
+                                        {
+                                          coordinate.tendency
+                                        }
+                                      </span>
+                                    </div>
+
+                                    <div className="text-gray-500 mt-0.5">
+                                      {
+                                        coordinate
+                                          .stats
+                                          .hp
+                                      }
+                                      /
+                                      {
+                                        coordinate
+                                          .stats
+                                          .intellect
+                                      }
+                                      /
+                                      {
+                                        coordinate
+                                          .stats
+                                          .dexterity
+                                      }
+                                      /
+                                      {
+                                        coordinate
+                                          .stats
+                                          .charm
+                                      }
+                                    </div>
+
+                                    <div className="mt-1 font-bold">
+                                      {count}/
+                                      {
+                                        maxEntryLimit
+                                      }
+                                      人
+                                    </div>
+                                  </button>
+                                );
+                              },
+                            )}
+                          </div>
+                        ),
+                      )}
+                    </div>
+                  ),
+                )}
+
                 <div className="border-t border-gray-200 p-2">
-                  <button
-                    type="button"
-                    onClick={() => {
-                      const y = COORDINATE_PRESETS.find((coordinate) => coordinate.code === 'y');
-                      if (y) setActiveGenerator({ type: 'coordinate', preset: y });
-                    }}
-                    className="w-full rounded-lg border border-purple-200 bg-purple-50 p-2 text-left text-xs hover:bg-purple-100"
-                  >
-                    <span className="font-black">Y</span>：体力＝知略＝器用＝特技（均等型）
-                  </button>
+                  {(() => {
+                    const y =
+                      COORDINATE_PRESETS.find(
+                        (
+                          coordinate,
+                        ) =>
+                          coordinate.code ===
+                          'y',
+                      );
+
+                    if (!y) {
+                      return null;
+                    }
+
+                    const count =
+                      getEntryCount(
+                        y.id,
+                      );
+
+                    const isFull =
+                      count >=
+                      maxEntryLimit;
+
+                    return (
+                      <button
+                        type="button"
+                        disabled={
+                          isFull
+                        }
+                        onClick={() => {
+                          if (
+                            !isFull
+                          ) {
+                            setActiveGenerator(
+                              {
+                                type: 'coordinate',
+                                preset:
+                                  y,
+                              },
+                            );
+                          }
+                        }}
+                        className={`w-full rounded-xl border p-3 text-left text-xs transition ${
+                          isFull
+                            ? 'border-gray-200 bg-gray-100 text-gray-400 cursor-not-allowed'
+                            : 'border-purple-200 bg-purple-50 hover:bg-purple-100'
+                        }`}
+                      >
+                        <span className="font-black">
+                          Y
+                        </span>
+                        ：体力＝知略＝器用＝特技
+                        （均等型）
+                        <span className="ml-2 font-bold">
+                          {count}/
+                          {
+                            maxEntryLimit
+                          }
+                          人
+                        </span>
+                      </button>
+                    );
+                  })()}
                 </div>
               </div>
             </div>
 
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              {filteredCoordinates.map((coordinate) => {
-                const count = getEntryCount(coordinate.id);
-                const isFull = count >= maxEntryLimit;
-                const presetEntries = entries.filter((entry) => entry.presetId === coordinate.id);
+              {filteredCoordinates.map(
+                (coordinate) => {
+                  const count =
+                    getEntryCount(
+                      coordinate.id,
+                    );
 
-                return (
-                  <article key={coordinate.id} className="border border-gray-200 rounded-xl p-4 bg-white shadow-sm space-y-4">
-                    <div className="flex justify-between items-start gap-3">
-                      <div>
-                        <span className="text-xs font-black px-2 py-1 bg-indigo-100 text-indigo-800 rounded">{coordinate.code.toUpperCase()}</span>
-                        <h3 className="font-extrabold text-base mt-2">{coordinate.name}</h3>
-                        <div className="text-[11px] text-indigo-700 font-bold mt-1">傾向：{coordinate.tendency}</div>
-                      </div>
-                      <span className="text-[10px] font-bold text-gray-500">性能固定</span>
-                    </div>
+                  const isFull =
+                    count >=
+                    maxEntryLimit;
 
-                    <div className="text-[11px] bg-gray-50 p-3 rounded border grid grid-cols-2 gap-1">
-                      <div>体力：<b>{coordinate.stats.hp}</b></div>
-                      <div>知略：<b>{coordinate.stats.intellect}</b></div>
-                      <div>特技：<b>{coordinate.stats.charm}</b></div>
-                      <div>器用：<b>{coordinate.stats.dexterity}</b></div>
-                    </div>
+                  const presetEntries =
+                    entries.filter(
+                      (entry) =>
+                        entry.presetId ===
+                        coordinate.id,
+                    );
 
-                    <div className="text-[10px] bg-indigo-50/60 p-3 rounded border border-indigo-100 space-y-1">
-                      <div className="font-bold text-indigo-800">固定されている4技</div>
-                      {coordinate.defaultSkills.map((skill, index) => (
-                        <div key={`${coordinate.id}-skill-${index}`}>
-                          <span className="font-bold">技{index + 1} {skill}</span>
-                          <span className="text-gray-600">：{coordinate.skillDescriptions[index]}</span>
-                        </div>
-                      ))}
-                    </div>
-
-                    <div className="text-xs space-y-2">
-                      <div className="flex justify-between font-semibold">
-                        <span>エントリー状況</span>
-                        <span className={isFull ? 'text-red-600' : 'text-green-600'}>{count} / {maxEntryLimit}人 {isFull && '(満員)'}</span>
-                      </div>
-                      {presetEntries.length > 0 && (
-                        <div className="text-[11px] bg-indigo-50 p-2 rounded border border-indigo-100 text-indigo-900">
-                          <div>👑 先駆者：<span className="font-bold">{presetEntries[0].userName}</span> さん</div>
-                          <div className="text-gray-500 mt-0.5">現在 {presetEntries.length}人がエントリー</div>
-                        </div>
-                      )}
-                    </div>
-
-                    <button
-                      type="button"
-                      disabled={isFull}
-                      onClick={() => setActiveGenerator({ type: 'coordinate', preset: coordinate })}
-                      className={`w-full py-2.5 rounded-lg text-xs font-bold ${isFull ? 'bg-gray-100 text-gray-400 cursor-not-allowed' : 'bg-indigo-600 hover:bg-indigo-700 text-white'}`}
+                  return (
+                    <article
+                      key={
+                        coordinate.id
+                      }
+                      className="border border-gray-200 rounded-2xl p-5 bg-white shadow-sm space-y-4"
                     >
-                      {isFull ? 'エントリー満員' : 'このコーデを選んでエントリーする'}
-                    </button>
-                  </article>
-                );
-              })}
+                      <div className="flex justify-between items-start gap-3">
+                        <div>
+                          <span className="text-xs font-black px-2.5 py-1 bg-indigo-100 text-indigo-800 rounded-lg">
+                            {coordinate.code.toUpperCase()}
+                          </span>
+
+                          <h3 className="font-black text-lg mt-2">
+                            {
+                              coordinate.name
+                            }
+                          </h3>
+
+                          <div className="text-[11px] text-indigo-700 font-bold mt-1">
+                            傾向：
+                            {
+                              coordinate.tendency
+                            }
+                          </div>
+                        </div>
+
+                        <span className="text-[10px] font-black text-gray-400">
+                          性能固定
+                        </span>
+                      </div>
+
+                      <div className="text-[11px] bg-gray-50 p-3 rounded-xl border border-gray-200 grid grid-cols-2 gap-2">
+                        <div>
+                          体力：
+                          <b>
+                            {
+                              coordinate
+                                .stats.hp
+                            }
+                          </b>
+                        </div>
+
+                        <div>
+                          知略：
+                          <b>
+                            {
+                              coordinate
+                                .stats
+                                .intellect
+                            }
+                          </b>
+                        </div>
+
+                        <div>
+                          特技：
+                          <b>
+                            {
+                              coordinate
+                                .stats
+                                .charm
+                            }
+                          </b>
+                        </div>
+
+                        <div>
+                          器用：
+                          <b>
+                            {
+                              coordinate
+                                .stats
+                                .dexterity
+                            }
+                          </b>
+                        </div>
+                      </div>
+
+                      <div className="text-[10px] bg-indigo-50/60 p-3 rounded-xl border border-indigo-100 space-y-1.5">
+                        <div className="font-black text-indigo-800">
+                          固定されている4技
+                        </div>
+
+                        {coordinate.defaultSkills.map(
+                          (
+                            skill,
+                            index,
+                          ) => (
+                            <div
+                              key={`${coordinate.id}-skill-${index}`}
+                            >
+                              <span className="font-bold">
+                                技
+                                {index +
+                                  1}{' '}
+                                {skill}
+                              </span>
+
+                              <span className="text-gray-600">
+                                ：
+                                {
+                                  coordinate
+                                    .skillDescriptions[
+                                    index
+                                  ]
+                                }
+                              </span>
+                            </div>
+                          ),
+                        )}
+                      </div>
+
+                      <div className="text-xs space-y-2">
+                        <div className="flex justify-between font-semibold">
+                          <span>
+                            エントリー状況
+                          </span>
+
+                          <span
+                            className={
+                              isFull
+                                ? 'text-red-600'
+                                : 'text-green-600'
+                            }
+                          >
+                            {count} /{' '}
+                            {
+                              maxEntryLimit
+                            }
+                            人
+                            {isFull &&
+                              ' (満員)'}
+                          </span>
+                        </div>
+
+                        {presetEntries.length >
+                          0 && (
+                          <div className="text-[11px] bg-indigo-50 p-3 rounded-xl border border-indigo-100 text-indigo-900">
+                            <div>
+                              👑 先駆者：
+                              <span className="font-black">
+                                {
+                                  presetEntries[0]
+                                    .userName
+                                }
+                              </span>{' '}
+                              さん
+                            </div>
+
+                            <div className="text-gray-500 mt-0.5">
+                              現在{' '}
+                              {
+                                presetEntries.length
+                              }
+                              人がエントリー
+                            </div>
+                          </div>
+                        )}
+                      </div>
+
+                      <button
+                        type="button"
+                        disabled={
+                          isFull
+                        }
+                        onClick={() => {
+                          if (
+                            !isFull
+                          ) {
+                            setActiveGenerator(
+                              {
+                                type: 'coordinate',
+                                preset:
+                                  coordinate,
+                              },
+                            );
+                          }
+                        }}
+                        className={`w-full py-3 rounded-xl text-xs font-black transition ${
+                          isFull
+                            ? 'bg-gray-100 text-gray-400 cursor-not-allowed'
+                            : 'bg-indigo-600 hover:bg-indigo-700 text-white'
+                        }`}
+                      >
+                        {isFull
+                          ? 'エントリー満員'
+                          : 'このコーデからエントリーする'}
+                      </button>
+                    </article>
+                  );
+                },
+              )}
             </div>
           </div>
-        )}
-      </section>
+        </section>
+      )}
 
-      {/* エモーション */}
-      <section className="bg-white rounded-2xl border border-gray-200 shadow-sm overflow-hidden">
-        <button
-          type="button"
-          onClick={() => setActiveTab('emotion')}
-          className="w-full p-5 bg-purple-900 text-white flex justify-between items-center text-left font-bold"
-        >
-          <div>
-            <div className="text-lg">✨ エモーション一覧（サポートカードの性能）</div>
-            <div className="text-xs font-normal text-purple-200 mt-1">対象 × 効果内容 × 持続性の3軸</div>
+      {/* ===================================================== */}
+      {/* エモーション一覧 */}
+      {/* ===================================================== */}
+      {activeTab ===
+        'emotion' && (
+        <section className="bg-white rounded-3xl border border-gray-200 shadow-sm overflow-hidden">
+          <div className="p-6 border-b border-gray-200">
+            <div className="flex flex-col md:flex-row md:items-start md:justify-between gap-4">
+              <div>
+                <div className="text-xs font-black tracking-[0.15em] text-purple-500">
+                  SUPPORT CARDS
+                </div>
+
+                <h2 className="mt-1 text-2xl font-black">
+                  エモーション一覧
+                </h2>
+
+                <p className="mt-2 text-xs text-gray-500 leading-relaxed">
+                  エモーションも公式に定義された効果枠から選択します。
+                  対象・効果ステータス・持続性を見ながら登録できます。
+                </p>
+              </div>
+
+              {onStartSupportRegistration && (
+                <button
+                  type="button"
+                  onClick={() =>
+                    onStartSupportRegistration()
+                  }
+                  className="shrink-0 px-4 py-3 rounded-xl bg-purple-600 hover:bg-purple-700 text-white text-xs font-black transition"
+                >
+                  ＋ サポートカードを登録する
+                </button>
+              )}
+            </div>
           </div>
-          <span className="text-xs">{activeTab === 'emotion' ? '▼ 開き中' : '▶ 開く'}</span>
-        </button>
 
-        {activeTab === 'emotion' && (
           <div className="p-6 space-y-6">
-            <div className="p-4 bg-gray-50 rounded-xl border border-gray-200 flex flex-wrap gap-3 items-center text-xs">
-              <span className="font-bold">🔍 3軸絞り込み</span>
-              <select value={emoTargetFilter} onChange={(e) => setEmoTargetFilter(e.target.value)} className="px-3 py-2 border rounded-lg bg-white">
-                <option value="ALL">対象：すべて</option>
-                <option value="自分">自分</option>
-                <option value="相手">相手</option>
-                <option value="自分・相手">自分・相手</option>
+            <div className="p-4 bg-gray-50 rounded-2xl border border-gray-200 flex flex-wrap gap-3 items-center text-xs">
+              <span className="font-black">
+                🔍 3軸絞り込み
+              </span>
+
+              <select
+                value={
+                  emoTargetFilter
+                }
+                onChange={(e) =>
+                  setEmoTargetFilter(
+                    e.target.value,
+                  )
+                }
+                className="px-3 py-2.5 border border-gray-200 rounded-xl bg-white"
+              >
+                <option value="ALL">
+                  対象：すべて
+                </option>
+                <option value="自分">
+                  自分
+                </option>
+                <option value="相手">
+                  相手
+                </option>
+                <option value="自分・相手">
+                  自分・相手
+                </option>
               </select>
-              <select value={emoStatFilter} onChange={(e) => setEmoStatFilter(e.target.value)} className="px-3 py-2 border rounded-lg bg-white">
-                <option value="ALL">効果：すべて</option>
-                {Array.from(new Set(EMOTION_PRESETS.map((emotion) => emotion.effectCategory))).map((category) => (
-                  <option key={category} value={category}>{category}</option>
-                ))}
+
+              <select
+                value={
+                  emoStatFilter
+                }
+                onChange={(e) =>
+                  setEmoStatFilter(
+                    e.target.value,
+                  )
+                }
+                className="px-3 py-2.5 border border-gray-200 rounded-xl bg-white"
+              >
+                <option value="ALL">
+                  効果：すべて
+                </option>
+
+                {Array.from(
+                  new Set(
+                    EMOTION_PRESETS.map(
+                      (
+                        emotion,
+                      ) =>
+                        emotion.effectCategory,
+                    ),
+                  ),
+                ).map(
+                  (category) => (
+                    <option
+                      key={
+                        category
+                      }
+                      value={
+                        category
+                      }
+                    >
+                      {category}
+                    </option>
+                  ),
+                )}
               </select>
-              <select value={emoDurationFilter} onChange={(e) => setEmoDurationFilter(e.target.value)} className="px-3 py-2 border rounded-lg bg-white">
-                <option value="ALL">持続：すべて</option>
-                <option value="一時">一時</option>
-                <option value="永続">永続</option>
+
+              <select
+                value={
+                  emoDurationFilter
+                }
+                onChange={(e) =>
+                  setEmoDurationFilter(
+                    e.target.value,
+                  )
+                }
+                className="px-3 py-2.5 border border-gray-200 rounded-xl bg-white"
+              >
+                <option value="ALL">
+                  持続：すべて
+                </option>
+                <option value="一時">
+                  一時
+                </option>
+                <option value="永続">
+                  永続
+                </option>
               </select>
             </div>
 
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              {filteredEmotions.map((emotion) => {
-                const count = getEntryCount(emotion.id);
-                const isFull = count >= maxEntryLimit;
-                const presetEntries = entries.filter((entry) => entry.presetId === emotion.id);
+              {filteredEmotions.map(
+                (emotion) => {
+                  const count =
+                    getEntryCount(
+                      emotion.id,
+                    );
 
-                return (
-                  <article key={emotion.id} className="border border-gray-200 rounded-xl p-4 bg-white shadow-sm space-y-4">
-                    <div>
-                      <div className="flex flex-wrap gap-1.5">
-                        <span className="text-xs font-bold px-2 py-1 bg-purple-100 text-purple-800 rounded">
-                          {emotion.target}
-                        </span>
-                        <span className="text-xs font-bold px-2 py-1 bg-purple-100 text-purple-800 rounded">
-                          {emotion.effectCategory}
-                        </span>
-                        <span className="text-xs font-bold px-2 py-1 bg-purple-100 text-purple-800 rounded">
-                          {emotion.duration}
-                        </span>
-                      </div>
-                      <h3 className="font-extrabold text-base mt-2">{emotion.name}</h3>
-                      <p className="text-xs text-gray-600 leading-relaxed mt-1">{emotion.description}</p>
-                      <div className="text-[11px] text-purple-800 font-semibold mt-2">
-                        効果：{emotion.statEffect}{emotion.effectAmount ? ` / ${emotion.effectAmount}` : ''}
-                      </div>
-                      {emotion.note && (
-                        <div className="text-[10px] text-gray-500 leading-relaxed mt-1">備考：{emotion.note}</div>
-                      )}
-                    </div>
+                  const isFull =
+                    count >=
+                    maxEntryLimit;
 
-                    <div className="text-xs space-y-2">
-                      <div className="flex justify-between font-semibold">
-                        <span>エントリー状況</span>
-                        <span className={isFull ? 'text-red-600' : 'text-green-600'}>
-                          {count} / {maxEntryLimit}人 {isFull && '(満員)'}
-                        </span>
-                      </div>
-                      {presetEntries.length > 0 && (
-                        <div className="text-[11px] bg-purple-50 p-2 rounded border border-purple-100 text-purple-900">
-                          👑 先駆者：<span className="font-bold">{presetEntries[0].userName}</span> さん
-                          <div className="text-gray-500 mt-0.5">現在 {presetEntries.length}人がエントリー</div>
-                        </div>
-                      )}
-                    </div>
+                  const presetEntries =
+                    entries.filter(
+                      (entry) =>
+                        entry.presetId ===
+                        emotion.id,
+                    );
 
-                    <button
-                      type="button"
-                      disabled={isFull}
-                      onClick={() => setActiveGenerator({ type: 'emotion', preset: emotion })}
-                      className={`w-full py-2.5 rounded-lg text-xs font-bold ${isFull ? 'bg-gray-100 text-gray-400 cursor-not-allowed' : 'bg-purple-600 hover:bg-purple-700 text-white'}`}
+                  return (
+                    <article
+                      key={
+                        emotion.id
+                      }
+                      className="border border-gray-200 rounded-2xl p-5 bg-white shadow-sm space-y-4"
                     >
-                      {isFull ? 'エントリー満員' : 'このエモーションを選んでエントリーする'}
-                    </button>
-                  </article>
-                );
-              })}
+                      <div>
+                        <div className="flex flex-wrap gap-1.5">
+                          <span className="text-xs font-bold px-2 py-1 bg-purple-100 text-purple-800 rounded">
+                            {
+                              emotion.target
+                            }
+                          </span>
+
+                          <span className="text-xs font-bold px-2 py-1 bg-purple-100 text-purple-800 rounded">
+                            {
+                              emotion.effectCategory
+                            }
+                          </span>
+
+                          <span className="text-xs font-bold px-2 py-1 bg-purple-100 text-purple-800 rounded">
+                            {
+                              emotion.duration
+                            }
+                          </span>
+                        </div>
+
+                        <h3 className="font-black text-lg mt-3">
+                          {
+                            emotion.name
+                          }
+                        </h3>
+
+                        <p className="text-sm text-gray-600 leading-relaxed mt-2">
+                          {
+                            emotion.description
+                          }
+                        </p>
+
+                        <div className="text-[11px] text-purple-800 font-semibold mt-2">
+                          効果：
+                          {
+                            emotion.statEffect
+                          }
+                          {emotion.effectAmount
+                            ? ` / ${emotion.effectAmount}`
+                            : ''}
+                        </div>
+
+                        {emotion.note && (
+                          <div className="text-[10px] text-gray-500 leading-relaxed mt-1">
+                            備考：
+                            {
+                              emotion.note
+                            }
+                          </div>
+                        )}
+                      </div>
+
+                      <div className="text-xs space-y-2">
+                        <div className="flex justify-between font-semibold">
+                          <span>
+                            エントリー状況
+                          </span>
+
+                          <span
+                            className={
+                              isFull
+                                ? 'text-red-600'
+                                : 'text-green-600'
+                            }
+                          >
+                            {count} /{' '}
+                            {
+                              maxEntryLimit
+                            }
+                            人
+                            {isFull &&
+                              ' (満員)'}
+                          </span>
+                        </div>
+
+                        {presetEntries.length >
+                          0 && (
+                          <div className="text-[11px] bg-purple-50 p-3 rounded-xl border border-purple-100 text-purple-900">
+                            <div>
+                              👑 先駆者：
+                              <span className="font-black">
+                                {
+                                  presetEntries[0]
+                                    .userName
+                                }
+                              </span>{' '}
+                              さん
+                            </div>
+
+                            <div className="text-gray-500 mt-0.5">
+                              現在{' '}
+                              {
+                                presetEntries.length
+                              }
+                              人がエントリー
+                            </div>
+                          </div>
+                        )}
+                      </div>
+
+                      <button
+                        type="button"
+                        disabled={
+                          isFull
+                        }
+                        onClick={() => {
+                          if (
+                            !isFull
+                          ) {
+                            setActiveGenerator(
+                              {
+                                type: 'emotion',
+                                preset:
+                                  emotion,
+                              },
+                            );
+                          }
+                        }}
+                        className={`w-full py-3 rounded-xl text-xs font-black transition ${
+                          isFull
+                            ? 'bg-gray-100 text-gray-400 cursor-not-allowed'
+                            : 'bg-purple-600 hover:bg-purple-700 text-white'
+                        }`}
+                      >
+                        {isFull
+                          ? 'エントリー満員'
+                          : 'このエモーションからエントリーする'}
+                      </button>
+                    </article>
+                  );
+                },
+              )}
             </div>
           </div>
-        )}
-      </section>
+        </section>
+      )}
     </div>
   );
 }
