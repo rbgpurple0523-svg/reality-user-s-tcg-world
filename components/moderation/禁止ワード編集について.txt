@@ -1,0 +1,33 @@
+運営側で追加するルール
+
+components/moderation/blockedTerms.ts は今こういう空の状態です。
+
+export interface BlockedTermRule {
+  term: string;
+  label?: string;
+}
+
+export const BLOCKED_TERMS: readonly BlockedTermRule[] = [];
+
+export const BLOCKED_PATTERNS: readonly RegExp[] = [];
+
+たとえば運営で明確に禁止したい語を追加するときは、
+
+export const BLOCKED_TERMS: readonly BlockedTermRule[] = [
+  { term: 'ここに禁止したい語', label: '運営ルール' },
+  { term: '別の禁止語' },
+];
+
+正規表現が必要なものは、
+
+export const BLOCKED_PATTERNS: readonly RegExp[] = [
+  /ここにパターン/i,
+];
+
+という書き方。
+
+なので将来的に、
+
+「このワードも禁止したい」
+
+となったら blockedTerms.ts を1ファイル編集するだけで済みます。

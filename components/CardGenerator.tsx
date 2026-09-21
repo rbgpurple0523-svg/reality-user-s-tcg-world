@@ -57,6 +57,29 @@ function makeCreatorToken(): string {
   return `${Date.now()}_${Math.random().toString(36).slice(2)}`;
 }
 
+async function moderateCardTexts(texts: string[]): Promise<boolean> {
+  const response = await fetch('/api/moderate-text', {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({ texts }),
+  });
+
+  let result: { allowed?: boolean } = {};
+  try {
+    result = (await response.json()) as { allowed?: boolean };
+  } catch {
+    result = {};
+  }
+
+  if (!response.ok || result.allowed !== true) {
+    throw new Error('MODERATION_BLOCKED');
+  }
+
+  return true;
+}
+
 function getMaxEntryLimit(entries: EntryRecord[]): number {
   const allPresets = [...COORDINATE_PRESETS, ...EMOTION_PRESETS];
   const getEntryCount = (presetId: string) =>
@@ -125,6 +148,7 @@ export default function CardGenerator({ selectedCoordinate, onBackToHub }: CardG
   const [successMessage, setSuccessMessage] = useState('');
   const [draftAvailable, setDraftAvailable] = useState(false);
   const [draftChecked, setDraftChecked] = useState(false);
+  const [isModerating, setIsModerating] = useState(false);
 
   const maxEntryLimit = useMemo(
     () => getMaxEntryLimit(entries),
@@ -284,7 +308,7 @@ export default function CardGenerator({ selectedCoordinate, onBackToHub }: CardG
   // ---------------------------------------------------------
   // 保存
   // ---------------------------------------------------------
-  const handleSubmit = (e: FormEvent) => {
+  const handleSubmit = async (e: FormEvent) => {
     e.preventDefault();
     setErrorMessage('');
 
@@ -315,6 +339,23 @@ export default function CardGenerator({ selectedCoordinate, onBackToHub }: CardG
       setErrorMessage('必須項目をすべて入力してください。');
       return;
     }
+
+    const moderationTexts = [
+      userName.trim(),
+      ...customSkills.map((skill) => skill.trim()),
+      ...skillVoices.map((voice) => voice.trim()),
+      flavorText.trim(),
+    ];
+
+    setIsModerating(true);
+    try {
+      await moderateCardTexts(moderationTexts);
+    } catch {
+      setIsModerating(false);
+      setErrorMessage('入力内容を安全確認できなかったため、保存していません。時間をおいてもう一度お試しください。');
+      return;
+    }
+    setIsModerating(false);
 
     const currentEntries = getStoredEntries();
     const editingEntry = editingId ? currentEntries.find((entry) => entry.id === editingId) : null;
@@ -513,7 +554,7 @@ export default function CardGenerator({ selectedCoordinate, onBackToHub }: CardG
 
             <div>
               <label className="block font-bold text-gray-700 mb-1">アバター名 <span className="text-red-500">*</span></label>
-              <input type="text" placeholder="例：キャラ太郎" value={userName} onChange={(e) => setUserName(e.target.value)} className="w-full px-3 py-2 border rounded-lg bg-white" />
+              <input type="text" placeholder="例：キャラ太郎" value={userName} onChange={(e) => setUserName(e.target.value)} maxLength={40} className="w-full px-3 py-2 border rounded-lg bg-white" />
             </div>
 
             <div>
@@ -531,11 +572,11 @@ export default function CardGenerator({ selectedCoordinate, onBackToHub }: CardG
                   <div className="font-bold text-pink-700">技{index + 1}</div>
                   <div>
                     <label className="block text-[10px] font-bold text-gray-600 mb-1">技名</label>
-                    <input disabled={!currentCoordinate} type="text" value={customSkills[index]} onChange={(e) => handleSkillChange(index, e.target.value)} className="w-full px-3 py-2 border rounded-lg bg-white disabled:bg-gray-100" />
+                    <input disabled={!currentCoordinate} type="text" value={customSkills[index]} onChange={(e) => handleSkillChange(index, e.target.value)} maxLength={40} className="w-full px-3 py-2 border rounded-lg bg-white disabled:bg-gray-100" />
                   </div>
                   <div>
                     <label className="block text-[10px] font-bold text-gray-600 mb-1">使用時のセリフ</label>
-                    <input disabled={!currentCoordinate} type="text" value={skillVoices[index]} onChange={(e) => handleSkillVoiceChange(index, e.target.value)} className="w-full px-3 py-2 border rounded-lg bg-white disabled:bg-gray-100" placeholder={currentCoordinate ? getDefaultSkillVoice(customSkills[index] || `技${index + 1}`) : ''} />
+                    <input disabled={!currentCoordinate} type="text" value={skillVoices[index]} onChange={(e) => handleSkillVoiceChange(index, e.target.value)} maxLength={100} className="w-full px-3 py-2 border rounded-lg bg-white disabled:bg-gray-100" placeholder={currentCoordinate ? getDefaultSkillVoice(customSkills[index] || `技${index + 1}`) : ''} />
                   </div>
                   <div className="rounded-lg bg-white/80 border border-gray-100 px-3 py-2">
                     <div className="text-[10px] font-bold text-gray-500 mb-0.5">効果説明（固定）</div>
@@ -557,8 +598,8 @@ export default function CardGenerator({ selectedCoordinate, onBackToHub }: CardG
               <p className="text-[10px] text-gray-500 mt-1">同じ端末では作成者トークンにより、次回から合言葉入力を省略できます。</p>
             </div>
 
-            <button type="submit" className="w-full py-2.5 bg-pink-600 hover:bg-pink-700 text-white font-bold rounded-xl shadow">
-              {editingId ? 'エントリー内容を更新する' : 'カードをエントリーして保存'}
+            <button type="submit" disabled={isModerating} className="w-full py-2.5 bg-pink-600 hover:bg-pink-700 disabled:bg-pink-300 disabled:cursor-wait text-white font-bold rounded-xl shadow">
+              {isModerating ? '安全確認中…' : editingId ? 'エントリー内容を更新する' : 'カードをエントリーして保存'}
             </button>
           </form>
         </div>
