@@ -33,14 +33,53 @@ function isStageStale() {
 }
 
 
-function isStageTakeover() {
+function isStaleStageClosure() {
   return
     request.auth != null
     &&
+    resource.data.roomClosed != true
+    &&
+    resource.data.exitHost == false
+    &&
+    resource.data.exitGuest == false
+    &&
     isStageStale()
     &&
-    request.resource.data.hostUid
-      == request.auth.uid
+    request.resource.data.roomClosed == true
+    &&
+    request.resource.data.exitHost == false
+    &&
+    request.resource.data.exitGuest == false
+    &&
+    request.resource.data.diff(resource.data)
+      .affectedKeys()
+      .hasOnly([
+        'roomClosed'
+      ]);
+}
+
+
+
+function isStageTakeover() {
+  return
+request.auth != null
+&&
+isStageStale()
+&&
+(
+  resource.data.roomClosed != true
+  ||
+  (
+    resource.data.roomClosed == true
+    &&
+    resource.data.exitHost == false
+    &&
+    resource.data.exitGuest == false
+  )
+)
+&&
+request.resource.data.hostUid
+  == request.auth.uid
     &&
     request.resource.data.guestUid
       == null
@@ -374,6 +413,11 @@ function isValidBattleStateTransition() {
       // ルーム更新
 allow update: if request.auth != null
   && (
+
+    isStaleStageClosure()
+    ||
+
+
     // =====================================================
     // stale / closed RoomのHost引き継ぎ
     // =====================================================
@@ -1368,21 +1412,51 @@ allow update: if request.auth != null
     && request.resource.data.pendingAction.supportCardConsumed == true
   )
 );
-        allow delete: if
+
+
+allow delete: if
   request.auth != null
   &&
-  get(
-    /databases/$(database)/documents/rooms/$(roomId)
-  ).data.roomClosed == true
-  &&
   (
-    get(
-      /databases/$(database)/documents/rooms/$(roomId)
-    ).data.hostUid == request.auth.uid
+    (
+      get(
+        /databases/$(database)/documents/rooms/$(roomId)
+      ).data.roomClosed == true
+      &&
+      (
+        get(
+          /databases/$(database)/documents/rooms/$(roomId)
+        ).data.hostUid == request.auth.uid
+        ||
+        get(
+          /databases/$(database)/documents/rooms/$(roomId)
+        ).data.guestUid == request.auth.uid
+      )
+    )
     ||
-    get(
-      /databases/$(database)/documents/rooms/$(roomId)
-    ).data.guestUid == request.auth.uid
+    (
+      get(
+        /databases/$(database)/documents/rooms/$(roomId)
+      ).data.roomClosed == true
+      &&
+      get(
+        /databases/$(database)/documents/rooms/$(roomId)
+      ).data.exitHost == false
+      &&
+      get(
+        /databases/$(database)/documents/rooms/$(roomId)
+      ).data.exitGuest == false
+      &&
+      isStageStale()
+      &&
+      getAfter(
+        /databases/$(database)/documents/rooms/$(roomId)
+      ).data.roomClosed == false
+      &&
+      getAfter(
+        /databases/$(database)/documents/rooms/$(roomId)
+      ).data.hostUid == request.auth.uid
+    )
   );
       }
 
@@ -1404,39 +1478,118 @@ allow create: if
   && request.resource.data.uid == request.auth.uid
   && request.resource.data.role == playerRole;
 
-  allow update: if
-    request.auth != null
-    && (playerRole == 'host' || playerRole == 'guest')
-    && (
-      (playerRole == 'host' &&
-        get(/databases/$(database)/documents/rooms/$(roomId)).data.hostUid == request.auth.uid)
-      ||
-      (playerRole == 'guest' &&
-        get(/databases/$(database)/documents/rooms/$(roomId)).data.guestUid == request.auth.uid)
+allow update: if
+  request.auth != null
+  && (
+    (
+      (playerRole == 'host' || playerRole == 'guest')
+      && (
+        (playerRole == 'host' &&
+          get(
+            /databases/$(database)/documents/rooms/$(roomId)
+          ).data.hostUid == request.auth.uid)
+        ||
+        (playerRole == 'guest' &&
+          get(
+            /databases/$(database)/documents/rooms/$(roomId)
+          ).data.guestUid == request.auth.uid)
+      )
+      && resource.data.uid == request.auth.uid
+      && request.resource.data.uid == resource.data.uid
+      && request.resource.data.role == resource.data.role
+      && request.resource.data.role == playerRole
+      && request.resource.data.diff(resource.data)
+        .affectedKeys()
+        .hasOnly([
+          'lastSeenAt'
+        ])
     )
-    && resource.data.uid == request.auth.uid
-    && request.resource.data.uid == resource.data.uid
-    && request.resource.data.role == resource.data.role
-    && request.resource.data.role == playerRole
-    && request.resource.data.diff(resource.data).affectedKeys().hasOnly([
-      'lastSeenAt'
-    ]);
+    ||
+    (
+      playerRole == 'host'
+      &&
+      get(
+        /databases/$(database)/documents/rooms/$(roomId)
+      ).data.roomClosed == true
+      &&
+      get(
+        /databases/$(database)/documents/rooms/$(roomId)
+      ).data.exitHost == false
+      &&
+      get(
+        /databases/$(database)/documents/rooms/$(roomId)
+      ).data.exitGuest == false
+      &&
+      isStageStale()
+      &&
+      getAfter(
+        /databases/$(database)/documents/rooms/$(roomId)
+      ).data.roomClosed == false
+      &&
+      getAfter(
+        /databases/$(database)/documents/rooms/$(roomId)
+      ).data.hostUid == request.auth.uid
+      &&
+      request.resource.data.uid == request.auth.uid
+      &&
+      request.resource.data.role == 'host'
+      &&
+      request.resource.data.diff(resource.data)
+        .affectedKeys()
+        .hasOnly([
+          'uid',
+          'role',
+          'lastSeenAt'
+        ])
+    )
+  );
 
-  allow delete: if
+
+allow delete: if
   request.auth != null
   &&
-  get(
-    /databases/$(database)/documents/rooms/$(roomId)
-  ).data.roomClosed == true
-  &&
   (
-    get(
-      /databases/$(database)/documents/rooms/$(roomId)
-    ).data.hostUid == request.auth.uid
+    (
+      get(
+        /databases/$(database)/documents/rooms/$(roomId)
+      ).data.roomClosed == true
+      &&
+      (
+        get(
+          /databases/$(database)/documents/rooms/$(roomId)
+        ).data.hostUid == request.auth.uid
+        ||
+        get(
+          /databases/$(database)/documents/rooms/$(roomId)
+        ).data.guestUid == request.auth.uid
+      )
+    )
     ||
-    get(
-      /databases/$(database)/documents/rooms/$(roomId)
-    ).data.guestUid == request.auth.uid
+    (
+      playerRole == 'guest'
+      &&
+      get(
+        /databases/$(database)/documents/rooms/$(roomId)
+      ).data.roomClosed == true
+      &&
+      get(
+        /databases/$(database)/documents/rooms/$(roomId)
+      ).data.exitHost == false
+      &&
+      get(
+        /databases/$(database)/documents/rooms/$(roomId)
+      ).data.exitGuest == false
+      &&
+      isStageStale()
+      &&
+      getAfter(
+        /databases/$(database)/documents/rooms/$(roomId)
+      ).data.roomClosed == false
+      &&
+      getAfter(
+        /databases/$(database)/documents/rooms/$(roomId)
+      ).data.hostUid == request.auth.uid
+    )
   );
 }
 
@@ -1532,21 +1685,49 @@ allow update: if request.auth != null
     )
   );
 
-  allow delete: if
+allow delete: if
   request.auth != null
   &&
-  get(
-    /databases/$(database)/documents/rooms/$(roomId)
-  ).data.roomClosed == true
-  &&
   (
-    get(
-      /databases/$(database)/documents/rooms/$(roomId)
-    ).data.hostUid == request.auth.uid
+    (
+      get(
+        /databases/$(database)/documents/rooms/$(roomId)
+      ).data.roomClosed == true
+      &&
+      (
+        get(
+          /databases/$(database)/documents/rooms/$(roomId)
+        ).data.hostUid == request.auth.uid
+        ||
+        get(
+          /databases/$(database)/documents/rooms/$(roomId)
+        ).data.guestUid == request.auth.uid
+      )
+    )
     ||
-    get(
-      /databases/$(database)/documents/rooms/$(roomId)
-    ).data.guestUid == request.auth.uid
+    (
+      get(
+        /databases/$(database)/documents/rooms/$(roomId)
+      ).data.roomClosed == true
+      &&
+      get(
+        /databases/$(database)/documents/rooms/$(roomId)
+      ).data.exitHost == false
+      &&
+      get(
+        /databases/$(database)/documents/rooms/$(roomId)
+      ).data.exitGuest == false
+      &&
+      isStageStale()
+      &&
+      getAfter(
+        /databases/$(database)/documents/rooms/$(roomId)
+      ).data.roomClosed == false
+      &&
+      getAfter(
+        /databases/$(database)/documents/rooms/$(roomId)
+      ).data.hostUid == request.auth.uid
+    )
   );
 }
     }
