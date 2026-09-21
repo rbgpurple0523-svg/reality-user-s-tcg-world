@@ -32,6 +32,17 @@ function isStageStale() {
     (guestLastSeen == 0 || now - guestLastSeen > 60000);
 }
 
+function isStaleClosedRoomCleanup() {
+  return
+    request.auth != null
+    &&
+    get(
+      /databases/$(database)/documents/rooms/$(roomId)
+    ).data.roomClosed == true
+    &&
+    isStageStale();
+}
+
 
 function isStaleStageClosure() {
   return
@@ -60,116 +71,6 @@ function isStaleStageClosure() {
 
 
 
-function isStageTakeover() {
-  return
-request.auth != null
-&&
-isStageStale()
-&&
-(
-  resource.data.roomClosed != true
-  ||
-  (
-    resource.data.roomClosed == true
-    &&
-    resource.data.exitHost == false
-    &&
-    resource.data.exitGuest == false
-  )
-)
-&&
-request.resource.data.hostUid
-  == request.auth.uid
-    &&
-    request.resource.data.guestUid
-      == null
-    &&
-    request.resource.data.hostJoined
-      == true
-    &&
-    request.resource.data.guestJoined
-      == false
-    &&
-    request.resource.data.battlePhase
-      == 'setup'
-    &&
-    request.resource.data.currentYear
-      == 1
-    &&
-    request.resource.data.turnIndex
-      == 0
-    &&
-    request.resource.data.firstPlayer
-      == null
-    &&
-    request.resource.data.startSeasonIdx
-      == null
-    &&
-    request.resource.data.hostTotalScore
-      == 0
-    &&
-    request.resource.data.guestTotalScore
-      == 0
-    &&
-    request.resource.data.hostClassScores
-      == [0, 0, 0]
-    &&
-    request.resource.data.guestClassScores
-      == [0, 0, 0]
-    &&
-    request.resource.data.rematchHost
-      == false
-    &&
-    request.resource.data.rematchGuest
-      == false
-    &&
-    request.resource.data.exitHost
-      == false
-    &&
-    request.resource.data.exitGuest
-      == false
-    &&
-    request.resource.data.readyHost
-      == false
-    &&
-    request.resource.data.readyGuest
-      == false
-    &&
-    request.resource.data.roomClosed
-      == false
-    &&
-    request.resource.data.diff(resource.data)
-      .affectedKeys()
-      .hasOnly([
-        'hostUid',
-        'guestUid',
-        'hostJoined',
-        'guestJoined',
-        'battlePhase',
-        'currentYear',
-        'turnIndex',
-        'firstPlayer',
-        'startSeasonIdx',
-        'hostTotalScore',
-        'guestTotalScore',
-        'hostClassScores',
-        'guestClassScores',
-        'hostUsedSkills',
-        'guestUsedSkills',
-        'rematchHost',
-        'rematchGuest',
-        'rematchPlayerResetHost',
-        'rematchPlayerResetGuest',
-        'exitHost',
-        'exitGuest',
-        'readyHost',
-        'readyGuest',
-        'roomClosed',
-        'createdAt',
-        'hostLastSeenAt',
-        'guestLastSeenAt'
-      ]);
-}
 
 function isExplicitExit() {
   let changed =
@@ -417,13 +318,6 @@ allow update: if request.auth != null
     isStaleStageClosure()
     ||
 
-
-    // =====================================================
-    // stale / closed RoomのHost引き継ぎ
-    // =====================================================
-    isStageTakeover()
-
-    ||
 
     // =====================================================
     // 明示的な退出
@@ -1091,15 +985,21 @@ allow update: if request.auth != null
     )
   );
 
-    allow delete: if
+allow delete: if
   request.auth != null
   &&
-  resource.data.roomClosed == true
-  &&
   (
-    resource.data.hostUid == request.auth.uid
+    (
+      resource.data.roomClosed == true
+      &&
+      (
+        resource.data.hostUid == request.auth.uid
+        ||
+        resource.data.guestUid == request.auth.uid
+      )
+    )
     ||
-    resource.data.guestUid == request.auth.uid
+    isStaleClosedRoomCleanup()
   );
 
       match /players/{playerRole} {
@@ -1434,29 +1334,7 @@ allow delete: if
       )
     )
     ||
-    (
-      get(
-        /databases/$(database)/documents/rooms/$(roomId)
-      ).data.roomClosed == true
-      &&
-      get(
-        /databases/$(database)/documents/rooms/$(roomId)
-      ).data.exitHost == false
-      &&
-      get(
-        /databases/$(database)/documents/rooms/$(roomId)
-      ).data.exitGuest == false
-      &&
-      isStageStale()
-      &&
-      getAfter(
-        /databases/$(database)/documents/rooms/$(roomId)
-      ).data.roomClosed == false
-      &&
-      getAfter(
-        /databases/$(database)/documents/rooms/$(roomId)
-      ).data.hostUid == request.auth.uid
-    )
+    isStaleClosedRoomCleanup()
   );
       }
 
@@ -1545,24 +1423,16 @@ allow update: if
   );
 
 
-allow delete: if
+allow update: if
   request.auth != null
-  &&
-  (
+  && (playerRole == 'host' || playerRole == 'guest')
+  && (
     (
+      playerRole == 'host'
+      &&
       get(
         /databases/$(database)/documents/rooms/$(roomId)
-      ).data.roomClosed == true
-      &&
-      (
-        get(
-          /databases/$(database)/documents/rooms/$(roomId)
-        ).data.hostUid == request.auth.uid
-        ||
-        get(
-          /databases/$(database)/documents/rooms/$(roomId)
-        ).data.guestUid == request.auth.uid
-      )
+      ).data.hostUid == request.auth.uid
     )
     ||
     (
@@ -1570,27 +1440,18 @@ allow delete: if
       &&
       get(
         /databases/$(database)/documents/rooms/$(roomId)
-      ).data.roomClosed == true
-      &&
-      get(
-        /databases/$(database)/documents/rooms/$(roomId)
-      ).data.exitHost == false
-      &&
-      get(
-        /databases/$(database)/documents/rooms/$(roomId)
-      ).data.exitGuest == false
-      &&
-      isStageStale()
-      &&
-      getAfter(
-        /databases/$(database)/documents/rooms/$(roomId)
-      ).data.roomClosed == false
-      &&
-      getAfter(
-        /databases/$(database)/documents/rooms/$(roomId)
-      ).data.hostUid == request.auth.uid
+      ).data.guestUid == request.auth.uid
     )
-  );
+  )
+  && resource.data.uid == request.auth.uid
+  && request.resource.data.uid == resource.data.uid
+  && request.resource.data.role == resource.data.role
+  && request.resource.data.role == playerRole
+  && request.resource.data.diff(resource.data)
+    .affectedKeys()
+    .hasOnly([
+      'lastSeenAt'
+    ]);
 }
 
 
@@ -1705,29 +1566,7 @@ allow delete: if
       )
     )
     ||
-    (
-      get(
-        /databases/$(database)/documents/rooms/$(roomId)
-      ).data.roomClosed == true
-      &&
-      get(
-        /databases/$(database)/documents/rooms/$(roomId)
-      ).data.exitHost == false
-      &&
-      get(
-        /databases/$(database)/documents/rooms/$(roomId)
-      ).data.exitGuest == false
-      &&
-      isStageStale()
-      &&
-      getAfter(
-        /databases/$(database)/documents/rooms/$(roomId)
-      ).data.roomClosed == false
-      &&
-      getAfter(
-        /databases/$(database)/documents/rooms/$(roomId)
-      ).data.hostUid == request.auth.uid
-    )
+    isStaleClosedRoomCleanup()
   );
 }
     }

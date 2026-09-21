@@ -5579,23 +5579,8 @@ const exitBecauseOpponentDisconnected =
       return;
     }
 
-    const exitField =
-      playerRole === 'host'
-        ? 'exitHost'
-        : 'exitGuest';
-
     try {
-      await updateDoc(
-        doc(
-          db,
-          'rooms',
-          roomId,
-        ),
-        {
-          [exitField]: true,
-          roomClosed: true,
-        },
-      );
+      await deleteRoomData();
 
       setShowOpponentDisconnectModal(
         false,
