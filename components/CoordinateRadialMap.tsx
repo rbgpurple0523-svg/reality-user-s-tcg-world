@@ -37,6 +37,34 @@ const INNER_RADIUS = 59;
 const CENTER_CIRCLE_RADIUS = 36;
 const SVG_SIZE = 350;
 
+const LEGACY_COORDINATE_ID_TO_CODE: Record<string, string> = {
+  coord_a: 'p6',
+  coord_b: 'p5',
+  coord_c: 'p4',
+  coord_d: 'p2',
+  coord_e: 'p3',
+  coord_f: 'p1',
+  coord_g: 'w2',
+  coord_h: 'w1',
+  coord_i: 't3',
+  coord_j: 's6',
+  coord_k: 't4',
+  coord_l: 's5',
+  coord_m: 'w5',
+  coord_n: 'w3',
+  coord_o: 't1',
+  coord_p: 's4',
+  coord_q: 't6',
+  coord_r: 's2',
+  coord_s: 'w6',
+  coord_t: 'w4',
+  coord_u: 't2',
+  coord_v: 's3',
+  coord_w: 't5',
+  coord_x: 's1',
+  coord_y: 'a1',
+};
+
 const PRIMARY_STYLES: Record<StatKey, { fill: string; stroke: string; text: string }> = {
   hp: { fill: '#fee2e2', stroke: '#fca5a5', text: '#991b1b' },
   intellect: { fill: '#dbeafe', stroke: '#93c5fd', text: '#1e40af' },
@@ -213,10 +241,26 @@ export default function CoordinateRadialMap({
     [coordinateMap, selectedCode, coordinates],
   );
 
-  const getEntryCount = (presetId: string) =>
-    entries.filter((entry) => entry.presetId === presetId).length;
+  const getEntriesForCoordinate = (coordinate: CoordinatePreset) =>
+    entries.filter((entry) => {
+      if (entry.cardType !== 'coordinate') return false;
+      if (entry.presetId === coordinate.id) return true;
+      return LEGACY_COORDINATE_ID_TO_CODE[entry.presetId] === coordinate.code;
+    });
 
-  const selectedCount = selectedCoordinate ? getEntryCount(selectedCoordinate.id) : 0;
+  const getEntryCount = (presetId: string) => {
+    const coordinate = coordinates.find((item) => item.id === presetId);
+    return coordinate
+      ? getEntriesForCoordinate(coordinate).length
+      : entries.filter(
+          (entry) => entry.cardType === 'coordinate' && entry.presetId === presetId,
+        ).length;
+  };
+
+  const selectedEntries = selectedCoordinate
+    ? getEntriesForCoordinate(selectedCoordinate)
+    : [];
+  const selectedCount = selectedEntries.length;
   const selectedIsFull = selectedCount >= maxEntryLimit;
   const selectedIsLocked =
     selectedIsFull && !(mode === 'picker' && selectedCoordinate?.id === initialSelectedId);
@@ -274,11 +318,12 @@ export default function CoordinateRadialMap({
         <div className="p-2 sm:p-4 bg-gray-50">
           <div className="overflow-x-auto rounded-2xl border border-gray-200 bg-white">
             <div className="flex justify-center py-3">
+              <div className="relative w-full" style={{ maxWidth: displaySvgSize }}>
               <svg
-                width={displaySvgSize}
-                height={displaySvgSize}
+                width="100%"
+                height="auto"
                 viewBox={`0 0 ${displaySvgSize} ${displaySvgSize}`}
-                className="max-w-full h-auto"
+                className="w-full h-auto"
                 role="img"
                 aria-label="25種類のコーデ配置図"
               >
@@ -304,7 +349,7 @@ export default function CoordinateRadialMap({
                   const labelRadius = (displayOuterRadius + displayInnerRadius) / 2;
                   const labelPoint = polarToCartesian(center, center, labelRadius, middleAngle);
                   const count = getEntryCount(coordinate.id);
-                  const presetEntries = entries.filter((entry) => entry.presetId === coordinate.id);
+                  const presetEntries = getEntriesForCoordinate(coordinate);
                   const isSelected = selectedCode === coordinate.code;
                   const isFull = count >= maxEntryLimit;
                   const canKeepCurrentSelection =
@@ -348,44 +393,6 @@ export default function CoordinateRadialMap({
                         {getCoordinateDisplayCode(coordinate)}
                       </text>
 
-                      {isEntryMode && presetEntries.length > 0 && (
-                        <g pointerEvents="none">
-                          {presetEntries.slice(0, 3).map((entry, avatarIndex) => {
-                            const shownEntries = presetEntries.slice(0, 3);
-                            const avatarSize = 16;
-                            const overlap = 5;
-                            const totalWidth = avatarSize * shownEntries.length - overlap * (shownEntries.length - 1);
-                            const avatarX = labelPoint.x - totalWidth / 2 + avatarSize / 2 + avatarIndex * (avatarSize - overlap);
-                            const avatarY = labelPoint.y + 1;
-                            const clipId = `avatar-clip-${coordinate.code}-${avatarIndex}`;
-
-                            return (
-                              <g key={`${entry.id}-${avatarIndex}`}>
-                                <defs>
-                                  <clipPath id={clipId}>
-                                    <circle cx={avatarX} cy={avatarY} r={avatarSize / 2} />
-                                  </clipPath>
-                                </defs>
-                                <circle cx={avatarX} cy={avatarY} r={avatarSize / 2 + 1} fill="white" />
-                                {entry.imageDataUrl ? (
-                                  <image
-                                    href={entry.imageDataUrl}
-                                    x={avatarX - avatarSize / 2}
-                                    y={avatarY - avatarSize / 2}
-                                    width={avatarSize}
-                                    height={avatarSize}
-                                    preserveAspectRatio="xMidYMid slice"
-                                    clipPath={`url(#${clipId})`}
-                                  />
-                                ) : (
-                                  <circle cx={avatarX} cy={avatarY} r={avatarSize / 2} fill="#e5e7eb" />
-                                )}
-                              </g>
-                            );
-                          })}
-                        </g>
-                      )}
-
                       <text
                         x={labelPoint.x}
                         y={labelPoint.y + (isEntryMode ? 19 : 10)}
@@ -426,7 +433,7 @@ export default function CoordinateRadialMap({
                   if (!centerPreset) return null;
 
                   const count = getEntryCount(centerPreset.id);
-                  const presetEntries = entries.filter((entry) => entry.presetId === centerPreset.id);
+                  const presetEntries = getEntriesForCoordinate(centerPreset);
                   const isSelected = selectedCode === 'a1';
                   const isFull = count >= maxEntryLimit;
                   const canKeepCurrentSelection =
@@ -450,44 +457,6 @@ export default function CoordinateRadialMap({
                       />
                       <text x={center} y={center - (isEntryMode ? 27 : 7)} textAnchor="middle" fontSize={isEntryMode ? 13 : 10} fontWeight="900" fill="#6366f1" letterSpacing="1">A-1</text>
 
-                      {isEntryMode && presetEntries.length > 0 && (
-                        <g pointerEvents="none">
-                          {presetEntries.slice(0, 3).map((entry, avatarIndex) => {
-                            const shownEntries = presetEntries.slice(0, 3);
-                            const avatarSize = 27;
-                            const overlap = 8;
-                            const totalWidth = avatarSize * shownEntries.length - overlap * (shownEntries.length - 1);
-                            const avatarX = center - totalWidth / 2 + avatarSize / 2 + avatarIndex * (avatarSize - overlap);
-                            const avatarY = center + 1;
-                            const clipId = `avatar-clip-center-${avatarIndex}`;
-
-                            return (
-                              <g key={`${entry.id}-${avatarIndex}`}>
-                                <defs>
-                                  <clipPath id={clipId}>
-                                    <circle cx={avatarX} cy={avatarY} r={avatarSize / 2} />
-                                  </clipPath>
-                                </defs>
-                                <circle cx={avatarX} cy={avatarY} r={avatarSize / 2 + 1.5} fill="white" />
-                                {entry.imageDataUrl ? (
-                                  <image
-                                    href={entry.imageDataUrl}
-                                    x={avatarX - avatarSize / 2}
-                                    y={avatarY - avatarSize / 2}
-                                    width={avatarSize}
-                                    height={avatarSize}
-                                    preserveAspectRatio="xMidYMid slice"
-                                    clipPath={`url(#${clipId})`}
-                                  />
-                                ) : (
-                                  <circle cx={avatarX} cy={avatarY} r={avatarSize / 2} fill="#e5e7eb" />
-                                )}
-                              </g>
-                            );
-                          })}
-                        </g>
-                      )}
-
                       <text
                         x={center}
                         y={center + (isEntryMode ? 25 : 12)}
@@ -502,6 +471,92 @@ export default function CoordinateRadialMap({
                   );
                 })()}
               </svg>
+
+              {isEntryMode && (
+                <div className="absolute inset-0 pointer-events-none">
+                  {RADIAL_CODES.map((code, index) => {
+                    const coordinate = coordinateMap.get(code);
+                    if (!coordinate) return null;
+                    const startAngle = START_ANGLE + index * SLICE_ANGLE;
+                    const middleAngle = startAngle + SLICE_ANGLE / 2;
+                    const labelRadius = (displayOuterRadius + displayInnerRadius) / 2;
+                    const labelPoint = polarToCartesian(center, center, labelRadius, middleAngle);
+                    const presetEntries = getEntriesForCoordinate(coordinate).slice(0, 3);
+                    if (presetEntries.length === 0) return null;
+
+                    return (
+                      <div
+                        key={`avatar-overlay-${coordinate.id}`}
+                        className="absolute flex items-center justify-center gap-0.5"
+                        style={{
+                          left: `${(labelPoint.x / displaySvgSize) * 100}%`,
+                          top: `${((labelPoint.y + 1) / displaySvgSize) * 100}%`,
+                          transform: 'translate(-50%, -50%)',
+                        }}
+                      >
+                        {presetEntries.map((entry) => (
+                          entry.imageDataUrl ? (
+                            <img
+                              key={entry.id}
+                              src={entry.imageDataUrl}
+                              alt={`${entry.userName}のアバター`}
+                              title={entry.userName || '名無しのアバター'}
+                              className="h-7 w-7 rounded-full object-cover border-2 border-white shadow-md bg-gray-100"
+                            />
+                          ) : (
+                            <div
+                              key={entry.id}
+                              title={entry.userName || '名無しのアバター'}
+                              className="h-7 w-7 rounded-full border-2 border-white shadow-md bg-gray-200 flex items-center justify-center text-[9px] font-black text-gray-500"
+                            >
+                              {entry.userName?.slice(0, 1) || '？'}
+                            </div>
+                          )
+                        ))}
+                      </div>
+                    );
+                  })}
+
+                  {(() => {
+                    const centerPreset = coordinateMap.get('a1');
+                    if (!centerPreset) return null;
+                    const presetEntries = getEntriesForCoordinate(centerPreset).slice(0, 3);
+                    if (presetEntries.length === 0) return null;
+
+                    return (
+                      <div
+                        className="absolute flex items-center justify-center gap-1"
+                        style={{
+                          left: '50%',
+                          top: '50%',
+                          transform: 'translate(-50%, -2%)',
+                        }}
+                      >
+                        {presetEntries.map((entry) => (
+                          entry.imageDataUrl ? (
+                            <img
+                              key={entry.id}
+                              src={entry.imageDataUrl}
+                              alt={`${entry.userName}のアバター`}
+                              title={entry.userName || '名無しのアバター'}
+                              className="h-11 w-11 rounded-full object-cover border-2 border-white shadow-md bg-gray-100"
+                            />
+                          ) : (
+                            <div
+                              key={entry.id}
+                              title={entry.userName || '名無しのアバター'}
+                              className="h-11 w-11 rounded-full border-2 border-white shadow-md bg-gray-200 flex items-center justify-center text-xs font-black text-gray-500"
+                            >
+                              {entry.userName?.slice(0, 1) || '？'}
+                            </div>
+                          )
+                        ))}
+                      </div>
+                    );
+                  })()}
+                </div>
+              )}
+              </div>
             </div>
           </div>
         </div>
@@ -547,7 +602,7 @@ export default function CoordinateRadialMap({
                     </div>
                   ) : (
                     <div className="mt-3 space-y-2">
-                      {entries.filter((entry) => entry.presetId === selectedCoordinate.id).slice(0, maxEntryLimit).map((entry) => (
+                      {selectedEntries.slice(0, maxEntryLimit).map((entry) => (
                         <div key={entry.id} className="flex items-center gap-3 rounded-xl border border-gray-100 bg-gray-50 p-2.5">
                           {entry.imageDataUrl ? (
                             <img src={entry.imageDataUrl} alt={`${entry.userName}のアバター`} className="h-11 w-11 shrink-0 rounded-full object-cover border-2 border-white shadow-sm" />

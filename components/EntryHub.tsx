@@ -66,24 +66,7 @@ export default function EntryHub({
   onStartCharacterRegistration,
   onStartSupportRegistration,
 }: EntryHubProps) {
-  const [
-    libraryMode,
-    setLibraryMode,
-  ] = useState<
-    'registered' | 'coordinate' | 'emotion'
-  >('registered');
-
-  const [
-    registeredCardFilter,
-    setRegisteredCardFilter,
-  ] = useState<
-    'all' | 'coordinate' | 'emotion'
-  >('all');
-
-  const [
-    registeredSearchFilter,
-    setRegisteredSearchFilter,
-  ] = useState('');
+  const [libraryMode, setLibraryMode] = useState<'coordinate' | 'emotion'>('coordinate');
 
   const [
     entries,
@@ -235,100 +218,13 @@ export default function EntryHub({
         ? 2
         : 1;
 
-  // =========================================================
-  // 登録済みカード
-  // =========================================================
+  const registeredCharacterCount = entries.filter(
+    (entry) => entry.cardType === 'coordinate',
+  ).length;
 
-  const filteredRegisteredCards =
-    useMemo(() => {
-      const q =
-        registeredSearchFilter
-          .trim()
-          .toLowerCase();
-
-      return [
-        ...entries,
-      ]
-        .filter((entry) => {
-          if (
-            registeredCardFilter !==
-              'all' &&
-            entry.cardType !==
-              registeredCardFilter
-          ) {
-            return false;
-          }
-
-          if (!q) {
-            return true;
-          }
-
-          const coordinate =
-            entry.cardType ===
-            'coordinate'
-              ? COORDINATE_PRESETS.find(
-                  (preset) =>
-                    preset.id ===
-                    entry.presetId,
-                )
-              : undefined;
-
-          const emotion =
-            entry.cardType ===
-            'emotion'
-              ? EMOTION_PRESETS.find(
-                  (preset) =>
-                    preset.id ===
-                    entry.presetId,
-                )
-              : undefined;
-
-          const searchable = [
-            entry.userName,
-            entry.profileUrl,
-            coordinate?.name,
-            coordinate?.code,
-            coordinate?.tendency,
-            emotion?.name,
-            emotion?.effectCategory,
-            emotion?.statEffect,
-            emotion?.description,
-            entry.customEffectName,
-          ]
-            .filter(Boolean)
-            .join(' ')
-            .toLowerCase();
-
-          return searchable.includes(q);
-        })
-        .sort(
-          (a, b) =>
-            new Date(
-              b.createdAt,
-            ).getTime() -
-            new Date(
-              a.createdAt,
-            ).getTime(),
-        );
-    }, [
-      entries,
-      registeredCardFilter,
-      registeredSearchFilter,
-    ]);
-
-  const registeredCharacterCount =
-    entries.filter(
-      (entry) =>
-        entry.cardType ===
-        'coordinate',
-    ).length;
-
-  const registeredSupportCount =
-    entries.filter(
-      (entry) =>
-        entry.cardType ===
-        'emotion',
-    ).length;
+  const registeredSupportCount = entries.filter(
+    (entry) => entry.cardType === 'emotion',
+  ).length;
 
   // =========================================================
   // エモーション
@@ -527,57 +423,27 @@ export default function EntryHub({
       {/* ===================================================== */}
       {/* ライブラリタブ */}
       {/* ===================================================== */}
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-2">
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
         <button
           type="button"
-          onClick={() =>
-            setLibraryMode(
-              'registered',
-            )
-          }
+          onClick={() => setLibraryMode('coordinate')}
           className={`rounded-2xl px-4 py-4 text-sm font-black transition border ${
-            libraryMode ===
-            'registered'
-              ? 'bg-slate-900 text-white border-slate-900 shadow-sm'
-              : 'bg-white text-gray-700 border-gray-200 hover:bg-gray-50'
-          }`}
-        >
-          👥 登録済みカード
-          <span className="block mt-1 text-[10px] font-normal opacity-80">
-            みんなのアバターを見る
-          </span>
-        </button>
-
-        <button
-          type="button"
-          onClick={() =>
-            setLibraryMode(
-              'coordinate',
-            )
-          }
-          className={`rounded-2xl px-4 py-4 text-sm font-black transition border ${
-            libraryMode ===
-            'coordinate'
+            libraryMode === 'coordinate'
               ? 'bg-indigo-900 text-white border-indigo-900 shadow-sm'
               : 'bg-white text-gray-700 border-gray-200 hover:bg-indigo-50'
           }`}
         >
-          👤 コーデ枠
+          👤 キャラカード一覧
           <span className="block mt-1 text-[10px] font-normal opacity-80">
-            キャラカードの性能枠
+            25コーデと登録アバターをマップで見る
           </span>
         </button>
 
         <button
           type="button"
-          onClick={() =>
-            setLibraryMode(
-              'emotion',
-            )
-          }
+          onClick={() => setLibraryMode('emotion')}
           className={`rounded-2xl px-4 py-4 text-sm font-black transition border ${
-            libraryMode ===
-            'emotion'
+            libraryMode === 'emotion'
               ? 'bg-purple-900 text-white border-purple-900 shadow-sm'
               : 'bg-white text-gray-700 border-gray-200 hover:bg-purple-50'
           }`}
@@ -588,357 +454,6 @@ export default function EntryHub({
           </span>
         </button>
       </div>
-
-      {/* ===================================================== */}
-      {/* 登録済みカード */}
-      {/* ===================================================== */}
-      {libraryMode ===
-        'registered' && (
-        <section className="bg-white rounded-3xl border border-gray-200 shadow-sm overflow-hidden">
-          <div className="p-6 border-b border-gray-200">
-            <div className="flex flex-col lg:flex-row lg:items-start lg:justify-between gap-4">
-              <div>
-                <div className="text-xs font-black tracking-[0.15em] text-slate-500">
-                  REGISTERED CARDS
-                </div>
-
-                <h2 className="mt-1 text-2xl font-black">
-                  登録済みカード
-                </h2>
-
-                <p className="mt-2 text-xs text-gray-500 leading-relaxed">
-                  REALITYアバターが実際に登録されたカードを確認できます。
-                  カードの性能そのものはここから変更できません。
-                </p>
-              </div>
-
-              <div className="flex flex-wrap gap-2">
-                <button
-                  type="button"
-                  onClick={() =>
-                    setRegisteredCardFilter(
-                      'all',
-                    )
-                  }
-                  className={`px-3 py-2 rounded-xl text-xs font-black border ${
-                    registeredCardFilter ===
-                    'all'
-                      ? 'bg-slate-900 text-white border-slate-900'
-                      : 'bg-white text-gray-600 border-gray-200'
-                  }`}
-                >
-                  すべて
-                </button>
-
-                <button
-                  type="button"
-                  onClick={() =>
-                    setRegisteredCardFilter(
-                      'coordinate',
-                    )
-                  }
-                  className={`px-3 py-2 rounded-xl text-xs font-black border ${
-                    registeredCardFilter ===
-                    'coordinate'
-                      ? 'bg-indigo-600 text-white border-indigo-600'
-                      : 'bg-white text-gray-600 border-gray-200'
-                  }`}
-                >
-                  キャラカード
-                </button>
-
-                <button
-                  type="button"
-                  onClick={() =>
-                    setRegisteredCardFilter(
-                      'emotion',
-                    )
-                  }
-                  className={`px-3 py-2 rounded-xl text-xs font-black border ${
-                    registeredCardFilter ===
-                    'emotion'
-                      ? 'bg-purple-600 text-white border-purple-600'
-                      : 'bg-white text-gray-600 border-gray-200'
-                  }`}
-                >
-                  サポートカード
-                </button>
-              </div>
-            </div>
-
-            <div className="mt-4">
-              <input
-                type="text"
-                value={
-                  registeredSearchFilter
-                }
-                onChange={(e) =>
-                  setRegisteredSearchFilter(
-                    e.target.value,
-                  )
-                }
-                placeholder="アバター名・コーデ・エモーションなどで検索"
-                className="w-full px-4 py-3 rounded-xl border border-gray-200 bg-gray-50 text-sm outline-none focus:border-indigo-400 focus:bg-white"
-              />
-            </div>
-          </div>
-
-          <div className="p-6">
-            {filteredRegisteredCards.length ===
-            0 ? (
-              <div className="rounded-2xl border border-dashed border-gray-300 bg-gray-50 p-10 text-center">
-                <div className="text-4xl">
-                  🃏
-                </div>
-
-                <div className="mt-3 text-sm font-black text-gray-700">
-                  まだ登録済みカードがありません
-                </div>
-
-                <div className="mt-1 text-xs text-gray-500">
-                  最初のアバターカードを登録してみましょう。
-                </div>
-
-                <div className="mt-5 flex flex-wrap justify-center gap-2">
-                  {onStartCharacterRegistration && (
-                    <button
-                      type="button"
-                      onClick={() =>
-                        onStartCharacterRegistration()
-                      }
-                      className="px-4 py-3 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-black"
-                    >
-                      👤 キャラカードを登録
-                    </button>
-                  )}
-
-                  {onStartSupportRegistration && (
-                    <button
-                      type="button"
-                      onClick={() =>
-                        onStartSupportRegistration()
-                      }
-                      className="px-4 py-3 rounded-xl bg-purple-600 hover:bg-purple-700 text-white text-xs font-black"
-                    >
-                      ✨ サポートカードを登録
-                    </button>
-                  )}
-                </div>
-              </div>
-            ) : (
-              <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-4">
-                {filteredRegisteredCards.map(
-                  (entry) => {
-                    const coordinate =
-                      entry.cardType ===
-                      'coordinate'
-                        ? COORDINATE_PRESETS.find(
-                            (preset) =>
-                              preset.id ===
-                              entry.presetId,
-                          )
-                        : null;
-
-                    const emotion =
-                      entry.cardType ===
-                      'emotion'
-                        ? EMOTION_PRESETS.find(
-                            (preset) =>
-                              preset.id ===
-                              entry.presetId,
-                          )
-                        : null;
-
-                    return (
-                      <article
-                        key={entry.id}
-                        className={`rounded-2xl border overflow-hidden shadow-sm ${
-                          entry.cardType ===
-                          'coordinate'
-                            ? 'border-indigo-100 bg-indigo-50/30'
-                            : 'border-purple-100 bg-purple-50/30'
-                        }`}
-                      >
-                        <div className="aspect-[4/3] bg-gray-100 overflow-hidden">
-                          {entry.imageDataUrl ? (
-                            <img
-                              src={
-                                entry.imageDataUrl
-                              }
-                              alt={`${entry.userName}のカード画像`}
-                              className="w-full h-full object-cover"
-                            />
-                          ) : (
-                            <div className="w-full h-full flex items-center justify-center text-5xl text-gray-300">
-                              👤
-                            </div>
-                          )}
-                        </div>
-
-                        <div className="p-4 space-y-3">
-                          <div className="flex items-start justify-between gap-3">
-                            <div>
-                              <span
-                                className={`inline-flex px-2 py-1 rounded-lg text-[10px] font-black ${
-                                  entry.cardType ===
-                                  'coordinate'
-                                    ? 'bg-indigo-100 text-indigo-800'
-                                    : 'bg-purple-100 text-purple-800'
-                                }`}
-                              >
-                                {entry.cardType ===
-                                'coordinate'
-                                  ? 'キャラカード'
-                                  : 'サポートカード'}
-                              </span>
-
-                              <h3 className="mt-2 text-lg font-black">
-                                {entry.userName ||
-                                  '名無しのアバター'}
-                              </h3>
-                            </div>
-
-                            <span className="text-[10px] font-bold text-gray-400">
-                              登録済み
-                            </span>
-                          </div>
-
-                          {coordinate && (
-                            <>
-                              <div className="rounded-xl bg-white border border-indigo-100 p-3">
-                                <div className="text-[10px] font-black text-indigo-500">
-                                  コーデ
-                                </div>
-
-                                <div className="mt-1 text-sm font-black text-indigo-950">
-                                  {coordinate.code.toUpperCase()}{' '}
-                                  {coordinate.name}
-                                </div>
-
-                                <div className="mt-1 text-[10px] text-indigo-700">
-                                  {
-                                    coordinate.tendency
-                                  }
-                                </div>
-                              </div>
-
-                              <div className="grid grid-cols-2 gap-2 text-[10px]">
-                                <div className="rounded-lg bg-white border p-2">
-                                  体力：
-                                  <b>
-                                    {
-                                      coordinate
-                                        .stats
-                                        .hp
-                                    }
-                                  </b>
-                                </div>
-
-                                <div className="rounded-lg bg-white border p-2">
-                                  知略：
-                                  <b>
-                                    {
-                                      coordinate
-                                        .stats
-                                        .intellect
-                                    }
-                                  </b>
-                                </div>
-
-                                <div className="rounded-lg bg-white border p-2">
-                                  器用：
-                                  <b>
-                                    {
-                                      coordinate
-                                        .stats
-                                        .dexterity
-                                    }
-                                  </b>
-                                </div>
-
-                                <div className="rounded-lg bg-white border p-2">
-                                  特技：
-                                  <b>
-                                    {
-                                      coordinate
-                                        .stats
-                                        .charm
-                                    }
-                                  </b>
-                                </div>
-                              </div>
-                            </>
-                          )}
-
-                          {emotion && (
-                            <div className="rounded-xl bg-white border border-purple-100 p-3">
-                              <div className="flex flex-wrap gap-1.5">
-                                <span className="px-2 py-1 rounded-lg bg-purple-100 text-purple-800 text-[10px] font-black">
-                                  {
-                                    emotion.target
-                                  }
-                                </span>
-
-                                <span className="px-2 py-1 rounded-lg bg-purple-100 text-purple-800 text-[10px] font-black">
-                                  {
-                                    emotion.effectCategory
-                                  }
-                                </span>
-
-                                <span className="px-2 py-1 rounded-lg bg-purple-100 text-purple-800 text-[10px] font-black">
-                                  {
-                                    emotion.duration
-                                  }
-                                </span>
-                              </div>
-
-                              <div className="mt-2 text-sm font-black text-purple-950">
-                                {
-                                  entry.customEffectName ||
-                                  emotion.name
-                                }
-                              </div>
-
-                              <div className="mt-1 text-[10px] text-purple-700">
-                                {
-                                  emotion.statEffect
-                                }
-
-                                {emotion.effectAmount
-                                  ? ` / ${emotion.effectAmount}`
-                                  : ''}
-                              </div>
-
-                              <div className="mt-2 text-[10px] text-gray-600 leading-relaxed">
-                                {
-                                  emotion.description
-                                }
-                              </div>
-                            </div>
-                          )}
-
-                          {entry.profileUrl && (
-                            <a
-                              href={
-                                entry.profileUrl
-                              }
-                              target="_blank"
-                              rel="noreferrer"
-                              className="block text-center rounded-xl border border-gray-200 bg-white hover:bg-gray-50 px-3 py-2 text-[10px] font-black text-gray-700"
-                            >
-                              REALITYプロフィールを見る ↗
-                            </a>
-                          )}
-                        </div>
-                      </article>
-                    );
-                  },
-                )}
-              </div>
-            )}
-          </div>
-        </section>
-      )}
 
       {/* ===================================================== */}
       {/* コーデ枠 */}

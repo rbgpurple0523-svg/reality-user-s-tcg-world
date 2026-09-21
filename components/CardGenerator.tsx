@@ -324,11 +324,18 @@ export default function CardGenerator({ selectedCoordinate, onBackToHub }: CardG
     if (!creatorToken) creatorToken = makeCreatorToken();
 
     const now = new Date().toISOString();
+    const normalizedCustomSkills: [string, string, string, string] = [
+      customSkills[0].trim(),
+      customSkills[1].trim(),
+      customSkills[2].trim(),
+      customSkills[3].trim(),
+    ];
+
     const normalizedSkillVoices: [string, string, string, string] = [
-      skillVoices[0].trim() || getDefaultSkillVoice(customSkills[0].trim()),
-      skillVoices[1].trim() || getDefaultSkillVoice(customSkills[1].trim()),
-      skillVoices[2].trim() || getDefaultSkillVoice(customSkills[2].trim()),
-      skillVoices[3].trim() || getDefaultSkillVoice(customSkills[3].trim()),
+      skillVoices[0].trim() || getDefaultSkillVoice(normalizedCustomSkills[0]),
+      skillVoices[1].trim() || getDefaultSkillVoice(normalizedCustomSkills[1]),
+      skillVoices[2].trim() || getDefaultSkillVoice(normalizedCustomSkills[2]),
+      skillVoices[3].trim() || getDefaultSkillVoice(normalizedCustomSkills[3]),
     ];
 
     const newEntry: EntryRecord = {
@@ -341,7 +348,7 @@ export default function CardGenerator({ selectedCoordinate, onBackToHub }: CardG
       // 既存データ形式との互換性を優先し、現時点では入力された合言葉を保持。
       passwordHash: password,
       firstUser: editingEntry?.firstUser || userName.trim(),
-      customSkills: [...customSkills],
+      customSkills: normalizedCustomSkills,
       skillVoices: normalizedSkillVoices,
       flavorText: flavorText.trim(),
       createdAt: editingEntry?.createdAt || now,
