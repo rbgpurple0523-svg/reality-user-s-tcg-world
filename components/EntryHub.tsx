@@ -10,10 +10,18 @@ import type { EmotionPreset } from './emotionPresets';
 // 型定義
 // =========================================================
 export type CardColor = '赤' | '青' | '黄';
-export type Archetype = 'マッスル型' | '頭脳型' | 'ディーバ型' | '職人型';
+export type Archetype =
+  | 'マッスル型'
+  | '頭脳型'
+  | 'ディーバ型'
+  | '職人型';
 export type Season = '春' | '夏' | '秋' | '冬';
 
-export type StatKey = 'hp' | 'intellect' | 'dexterity' | 'charm';
+export type StatKey =
+  | 'hp'
+  | 'intellect'
+  | 'dexterity'
+  | 'charm';
 
 export interface CoordinatePreset {
   id: string;
@@ -43,10 +51,7 @@ export interface EntryRecord {
   passwordHash: string;
   firstUser: string;
 
-  // 既存サポートカード所有者管理用
   ownerToken?: string;
-
-  // 既存サポートカードのユーザー編集用
   customEffectName?: string;
 
   customSkills?: [string, string, string, string];
@@ -55,7 +60,6 @@ export interface EntryRecord {
   season?: Season;
   archetype?: Archetype;
 
-  // 既存GameBoardとの互換性
   hp?: number;
   ap?: number;
 
@@ -122,24 +126,28 @@ const STAT_RANKS: Record<string, StatKey[]> = {
   d: ['hp', 'dexterity', 'charm', 'intellect'],
   e: ['hp', 'charm', 'intellect', 'dexterity'],
   f: ['hp', 'charm', 'dexterity', 'intellect'],
+
   g: ['intellect', 'hp', 'dexterity', 'charm'],
   h: ['intellect', 'hp', 'charm', 'dexterity'],
   i: ['intellect', 'dexterity', 'hp', 'charm'],
   j: ['intellect', 'dexterity', 'charm', 'hp'],
   k: ['intellect', 'charm', 'hp', 'dexterity'],
   l: ['intellect', 'charm', 'dexterity', 'hp'],
+
   m: ['dexterity', 'hp', 'intellect', 'charm'],
   n: ['dexterity', 'hp', 'charm', 'intellect'],
   o: ['dexterity', 'intellect', 'hp', 'charm'],
   p: ['dexterity', 'intellect', 'charm', 'hp'],
   q: ['dexterity', 'charm', 'hp', 'intellect'],
   r: ['dexterity', 'charm', 'intellect', 'hp'],
+
   s: ['charm', 'hp', 'intellect', 'dexterity'],
   t: ['charm', 'hp', 'dexterity', 'intellect'],
   u: ['charm', 'intellect', 'hp', 'dexterity'],
   v: ['charm', 'intellect', 'dexterity', 'hp'],
   w: ['charm', 'dexterity', 'hp', 'intellect'],
   x: ['charm', 'dexterity', 'intellect', 'hp'],
+
   y: ['hp', 'intellect', 'dexterity', 'charm'],
 };
 
@@ -153,28 +161,35 @@ const STATS_BY_CODE: Record<
   d: [80, 40, 20, 60],
   e: [80, 20, 60, 40],
   f: [80, 20, 40, 60],
+
   g: [60, 80, 40, 20],
   h: [60, 80, 20, 40],
   i: [60, 40, 80, 20],
   j: [60, 40, 20, 80],
   k: [60, 20, 80, 40],
   l: [60, 20, 40, 80],
+
   m: [40, 80, 60, 20],
   n: [40, 80, 20, 60],
   o: [40, 60, 80, 20],
   p: [40, 60, 20, 80],
   q: [40, 20, 80, 60],
   r: [40, 20, 60, 80],
+
   s: [20, 80, 60, 40],
   t: [20, 80, 40, 60],
   u: [20, 60, 80, 40],
   v: [20, 60, 40, 80],
   w: [20, 40, 80, 60],
   x: [20, 40, 60, 80],
+
   y: [40, 40, 40, 40],
 };
 
-const ARCHETYPE_BY_PRIMARY: Record<StatKey, Archetype> = {
+const ARCHETYPE_BY_PRIMARY: Record<
+  StatKey,
+  Archetype
+> = {
   hp: 'マッスル型',
   intellect: '頭脳型',
   dexterity: '職人型',
@@ -230,7 +245,8 @@ export const COORDINATE_PRESETS: CoordinatePreset[] =
     const [hp, intellect, dexterity, charm] =
       STATS_BY_CODE[code];
 
-    const primary = STAT_RANKS[code][0];
+    const primary =
+      STAT_RANKS[code][0];
 
     return {
       id: `coord_${code}`,
@@ -238,7 +254,9 @@ export const COORDINATE_PRESETS: CoordinatePreset[] =
       name: `コーデ ${code}`,
       color: '赤',
       archetype:
-        ARCHETYPE_BY_PRIMARY[primary],
+        ARCHETYPE_BY_PRIMARY[
+          primary
+        ],
       season: '春',
       stats: {
         hp,
@@ -255,11 +273,16 @@ export const COORDINATE_PRESETS: CoordinatePreset[] =
           ? '体力＝知略＝器用＝特技'
           : STAT_RANKS[code]
               .map(
-                (key) => STAT_LABELS[key],
+                (key) =>
+                  STAT_LABELS[key],
               )
               .join(' ＞ '),
     };
   });
+
+// =========================================================
+// コンポーネント
+// =========================================================
 
 export default function EntryHub({
   onBackToMenu,
@@ -267,52 +290,86 @@ export default function EntryHub({
   onStartCharacterRegistration,
   onStartSupportRegistration,
 }: EntryHubProps) {
-  const [activeTab, setActiveTab] =
-    useState<'coordinate' | 'emotion'>(
-      'coordinate',
-    );
+  const [
+    libraryMode,
+    setLibraryMode,
+  ] = useState<
+    'registered' | 'coordinate' | 'emotion'
+  >('registered');
 
-  const [entries, setEntries] =
-    useState<EntryRecord[]>(() => {
-      if (typeof window === 'undefined') {
-        return [];
-      }
+  const [
+    registeredCardFilter,
+    setRegisteredCardFilter,
+  ] = useState<
+    'all' | 'coordinate' | 'emotion'
+  >('all');
 
-      try {
-        const saved =
-          localStorage.getItem(
-            ENTRIES_KEY,
-          );
-        return saved
-          ? JSON.parse(saved)
-          : [];
-      } catch {
-        return [];
-      }
-    });
+  const [
+    registeredSearchFilter,
+    setRegisteredSearchFilter,
+  ] = useState('');
 
-  const [coordSearchFilter, setCoordSearchFilter] =
-    useState('');
+  const [
+    entries,
+    setEntries,
+  ] = useState<EntryRecord[]>(() => {
+    if (
+      typeof window ===
+      'undefined'
+    ) {
+      return [];
+    }
 
-  const [coordArchetypeFilter, setCoordArchetypeFilter] =
-    useState('ALL');
+    try {
+      const saved =
+        localStorage.getItem(
+          ENTRIES_KEY,
+        );
 
-  const [emoTargetFilter, setEmoTargetFilter] =
-    useState('ALL');
+      return saved
+        ? JSON.parse(saved)
+        : [];
+    } catch {
+      return [];
+    }
+  });
 
-  const [emoStatFilter, setEmoStatFilter] =
-    useState('ALL');
+  const [
+    coordSearchFilter,
+    setCoordSearchFilter,
+  ] = useState('');
 
-  const [emoDurationFilter, setEmoDurationFilter] =
-    useState('ALL');
+  const [
+    coordArchetypeFilter,
+    setCoordArchetypeFilter,
+  ] = useState('ALL');
 
-  const [activeGenerator, setActiveGenerator] =
-    useState<{
-      type: 'coordinate' | 'emotion';
-      preset:
-        | CoordinatePreset
-        | EmotionPreset;
-    } | null>(null);
+  const [
+    emoTargetFilter,
+    setEmoTargetFilter,
+  ] = useState('ALL');
+
+  const [
+    emoStatFilter,
+    setEmoStatFilter,
+  ] = useState('ALL');
+
+  const [
+    emoDurationFilter,
+    setEmoDurationFilter,
+  ] = useState('ALL');
+
+  const [
+    activeGenerator,
+    setActiveGenerator,
+  ] = useState<{
+    type:
+      | 'coordinate'
+      | 'emotion';
+    preset:
+      | CoordinatePreset
+      | EmotionPreset;
+  } | null>(null);
 
   const reloadEntries = () => {
     try {
@@ -344,19 +401,24 @@ export default function EntryHub({
     COORDINATE_PRESETS.length +
     EMOTION_PRESETS.length;
 
-  const filledPresetCount = useMemo(
-    () =>
-      [
-        ...COORDINATE_PRESETS,
-        ...EMOTION_PRESETS,
-      ].filter(
-        (preset) =>
-          getEntryCount(
-            preset.id,
-          ) >= 1,
-      ).length,
-    [entries],
-  );
+  // =========================================================
+  // エントリー枠解放率
+  // =========================================================
+
+  const filledPresetCount =
+    useMemo(
+      () =>
+        [
+          ...COORDINATE_PRESETS,
+          ...EMOTION_PRESETS,
+        ].filter(
+          (preset) =>
+            getEntryCount(
+              preset.id,
+            ) >= 1,
+        ).length,
+      [entries],
+    );
 
   const fillRate =
     filledPresetCount /
@@ -405,34 +467,104 @@ export default function EntryHub({
         ? 2
         : 1;
 
-  const totalRegisteredCards =
-    entries.length;
+  // =========================================================
+  // 登録済みカード
+  // =========================================================
 
-  const availableCoordinateCount =
-    useMemo(
-      () =>
-        COORDINATE_PRESETS.filter(
-          (coordinate) =>
-            getEntryCount(
-              coordinate.id,
-            ) <
-            maxEntryLimit,
-        ).length,
-      [entries, maxEntryLimit],
-    );
+  const filteredRegisteredCards =
+    useMemo(() => {
+      const q =
+        registeredSearchFilter
+          .trim()
+          .toLowerCase();
 
-  const availableEmotionCount =
-    useMemo(
-      () =>
-        EMOTION_PRESETS.filter(
-          (emotion) =>
-            getEntryCount(
-              emotion.id,
-            ) <
-            maxEntryLimit,
-        ).length,
-      [entries, maxEntryLimit],
-    );
+      return [
+        ...entries,
+      ]
+        .filter((entry) => {
+          if (
+            registeredCardFilter !==
+              'all' &&
+            entry.cardType !==
+              registeredCardFilter
+          ) {
+            return false;
+          }
+
+          if (!q) {
+            return true;
+          }
+
+          const coordinate =
+            entry.cardType ===
+            'coordinate'
+              ? COORDINATE_PRESETS.find(
+                  (preset) =>
+                    preset.id ===
+                    entry.presetId,
+                )
+              : undefined;
+
+          const emotion =
+            entry.cardType ===
+            'emotion'
+              ? EMOTION_PRESETS.find(
+                  (preset) =>
+                    preset.id ===
+                    entry.presetId,
+                )
+              : undefined;
+
+          const searchable = [
+            entry.userName,
+            entry.profileUrl,
+            coordinate?.name,
+            coordinate?.code,
+            coordinate?.tendency,
+            emotion?.name,
+            emotion?.effectCategory,
+            emotion?.statEffect,
+            emotion?.description,
+            entry.customEffectName,
+          ]
+            .filter(Boolean)
+            .join(' ')
+            .toLowerCase();
+
+          return searchable.includes(q);
+        })
+        .sort(
+          (a, b) =>
+            new Date(
+              b.createdAt,
+            ).getTime() -
+            new Date(
+              a.createdAt,
+            ).getTime(),
+        );
+    }, [
+      entries,
+      registeredCardFilter,
+      registeredSearchFilter,
+    ]);
+
+  const registeredCharacterCount =
+    entries.filter(
+      (entry) =>
+        entry.cardType ===
+        'coordinate',
+    ).length;
+
+  const registeredSupportCount =
+    entries.filter(
+      (entry) =>
+        entry.cardType ===
+        'emotion',
+    ).length;
+
+  // =========================================================
+  // コーデ
+  // =========================================================
 
   const coordinateMatrix =
     useMemo(() => {
@@ -456,10 +588,13 @@ export default function EntryHub({
               }
 
               return COORDINATE_PRESETS.filter(
-                (coordinate) => {
+                (
+                  coordinate,
+                ) => {
                   const rank =
                     STAT_RANKS[
-                      coordinate.code
+                      coordinate
+                        .code
                     ];
 
                   return (
@@ -514,6 +649,10 @@ export default function EntryHub({
       coordArchetypeFilter,
     ]);
 
+  // =========================================================
+  // エモーション
+  // =========================================================
+
   const filteredEmotions =
     useMemo(
       () =>
@@ -552,8 +691,9 @@ export default function EntryHub({
     );
 
   // =========================================================
-  // 生成画面
+  // 生成画面へ
   // =========================================================
+
   if (activeGenerator) {
     if (
       activeGenerator.type ===
@@ -607,9 +747,8 @@ export default function EntryHub({
               </h1>
 
               <p className="mt-3 max-w-2xl text-sm leading-relaxed text-indigo-100">
-                みんなが登録したアバターカードと、
-                これから参加できる公式性能枠をここで確認できます。
-                気になる枠を見つけたら、そのままアバターエントリーへ進めます。
+                登録されたアバターカードを見たり、
+                これから参加できる公式のコーデ・エモーション枠を探したりできます。
               </p>
             </div>
 
@@ -665,165 +804,465 @@ export default function EntryHub({
           </div>
         </div>
 
-        <div className="grid grid-cols-2 lg:grid-cols-5 gap-3 p-4 bg-gray-50 border-t border-gray-200">
+        <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 p-4 bg-gray-50 border-t border-gray-200">
           <div className="rounded-2xl bg-white border border-gray-200 p-4">
             <div className="text-[10px] font-bold text-gray-500">
-              登録カード数
+              登録カード
             </div>
-            <div className="mt-1 text-2xl font-black text-gray-900">
-              {totalRegisteredCards}
+            <div className="mt-1 text-2xl font-black">
+              {entries.length}
             </div>
           </div>
 
           <div className="rounded-2xl bg-white border border-gray-200 p-4">
             <div className="text-[10px] font-bold text-gray-500">
-              コーデ枠
+              キャラカード
             </div>
             <div className="mt-1 text-2xl font-black text-indigo-700">
-              {COORDINATE_PRESETS.length}
+              {registeredCharacterCount}
             </div>
           </div>
 
           <div className="rounded-2xl bg-white border border-gray-200 p-4">
             <div className="text-[10px] font-bold text-gray-500">
-              エモーション枠
+              サポートカード
             </div>
             <div className="mt-1 text-2xl font-black text-purple-700">
-              {EMOTION_PRESETS.length}
+              {registeredSupportCount}
             </div>
           </div>
 
           <div className="rounded-2xl bg-white border border-gray-200 p-4">
             <div className="text-[10px] font-bold text-gray-500">
-              現在の上限
+              現在のエントリー上限
             </div>
             <div className="mt-1 text-2xl font-black text-emerald-700">
               {maxEntryLimit}人
             </div>
           </div>
-
-          <div className="rounded-2xl bg-white border border-gray-200 p-4 col-span-2 lg:col-span-1">
-            <div className="text-[10px] font-bold text-gray-500">
-              参加可能枠
-            </div>
-            <div className="mt-1 text-sm font-black text-gray-900">
-              コーデ{' '}
-              {
-                availableCoordinateCount
-              }
-              <br />
-              エモーション{' '}
-              {
-                availableEmotionCount
-              }
-            </div>
-          </div>
-        </div>
-
-        <div className="p-4 border-t border-gray-200">
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-2 text-xs">
-            <div className="p-3 rounded-xl border bg-indigo-50 border-indigo-200 text-indigo-800 font-bold text-center">
-              🔓 上限1人
-            </div>
-
-            <div
-              className={`p-3 rounded-xl border text-center ${
-                maxEntryLimit >= 2
-                  ? 'bg-indigo-50 border-indigo-200 text-indigo-800 font-bold'
-                  : 'bg-gray-50 border-gray-200 text-gray-400'
-              }`}
-            >
-              🔓 上限2人{' '}
-              {maxEntryLimit >=
-              2
-                ? '✨解放'
-                : '(50%以上で解放)'}
-            </div>
-
-            <div
-              className={`p-3 rounded-xl border text-center ${
-                maxEntryLimit >= 3
-                  ? 'bg-purple-50 border-purple-200 text-purple-800 font-bold'
-                  : 'bg-gray-50 border-gray-200 text-gray-400'
-              }`}
-            >
-              🌟 上限3人{' '}
-              {maxEntryLimit >=
-              3
-                ? '✨解放'
-                : '(90%/50%条件で解放)'}
-            </div>
-          </div>
-
-          <div className="mt-3 text-xs text-gray-500">
-            現在の枠充足率：
-            <span className="font-black text-indigo-700">
-              {(fillRate * 100).toFixed(
-                1,
-              )}
-              %
-            </span>
-
-            <span className="ml-3">
-              1人以上：
-              {filledPresetCount}/
-              {totalPossibleSlots}
-            </span>
-
-            <span className="ml-3">
-              2人以上：
-              {countAtLeastTwo}/
-              {totalPossibleSlots}
-            </span>
-          </div>
         </div>
       </section>
 
       {/* ===================================================== */}
-      {/* タブ */}
+      {/* ライブラリタブ */}
       {/* ===================================================== */}
-      <div className="grid grid-cols-2 gap-2">
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-2">
         <button
           type="button"
           onClick={() =>
-            setActiveTab(
-              'coordinate',
+            setLibraryMode(
+              'registered',
             )
           }
           className={`rounded-2xl px-4 py-4 text-sm font-black transition border ${
-            activeTab === 'coordinate'
-              ? 'bg-indigo-900 text-white border-indigo-900 shadow-sm'
-              : 'bg-white text-gray-700 border-gray-200 hover:bg-indigo-50'
+            libraryMode ===
+            'registered'
+              ? 'bg-slate-900 text-white border-slate-900 shadow-sm'
+              : 'bg-white text-gray-700 border-gray-200 hover:bg-gray-50'
           }`}
         >
-          👤 キャラカード
+          👥 登録済みカード
           <span className="block mt-1 text-[10px] font-normal opacity-80">
-            コーデ性能
+            みんなのアバターを見る
           </span>
         </button>
 
         <button
           type="button"
           onClick={() =>
-            setActiveTab('emotion')
+            setLibraryMode(
+              'coordinate',
+            )
           }
           className={`rounded-2xl px-4 py-4 text-sm font-black transition border ${
-            activeTab === 'emotion'
+            libraryMode ===
+            'coordinate'
+              ? 'bg-indigo-900 text-white border-indigo-900 shadow-sm'
+              : 'bg-white text-gray-700 border-gray-200 hover:bg-indigo-50'
+          }`}
+        >
+          👤 コーデ枠
+          <span className="block mt-1 text-[10px] font-normal opacity-80">
+            キャラカードの性能枠
+          </span>
+        </button>
+
+        <button
+          type="button"
+          onClick={() =>
+            setLibraryMode(
+              'emotion',
+            )
+          }
+          className={`rounded-2xl px-4 py-4 text-sm font-black transition border ${
+            libraryMode ===
+            'emotion'
               ? 'bg-purple-900 text-white border-purple-900 shadow-sm'
               : 'bg-white text-gray-700 border-gray-200 hover:bg-purple-50'
           }`}
         >
-          ✨ サポートカード
+          ✨ エモーション枠
           <span className="block mt-1 text-[10px] font-normal opacity-80">
-            エモーション性能
+            サポートカードの性能枠
           </span>
         </button>
       </div>
 
       {/* ===================================================== */}
-      {/* コーデ一覧 */}
+      {/* 登録済みカード */}
       {/* ===================================================== */}
-      {activeTab ===
+      {libraryMode ===
+        'registered' && (
+        <section className="bg-white rounded-3xl border border-gray-200 shadow-sm overflow-hidden">
+          <div className="p-6 border-b border-gray-200">
+            <div className="flex flex-col lg:flex-row lg:items-start lg:justify-between gap-4">
+              <div>
+                <div className="text-xs font-black tracking-[0.15em] text-slate-500">
+                  REGISTERED CARDS
+                </div>
+
+                <h2 className="mt-1 text-2xl font-black">
+                  登録済みカード
+                </h2>
+
+                <p className="mt-2 text-xs text-gray-500 leading-relaxed">
+                  REALITYアバターが実際に登録されたカードを確認できます。
+                  カードの性能そのものはここから変更できません。
+                </p>
+              </div>
+
+              <div className="flex flex-wrap gap-2">
+                <button
+                  type="button"
+                  onClick={() =>
+                    setRegisteredCardFilter(
+                      'all',
+                    )
+                  }
+                  className={`px-3 py-2 rounded-xl text-xs font-black border ${
+                    registeredCardFilter ===
+                    'all'
+                      ? 'bg-slate-900 text-white border-slate-900'
+                      : 'bg-white text-gray-600 border-gray-200'
+                  }`}
+                >
+                  すべて
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() =>
+                    setRegisteredCardFilter(
+                      'coordinate',
+                    )
+                  }
+                  className={`px-3 py-2 rounded-xl text-xs font-black border ${
+                    registeredCardFilter ===
+                    'coordinate'
+                      ? 'bg-indigo-600 text-white border-indigo-600'
+                      : 'bg-white text-gray-600 border-gray-200'
+                  }`}
+                >
+                  キャラカード
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() =>
+                    setRegisteredCardFilter(
+                      'emotion',
+                    )
+                  }
+                  className={`px-3 py-2 rounded-xl text-xs font-black border ${
+                    registeredCardFilter ===
+                    'emotion'
+                      ? 'bg-purple-600 text-white border-purple-600'
+                      : 'bg-white text-gray-600 border-gray-200'
+                  }`}
+                >
+                  サポートカード
+                </button>
+              </div>
+            </div>
+
+            <div className="mt-4">
+              <input
+                type="text"
+                value={
+                  registeredSearchFilter
+                }
+                onChange={(e) =>
+                  setRegisteredSearchFilter(
+                    e.target.value,
+                  )
+                }
+                placeholder="アバター名・コーデ・エモーションなどで検索"
+                className="w-full px-4 py-3 rounded-xl border border-gray-200 bg-gray-50 text-sm outline-none focus:border-indigo-400 focus:bg-white"
+              />
+            </div>
+          </div>
+
+          <div className="p-6">
+            {filteredRegisteredCards.length ===
+            0 ? (
+              <div className="rounded-2xl border border-dashed border-gray-300 bg-gray-50 p-10 text-center">
+                <div className="text-4xl">
+                  🃏
+                </div>
+
+                <div className="mt-3 text-sm font-black text-gray-700">
+                  まだ登録済みカードがありません
+                </div>
+
+                <div className="mt-1 text-xs text-gray-500">
+                  最初のアバターカードを登録してみましょう。
+                </div>
+
+                <div className="mt-5 flex flex-wrap justify-center gap-2">
+                  {onStartCharacterRegistration && (
+                    <button
+                      type="button"
+                      onClick={() =>
+                        onStartCharacterRegistration()
+                      }
+                      className="px-4 py-3 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-black"
+                    >
+                      👤 キャラカードを登録
+                    </button>
+                  )}
+
+                  {onStartSupportRegistration && (
+                    <button
+                      type="button"
+                      onClick={() =>
+                        onStartSupportRegistration()
+                      }
+                      className="px-4 py-3 rounded-xl bg-purple-600 hover:bg-purple-700 text-white text-xs font-black"
+                    >
+                      ✨ サポートカードを登録
+                    </button>
+                  )}
+                </div>
+              </div>
+            ) : (
+              <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-4">
+                {filteredRegisteredCards.map(
+                  (entry) => {
+                    const coordinate =
+                      entry.cardType ===
+                      'coordinate'
+                        ? COORDINATE_PRESETS.find(
+                            (preset) =>
+                              preset.id ===
+                              entry.presetId,
+                          )
+                        : null;
+
+                    const emotion =
+                      entry.cardType ===
+                      'emotion'
+                        ? EMOTION_PRESETS.find(
+                            (preset) =>
+                              preset.id ===
+                              entry.presetId,
+                          )
+                        : null;
+
+                    return (
+                      <article
+                        key={entry.id}
+                        className={`rounded-2xl border overflow-hidden shadow-sm ${
+                          entry.cardType ===
+                          'coordinate'
+                            ? 'border-indigo-100 bg-indigo-50/30'
+                            : 'border-purple-100 bg-purple-50/30'
+                        }`}
+                      >
+                        <div className="aspect-[4/3] bg-gray-100 overflow-hidden">
+                          {entry.imageDataUrl ? (
+                            <img
+                              src={
+                                entry.imageDataUrl
+                              }
+                              alt={`${entry.userName}のカード画像`}
+                              className="w-full h-full object-cover"
+                            />
+                          ) : (
+                            <div className="w-full h-full flex items-center justify-center text-5xl text-gray-300">
+                              👤
+                            </div>
+                          )}
+                        </div>
+
+                        <div className="p-4 space-y-3">
+                          <div className="flex items-start justify-between gap-3">
+                            <div>
+                              <span
+                                className={`inline-flex px-2 py-1 rounded-lg text-[10px] font-black ${
+                                  entry.cardType ===
+                                  'coordinate'
+                                    ? 'bg-indigo-100 text-indigo-800'
+                                    : 'bg-purple-100 text-purple-800'
+                                }`}
+                              >
+                                {entry.cardType ===
+                                'coordinate'
+                                  ? 'キャラカード'
+                                  : 'サポートカード'}
+                              </span>
+
+                              <h3 className="mt-2 text-lg font-black">
+                                {entry.userName ||
+                                  '名無しのアバター'}
+                              </h3>
+                            </div>
+
+                            <span className="text-[10px] font-bold text-gray-400">
+                              登録済み
+                            </span>
+                          </div>
+
+                          {coordinate && (
+                            <>
+                              <div className="rounded-xl bg-white border border-indigo-100 p-3">
+                                <div className="text-[10px] font-black text-indigo-500">
+                                  コーデ
+                                </div>
+
+                                <div className="mt-1 text-sm font-black text-indigo-950">
+                                  {coordinate.code.toUpperCase()}{' '}
+                                  {coordinate.name}
+                                </div>
+
+                                <div className="mt-1 text-[10px] text-indigo-700">
+                                  {
+                                    coordinate.tendency
+                                  }
+                                </div>
+                              </div>
+
+                              <div className="grid grid-cols-2 gap-2 text-[10px]">
+                                <div className="rounded-lg bg-white border p-2">
+                                  体力：
+                                  <b>
+                                    {
+                                      coordinate
+                                        .stats
+                                        .hp
+                                    }
+                                  </b>
+                                </div>
+
+                                <div className="rounded-lg bg-white border p-2">
+                                  知略：
+                                  <b>
+                                    {
+                                      coordinate
+                                        .stats
+                                        .intellect
+                                    }
+                                  </b>
+                                </div>
+
+                                <div className="rounded-lg bg-white border p-2">
+                                  器用：
+                                  <b>
+                                    {
+                                      coordinate
+                                        .stats
+                                        .dexterity
+                                    }
+                                  </b>
+                                </div>
+
+                                <div className="rounded-lg bg-white border p-2">
+                                  特技：
+                                  <b>
+                                    {
+                                      coordinate
+                                        .stats
+                                        .charm
+                                    }
+                                  </b>
+                                </div>
+                              </div>
+                            </>
+                          )}
+
+                          {emotion && (
+                            <div className="rounded-xl bg-white border border-purple-100 p-3">
+                              <div className="flex flex-wrap gap-1.5">
+                                <span className="px-2 py-1 rounded-lg bg-purple-100 text-purple-800 text-[10px] font-black">
+                                  {
+                                    emotion.target
+                                  }
+                                </span>
+
+                                <span className="px-2 py-1 rounded-lg bg-purple-100 text-purple-800 text-[10px] font-black">
+                                  {
+                                    emotion.effectCategory
+                                  }
+                                </span>
+
+                                <span className="px-2 py-1 rounded-lg bg-purple-100 text-purple-800 text-[10px] font-black">
+                                  {
+                                    emotion.duration
+                                  }
+                                </span>
+                              </div>
+
+                              <div className="mt-2 text-sm font-black text-purple-950">
+                                {
+                                  entry.customEffectName ||
+                                  emotion.name
+                                }
+                              </div>
+
+                              <div className="mt-1 text-[10px] text-purple-700">
+                                {
+                                  emotion.statEffect
+                                }
+
+                                {emotion.effectAmount
+                                  ? ` / ${emotion.effectAmount}`
+                                  : ''}
+                              </div>
+
+                              <div className="mt-2 text-[10px] text-gray-600 leading-relaxed">
+                                {
+                                  emotion.description
+                                }
+                              </div>
+                            </div>
+                          )}
+
+                          {entry.profileUrl && (
+                            <a
+                              href={
+                                entry.profileUrl
+                              }
+                              target="_blank"
+                              rel="noreferrer"
+                              className="block text-center rounded-xl border border-gray-200 bg-white hover:bg-gray-50 px-3 py-2 text-[10px] font-black text-gray-700"
+                            >
+                              REALITYプロフィールを見る ↗
+                            </a>
+                          )}
+                        </div>
+                      </article>
+                    );
+                  },
+                )}
+              </div>
+            )}
+          </div>
+        </section>
+      )}
+
+      {/* ===================================================== */}
+      {/* コーデ枠 */}
+      {/* ===================================================== */}
+      {libraryMode ===
         'coordinate' && (
         <section className="bg-white rounded-3xl border border-gray-200 shadow-sm overflow-hidden">
           <div className="p-6 border-b border-gray-200">
@@ -839,7 +1278,7 @@ export default function EntryHub({
 
                 <p className="mt-2 text-xs text-gray-500 leading-relaxed">
                   コーデ性能は公式マスターで固定されています。
-                  アバター登録時に性能値そのものを編集することはできません。
+                  ここでは枠を確認し、選んだコーデからアバター登録へ進みます。
                 </p>
               </div>
 
@@ -858,6 +1297,60 @@ export default function EntryHub({
           </div>
 
           <div className="p-6 space-y-6">
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
+              <div className="rounded-xl bg-indigo-50 border border-indigo-100 p-3 text-center">
+                <div className="text-[10px] text-indigo-500 font-bold">
+                  総枠
+                </div>
+                <div className="text-xl font-black text-indigo-900">
+                  {COORDINATE_PRESETS.length}
+                </div>
+              </div>
+
+              <div className="rounded-xl bg-green-50 border border-green-100 p-3 text-center">
+                <div className="text-[10px] text-green-600 font-bold">
+                  空きあり
+                </div>
+                <div className="text-xl font-black text-green-900">
+                  {
+                    COORDINATE_PRESETS.filter(
+                      (preset) =>
+                        getEntryCount(
+                          preset.id,
+                        ) <
+                        maxEntryLimit,
+                    ).length
+                  }
+                </div>
+              </div>
+
+              <div className="rounded-xl bg-red-50 border border-red-100 p-3 text-center">
+                <div className="text-[10px] text-red-600 font-bold">
+                  満員
+                </div>
+                <div className="text-xl font-black text-red-900">
+                  {
+                    COORDINATE_PRESETS.filter(
+                      (preset) =>
+                        getEntryCount(
+                          preset.id,
+                        ) >=
+                        maxEntryLimit,
+                    ).length
+                  }
+                </div>
+              </div>
+
+              <div className="rounded-xl bg-gray-50 border border-gray-200 p-3 text-center">
+                <div className="text-[10px] text-gray-500 font-bold">
+                  現在の上限
+                </div>
+                <div className="text-xl font-black text-gray-900">
+                  {maxEntryLimit}人
+                </div>
+              </div>
+            </div>
+
             <div className="p-4 bg-gray-50 rounded-2xl border border-gray-200 flex flex-wrap gap-3 items-center text-xs">
               <span className="font-black">
                 🔍 絞り込み
@@ -919,20 +1412,18 @@ export default function EntryHub({
                       'dexterity',
                       'charm',
                     ] as StatKey[]
-                  ).map(
-                    (key) => (
-                      <div
-                        key={key}
-                        className="p-3 text-center"
-                      >
-                        {
-                          STAT_LABELS[
-                            key
-                          ]
-                        }
-                      </div>
-                    ),
-                  )}
+                  ).map((key) => (
+                    <div
+                      key={key}
+                      className="p-3 text-center"
+                    >
+                      {
+                        STAT_LABELS[
+                          key
+                        ]
+                      }
+                    </div>
+                  ))}
                 </div>
 
                 {coordinateMatrix.map(
@@ -1338,9 +1829,9 @@ export default function EntryHub({
       )}
 
       {/* ===================================================== */}
-      {/* エモーション一覧 */}
+      {/* エモーション枠 */}
       {/* ===================================================== */}
-      {activeTab ===
+      {libraryMode ===
         'emotion' && (
         <section className="bg-white rounded-3xl border border-gray-200 shadow-sm overflow-hidden">
           <div className="p-6 border-b border-gray-200">
@@ -1355,8 +1846,10 @@ export default function EntryHub({
                 </h2>
 
                 <p className="mt-2 text-xs text-gray-500 leading-relaxed">
-                  エモーションも公式に定義された効果枠から選択します。
-                  対象・効果ステータス・持続性を見ながら登録できます。
+                  エモーションは
+                  `components/emotionPresets.ts`
+                  の公式定義をそのまま表示しています。
+                  ここから選んでサポートカード登録へ進みます。
                 </p>
               </div>
 
@@ -1375,6 +1868,66 @@ export default function EntryHub({
           </div>
 
           <div className="p-6 space-y-6">
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
+              <div className="rounded-xl bg-purple-50 border border-purple-100 p-3 text-center">
+                <div className="text-[10px] text-purple-500 font-bold">
+                  総枠
+                </div>
+
+                <div className="text-xl font-black text-purple-900">
+                  {
+                    EMOTION_PRESETS.length
+                  }
+                </div>
+              </div>
+
+              <div className="rounded-xl bg-green-50 border border-green-100 p-3 text-center">
+                <div className="text-[10px] text-green-600 font-bold">
+                  空きあり
+                </div>
+
+                <div className="text-xl font-black text-green-900">
+                  {
+                    EMOTION_PRESETS.filter(
+                      (preset) =>
+                        getEntryCount(
+                          preset.id,
+                        ) <
+                        maxEntryLimit,
+                    ).length
+                  }
+                </div>
+              </div>
+
+              <div className="rounded-xl bg-red-50 border border-red-100 p-3 text-center">
+                <div className="text-[10px] text-red-600 font-bold">
+                  満員
+                </div>
+
+                <div className="text-xl font-black text-red-900">
+                  {
+                    EMOTION_PRESETS.filter(
+                      (preset) =>
+                        getEntryCount(
+                          preset.id,
+                        ) >=
+                        maxEntryLimit,
+                    ).length
+                  }
+                </div>
+              </div>
+
+              <div className="rounded-xl bg-gray-50 border border-gray-200 p-3 text-center">
+                <div className="text-[10px] text-gray-500 font-bold">
+                  現在の上限
+                </div>
+
+                <div className="text-xl font-black text-gray-900">
+                  {maxEntryLimit}人
+                </div>
+              </div>
+            </div>
+
             <div className="p-4 bg-gray-50 rounded-2xl border border-gray-200 flex flex-wrap gap-3 items-center text-xs">
               <span className="font-black">
                 🔍 3軸絞り込み
@@ -1470,7 +2023,9 @@ export default function EntryHub({
 
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               {filteredEmotions.map(
-                (emotion) => {
+                (
+                  emotion,
+                ) => {
                   const count =
                     getEntryCount(
                       emotion.id,
@@ -1496,19 +2051,19 @@ export default function EntryHub({
                     >
                       <div>
                         <div className="flex flex-wrap gap-1.5">
-                          <span className="text-xs font-bold px-2 py-1 bg-purple-100 text-purple-800 rounded">
+                          <span className="text-xs font-black px-2 py-1 bg-purple-100 text-purple-800 rounded-lg">
                             {
                               emotion.target
                             }
                           </span>
 
-                          <span className="text-xs font-bold px-2 py-1 bg-purple-100 text-purple-800 rounded">
+                          <span className="text-xs font-black px-2 py-1 bg-purple-100 text-purple-800 rounded-lg">
                             {
                               emotion.effectCategory
                             }
                           </span>
 
-                          <span className="text-xs font-bold px-2 py-1 bg-purple-100 text-purple-800 rounded">
+                          <span className="text-xs font-black px-2 py-1 bg-purple-100 text-purple-800 rounded-lg">
                             {
                               emotion.duration
                             }
@@ -1532,6 +2087,7 @@ export default function EntryHub({
                           {
                             emotion.statEffect
                           }
+
                           {emotion.effectAmount
                             ? ` / ${emotion.effectAmount}`
                             : ''}
