@@ -624,6 +624,12 @@ export default function CardGenerator({ selectedCoordinate, onBackToHub }: CardG
               <p className="text-[10px] text-gray-500 mt-1">同じ端末では作成者トークンにより、次回から合言葉入力を省略できます。</p>
             </div>
 
+            {errorMessage && (
+              <div className="p-3 rounded-lg border border-red-200 bg-red-50 text-xs font-bold text-red-700" role="alert">
+                {errorMessage}
+              </div>
+            )}
+
             <button type="submit" disabled={isModerating} className="w-full py-2.5 bg-pink-600 hover:bg-pink-700 disabled:bg-pink-300 disabled:cursor-wait text-white font-bold rounded-xl shadow">
               {isModerating ? '安全確認中…' : editingId ? 'エントリー内容を更新する' : 'カードをエントリーして保存'}
             </button>
