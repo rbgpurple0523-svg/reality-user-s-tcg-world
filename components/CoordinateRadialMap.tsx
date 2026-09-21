@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import type { CoordinatePreset } from './coordinatePresets';
 import type { EntryRecord } from './EntryHub';
 
@@ -10,6 +10,8 @@ interface CoordinateRadialMapProps {
   coordinates: CoordinatePreset[];
   entries: EntryRecord[];
   maxEntryLimit: number;
+  initialSelectedId?: string | null;
+  mode?: 'entry' | 'picker';
   onSelect?: (coordinate: CoordinatePreset) => void;
 }
 
@@ -187,9 +189,20 @@ export default function CoordinateRadialMap({
   coordinates,
   entries,
   maxEntryLimit,
+  initialSelectedId,
+  mode = 'entry',
   onSelect,
 }: CoordinateRadialMapProps) {
-  const [selectedCode, setSelectedCode] = useState('a1');
+  const initialCoordinate = initialSelectedId
+    ? coordinates.find((coordinate) => coordinate.id === initialSelectedId)
+    : null;
+  const [selectedCode, setSelectedCode] = useState(initialCoordinate?.code ?? 'a1');
+
+  useEffect(() => {
+    if (!initialSelectedId) return;
+    const nextCoordinate = coordinates.find((coordinate) => coordinate.id === initialSelectedId);
+    if (nextCoordinate) setSelectedCode(nextCoordinate.code);
+  }, [initialSelectedId, coordinates]);
 
   const coordinateMap = useMemo(
     () => new Map(coordinates.map((coordinate) => [coordinate.code, coordinate])),
@@ -210,13 +223,21 @@ export default function CoordinateRadialMap({
 
   const selectedCount = selectedCoordinate ? getEntryCount(selectedCoordinate.id) : 0;
   const selectedIsFull = selectedCount >= maxEntryLimit;
+  const selectedIsLocked =
+    selectedIsFull && !(mode === 'picker' && selectedCoordinate?.id === initialSelectedId);
 
   const selectCoordinate = (coordinate: CoordinatePreset) => {
+    const count = getEntryCount(coordinate.id);
+    const isFull = count >= maxEntryLimit;
+    const canKeepCurrentSelection =
+      mode === 'picker' && coordinate.id === initialSelectedId;
+
+    if (isFull && !canKeepCurrentSelection) return;
     setSelectedCode(coordinate.code);
   };
 
   const handleEntryClick = () => {
-    if (selectedCoordinate && !selectedIsFull) {
+    if (selectedCoordinate && !selectedIsLocked) {
       onSelect?.(selectedCoordinate);
     }
   };
@@ -271,6 +292,10 @@ export default function CoordinateRadialMap({
                   const labelPoint = polarToCartesian(center, center, labelRadius, middleAngle);
                   const count = getEntryCount(coordinate.id);
                   const isSelected = selectedCode === coordinate.code;
+                  const isFull = count >= maxEntryLimit;
+                  const canKeepCurrentSelection =
+                    mode === 'picker' && coordinate.id === initialSelectedId;
+                  const isSelectable = !isFull || canKeepCurrentSelection;
                   const primary = getPrimaryStat(coordinate);
                   const color = PRIMARY_STYLES[primary];
                   const path = describeArc(center, center, INNER_RADIUS, OUTER_RADIUS, startAngle, endAngle);
@@ -282,9 +307,11 @@ export default function CoordinateRadialMap({
                         fill={isSelected ? '#eef2ff' : color.fill}
                         stroke={isSelected ? '#6366f1' : color.stroke}
                         strokeWidth={isSelected ? 3 : 1.5}
-                        className="cursor-pointer transition-opacity hover:opacity-80"
-                        onClick={() => selectCoordinate(coordinate)}
-                        aria-label={`${getCoordinateDisplayCode(coordinate)} ${getRankText(coordinate)} / ${count}/${maxEntryLimit}人`}
+                        className={`${isSelectable ? 'cursor-pointer hover:opacity-80' : 'cursor-not-allowed opacity-45'} transition-opacity`}
+                        onClick={() => {
+                          if (isSelectable) selectCoordinate(coordinate);
+                        }}
+                        aria-label={`${getCoordinateDisplayCode(coordinate)} ${getRankText(coordinate)}`}
                       />
 
                       <text
@@ -307,10 +334,10 @@ export default function CoordinateRadialMap({
                         dominantBaseline="middle"
                         fontSize="9"
                         fontWeight="800"
-                        fill="#6b7280"
+                        fill={isFull ? '#dc2626' : '#6b7280'}
                         pointerEvents="none"
                       >
-                        {count}/{maxEntryLimit}
+                        {isFull ? '満員' : `${count}/${maxEntryLimit}`}
                       </text>
                     </g>
                   );
@@ -341,9 +368,18 @@ export default function CoordinateRadialMap({
 
                   const count = getEntryCount(centerPreset.id);
                   const isSelected = selectedCode === 'a1';
+                  const isFull = count >= maxEntryLimit;
+                  const canKeepCurrentSelection =
+                    mode === 'picker' && centerPreset.id === initialSelectedId;
+                  const isSelectable = !isFull || canKeepCurrentSelection;
 
                   return (
-                    <g className="cursor-pointer" onClick={() => selectCoordinate(centerPreset)}>
+                    <g
+                      className={isSelectable ? 'cursor-pointer' : 'cursor-not-allowed opacity-45'}
+                      onClick={() => {
+                        if (isSelectable) selectCoordinate(centerPreset);
+                      }}
+                    >
                       <circle
                         cx={center}
                         cy={center}
@@ -355,7 +391,16 @@ export default function CoordinateRadialMap({
                       <text x={center} y={center - 23} textAnchor="middle" fontSize="11" fontWeight="900" fill="#6366f1" letterSpacing="2">A-1</text>
                       <text x={center} y={center + 19} textAnchor="middle" fontSize="48" fontWeight="900" fill="#1e1b4b">均</text>
                       <text x={center} y={center + 42} textAnchor="middle" fontSize="10" fontWeight="800" fill="#6b7280">体力＝知略＝器用＝特技</text>
-                      <text x={center} y={center + 60} textAnchor="middle" fontSize="10" fontWeight="900" fill="#6366f1">{count}/{maxEntryLimit}人</text>
+                      <text
+                        x={center}
+                        y={center + 60}
+                        textAnchor="middle"
+                        fontSize="10"
+                        fontWeight="900"
+                        fill={isFull ? '#dc2626' : '#6366f1'}
+                      >
+                        {isFull ? '満員' : `${count}/${maxEntryLimit}人`}
+                      </text>
                     </g>
                   );
                 })()}
@@ -383,10 +428,19 @@ export default function CoordinateRadialMap({
                 <p className="mt-2 text-sm leading-7 text-gray-700">{selectedCoordinate.description}</p>
               </div>
 
-              <div className="mt-4 rounded-2xl bg-white border border-indigo-100 px-4 py-3">
+              <div className={`mt-4 rounded-2xl bg-white border px-4 py-3 ${
+                selectedIsFull ? 'border-red-200' : 'border-indigo-100'
+              }`}>
                 <div className="text-[10px] text-gray-500">エントリー状況</div>
-                <div className="mt-1 text-xl font-black text-indigo-900">{selectedCount} / {maxEntryLimit}人</div>
-                {selectedIsFull && <div className="text-[10px] font-black text-red-600">満員</div>}
+                <div className={`mt-1 text-xl font-black ${selectedIsFull ? 'text-red-700' : 'text-indigo-900'}`}>
+                  {selectedCount} / {maxEntryLimit}人
+                </div>
+                {selectedIsFull && (
+                  <div className="mt-1 text-[10px] font-black text-red-600">現在のエントリー上限に達しています</div>
+                )}
+                {mode === 'picker' && !selectedIsFull && (
+                  <div className="mt-1 text-[10px] text-gray-500">このコーデは現在エントリーできます。</div>
+                )}
               </div>
             </div>
 
@@ -399,15 +453,21 @@ export default function CoordinateRadialMap({
           <div className="mt-5">
             <button
               type="button"
-              disabled={selectedIsFull}
+              disabled={selectedIsLocked}
               onClick={handleEntryClick}
               className={`w-full rounded-xl px-4 py-3 text-xs font-black transition ${
-                selectedIsFull
+                selectedIsLocked
                   ? 'bg-gray-200 text-gray-400 cursor-not-allowed'
                   : 'bg-indigo-600 hover:bg-indigo-700 text-white'
               }`}
             >
-              {selectedIsFull ? 'このコーデはエントリー満員' : 'このコーデでエントリーする'}
+              {mode === 'entry'
+                ? selectedIsLocked
+                  ? 'このコーデはエントリー満員'
+                  : 'このコーデでエントリーする'
+                : selectedIsLocked
+                  ? '満員のため選択できません'
+                  : 'このコーデを選択する'}
             </button>
           </div>
         </section>

@@ -260,79 +260,52 @@ export default function Home() {
         )}
       </header>
 
-      {/* メインコンテンツ */}
+      {/* メインコンテンツエリア */}
       <div className="flex-1 flex flex-col items-center justify-center p-6">
-        {/* ================================================= */}
-        {/* メインメニュー */}
-        {/* ================================================= */}
         {currentView === 'menu' && (
           <div className="max-w-2xl w-full space-y-8 text-center">
             <div className="space-y-3">
-              <h2 className="text-3xl font-extrabold text-gray-900">
-                ゲームメニュー
-              </h2>
-
+              <h2 className="text-3xl font-extrabold text-gray-900">REALITY TCG WORLD</h2>
               <p className="text-sm text-gray-600">
-                あなたの分身となるアバターを世界に登録し、
-                デッキを組んでバトルに挑もう！
+                あなたの分身となるアバターをカードにして、ゲームの世界に参加しよう！
               </p>
             </div>
 
             <div className="grid grid-cols-1 gap-4 text-left">
-              {/* カード登録 */}
+              {/* セクション 1: カードに自分のアバターを登録する */}
               <div className="bg-white border border-gray-200 rounded-2xl p-5 space-y-3 shadow-sm">
                 <div className="flex items-center space-x-2 text-indigo-600 font-bold text-sm">
                   <span>👤</span>
-                  <span>
-                    カードに自分のアバターを登録する
-                  </span>
+                  <span>カードに自分のアバターを登録する</span>
                 </div>
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                  <button
+                    onClick={() => setCurrentView('cardGen')}
+                    className="p-4 bg-gray-50 hover:bg-indigo-50 border border-gray-200 hover:border-indigo-200 rounded-xl transition text-left space-y-1 cursor-pointer group"
+                  >
+                    <div className="font-bold text-gray-900 group-hover:text-indigo-700 text-sm">自分のアバターをカードにしよう</div>
+                    <div className="text-xs text-gray-500">キャラカードとして、あなたのアバターを登録できます。</div>
+                  </button>
 
-                <button
-                  type="button"
-                  onClick={
-                    handleOpenCardRegister
-                  }
-                  className="w-full p-5 bg-indigo-50 hover:bg-indigo-100 border border-indigo-200 rounded-xl transition text-left cursor-pointer group"
-                >
-                  <div className="font-bold text-indigo-900 group-hover:text-indigo-950 text-sm">
-                    キャラカード・サポートカードを登録する
-                  </div>
+                  <button
+                    onClick={() => setCurrentView('supportGen')}
+                    className="p-4 bg-gray-50 hover:bg-indigo-50 border border-gray-200 hover:border-indigo-200 rounded-xl transition text-left space-y-1 cursor-pointer group"
+                  >
+                    <div className="font-bold text-gray-900 group-hover:text-indigo-700 text-sm">サポートカードとして自分のアバターを登録しよう</div>
+                    <div className="text-xs text-gray-500">エモーションを使って、あなたの参加方法を選べます。</div>
+                  </button>
 
-                  <div className="text-xs text-indigo-700 mt-1">
-                    まずカードの種類を選び、
-                    その後コーデ／エモーションを選択します
-                  </div>
-                </button>
-              </div>
-
-              {/* カード一覧 */}
-              <div className="bg-white border border-gray-200 rounded-2xl p-5 space-y-3 shadow-sm">
-                <div className="flex items-center space-x-2 text-purple-600 font-bold text-sm">
-                  <span>📚</span>
-                  <span>
-                    カード一覧
-                  </span>
+                  <button
+                    onClick={() => setCurrentView('entryHub')}
+                    className="p-4 bg-indigo-50 hover:bg-indigo-100 border border-indigo-200 rounded-xl transition text-left space-y-1 cursor-pointer group shadow-sm sm:col-span-3"
+                  >
+                    <div className="font-bold text-indigo-900 group-hover:text-indigo-950 text-sm flex items-center justify-between">
+                      <span>コーデ・エモーション一覧から選んでエントリーしよう</span>
+                      <span className="text-[10px] bg-indigo-600 text-white px-2 py-0.5 rounded-full font-bold">RECOMMEND</span>
+                    </div>
+                    <div className="text-xs text-indigo-700">ほかの人のカードや、これから登録できるコーデ・エモーションを見られます。</div>
+                  </button>
                 </div>
-
-                <button
-                  type="button"
-                  onClick={() =>
-                    setCurrentView(
-                      'entryHub',
-                    )
-                  }
-                  className="w-full p-5 bg-purple-50 hover:bg-purple-100 border border-purple-200 rounded-xl transition text-left cursor-pointer group"
-                >
-                  <div className="font-bold text-purple-900 group-hover:text-purple-950 text-sm">
-                    みんなのカードと登録可能な枠を見る
-                  </div>
-
-                  <div className="text-xs text-purple-700 mt-1">
-                    コーデ・エモーションを確認して、
-                    そのままエントリーやデッキ構築へ進めます
-                  </div>
-                </button>
               </div>
 
               {/* デッキ */}

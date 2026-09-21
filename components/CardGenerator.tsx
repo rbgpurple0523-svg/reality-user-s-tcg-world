@@ -2,6 +2,8 @@
 
 import React, { ChangeEvent, FormEvent, useEffect, useMemo, useState } from 'react';
 import { CoordinatePreset, COORDINATE_PRESETS, EntryRecord } from './EntryHub';
+import { EMOTION_PRESETS } from './emotionPresets';
+import CoordinateRadialMap from './CoordinateRadialMap';
 
 interface CardGeneratorProps {
   selectedCoordinate?: CoordinatePreset | null;
@@ -48,28 +50,38 @@ function makeCreatorToken(): string {
   return `${Date.now()}_${Math.random().toString(36).slice(2)}`;
 }
 
+function getMaxEntryLimit(entries: EntryRecord[]): number {
+  const allPresets = [...COORDINATE_PRESETS, ...EMOTION_PRESETS];
+  const getEntryCount = (presetId: string) =>
+    entries.filter((entry) => entry.presetId === presetId).length;
+
+  const filledPresetCount = allPresets.filter(
+    (preset) => getEntryCount(preset.id) >= 1,
+  ).length;
+  const countAtLeastTwo = allPresets.filter(
+    (preset) => getEntryCount(preset.id) >= 2,
+  ).length;
+  const totalPossibleSlots = Math.max(1, allPresets.length);
+  const countAtLeastOneRate = filledPresetCount / totalPossibleSlots;
+  const countAtLeastTwoRate = countAtLeastTwo / totalPossibleSlots;
+
+  return countAtLeastOneRate >= 0.9 && countAtLeastTwoRate >= 0.5
+    ? 3
+    : countAtLeastOneRate >= 0.5
+      ? 2
+      : 1;
+}
+
 export default function CardGenerator({ selectedCoordinate, onBackToHub }: CardGeneratorProps) {
   // ---------------------------------------------------------
   // コーデ選択
   // 未選択状態を許容。EntryHubから来た場合だけ初期選択される。
   // ---------------------------------------------------------
   const [currentCoordinate, setCurrentCoordinate] = useState<CoordinatePreset | null>(selectedCoordinate ?? null);
-  const [searchKeyword, setSearchKeyword] = useState('');
 
   useEffect(() => {
     setCurrentCoordinate(selectedCoordinate ?? null);
   }, [selectedCoordinate]);
-
-  const filteredPresets = useMemo(() => {
-    const q = searchKeyword.trim().toLowerCase();
-    if (!q) return COORDINATE_PRESETS;
-    return COORDINATE_PRESETS.filter(
-      (preset) =>
-        preset.code.includes(q) ||
-        preset.name.toLowerCase().includes(q) ||
-        preset.tendency.toLowerCase().includes(q),
-    );
-  }, [searchKeyword]);
 
   // ---------------------------------------------------------
   // フォーム
@@ -89,6 +101,11 @@ export default function CardGenerator({ selectedCoordinate, onBackToHub }: CardG
   const [successMessage, setSuccessMessage] = useState('');
   const [draftAvailable, setDraftAvailable] = useState(false);
   const [draftChecked, setDraftChecked] = useState(false);
+
+  const maxEntryLimit = useMemo(
+    () => getMaxEntryLimit(entries),
+    [entries],
+  );
 
   useEffect(() => {
     const loadedEntries = getStoredEntries();
@@ -212,6 +229,21 @@ export default function CardGenerator({ selectedCoordinate, onBackToHub }: CardG
 
     if (!currentCoordinate) {
       setErrorMessage('コーデを1つ選択してください。');
+      return;
+    }
+
+    const currentCoordinateCount = entries.filter(
+      (entry) => entry.presetId === currentCoordinate.id,
+    ).length;
+    const editingKeepsCurrentCoordinate = Boolean(
+      editingId &&
+        entries.some(
+          (entry) => entry.id === editingId && entry.presetId === currentCoordinate.id,
+        ),
+    );
+
+    if (currentCoordinateCount >= maxEntryLimit && !editingKeepsCurrentCoordinate) {
+      setErrorMessage('このコーデは現在エントリー上限に達しています。別のコーデを選択してください。');
       return;
     }
     if (!profileUrl.includes('reality.app/user/')) {
@@ -367,6 +399,21 @@ export default function CardGenerator({ selectedCoordinate, onBackToHub }: CardG
       {errorMessage && <div className="p-3 text-xs text-red-700 bg-red-50 border border-red-200 rounded-lg">{errorMessage}</div>}
       {successMessage && <div className="p-3 text-xs text-green-700 bg-green-50 border border-green-200 rounded-lg">{successMessage}</div>}
 
+      <CoordinateRadialMap
+        coordinates={COORDINATE_PRESETS}
+        entries={entries}
+        maxEntryLimit={maxEntryLimit}
+        initialSelectedId={currentCoordinate?.id ?? null}
+        mode="picker"
+        onSelect={selectCoordinatePreset}
+      />
+
+      {!currentCoordinate && (
+        <div className="text-[11px] text-red-600 font-bold text-center -mt-2">
+          コーデを選択すると、性能と4技がプレビューに反映されます。
+        </div>
+      )}
+
       <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
         {/* 入力 */}
         <div className="space-y-5">
@@ -384,28 +431,6 @@ export default function CardGenerator({ selectedCoordinate, onBackToHub }: CardG
             <div>
               <label className="block font-bold text-gray-700 mb-1">アバター画像 <span className="text-red-500">*</span></label>
               <input type="file" accept="image/*" onChange={handleImageUpload} className="w-full text-gray-700" />
-            </div>
-
-            <div className="pt-3 border-t border-gray-100 space-y-3">
-              <div>
-                <label className="block font-bold text-gray-700 mb-1">コーデ選択 <span className="text-red-500">*</span></label>
-                <input value={searchKeyword} onChange={(e) => setSearchKeyword(e.target.value)} placeholder="🔍 a〜y / 傾向で絞り込み" className="w-full px-3 py-2 border rounded-lg bg-white" />
-              </div>
-              <div className="max-h-56 overflow-y-auto border rounded-xl divide-y bg-white">
-                {filteredPresets.map((preset) => {
-                  const selected = currentCoordinate?.id === preset.id;
-                  return (
-                    <button key={preset.id} type="button" onClick={() => selectCoordinatePreset(preset)} className={`w-full text-left p-3 flex items-center justify-between gap-3 ${selected ? 'bg-pink-50' : 'hover:bg-gray-50'}`}>
-                      <div>
-                        <div className="font-bold"><span className="text-pink-600">{preset.code.toUpperCase()}</span> / {preset.name}</div>
-                        <div className="text-[10px] text-gray-500 mt-0.5">{preset.tendency}</div>
-                      </div>
-                      {selected && <span className="text-[10px] bg-pink-600 text-white px-2 py-1 rounded-full">選択中</span>}
-                    </button>
-                  );
-                })}
-              </div>
-              {!currentCoordinate && <div className="text-[11px] text-red-600 font-bold">コーデを選択すると、性能と4技がプレビューに反映されます。</div>}
             </div>
 
             <div className="pt-3 border-t border-gray-100 space-y-2">
