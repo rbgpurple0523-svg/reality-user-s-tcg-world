@@ -31,8 +31,10 @@ const RADIAL_CODES = [
 
 const START_ANGLE = 225;
 const SLICE_ANGLE = 15;
-const OUTER_RADIUS = 270;
-const INNER_RADIUS = 118;
+const OUTER_RADIUS = 135;
+const INNER_RADIUS = 59;
+const CENTER_CIRCLE_RADIUS = 36;
+const SVG_SIZE = 350;
 
 const PRIMARY_STYLES: Record<StatKey, { fill: string; stroke: string; text: string }> = {
   hp: { fill: '#fee2e2', stroke: '#fca5a5', text: '#991b1b' },
@@ -92,21 +94,12 @@ function getStatsRank(coordinate: CoordinatePreset): StatKey[] {
 }
 
 function getRankText(coordinate: CoordinatePreset) {
+  if (coordinate.code === 'a1') {
+    return '体力＝知略＝器用＝特技';
+  }
+
   return getStatsRank(coordinate)
     .map((key) => STAT_LABELS[key])
-    .join(' ＞ ');
-}
-
-function getShortRankText(coordinate: CoordinatePreset) {
-  const shortLabels: Record<StatKey, string> = {
-    hp: '体',
-    intellect: '知',
-    dexterity: '器',
-    charm: '特',
-  };
-
-  return getStatsRank(coordinate)
-    .map((key) => shortLabels[key])
     .join(' ＞ ');
 }
 
@@ -242,7 +235,7 @@ export default function CoordinateRadialMap({
     }
   };
 
-  const center = 350;
+  const center = SVG_SIZE / 2;
 
   return (
     <div className="space-y-6">
@@ -264,11 +257,11 @@ export default function CoordinateRadialMap({
 
         <div className="p-2 sm:p-4 bg-gray-50">
           <div className="overflow-x-auto rounded-2xl border border-gray-200 bg-white">
-            <div className="min-w-[720px] flex justify-center py-4">
+            <div className="flex justify-center py-3">
               <svg
-                width="700"
-                height="700"
-                viewBox="0 0 700 700"
+                width={SVG_SIZE}
+                height={SVG_SIZE}
+                viewBox={`0 0 ${SVG_SIZE} ${SVG_SIZE}`}
                 className="max-w-full h-auto"
                 role="img"
                 aria-label="24種類のコーデ配置図"
@@ -276,10 +269,14 @@ export default function CoordinateRadialMap({
                 <circle cx={center} cy={center} r={OUTER_RADIUS} fill="none" stroke="#e5e7eb" strokeWidth="1" />
                 <circle cx={center} cy={center} r={INNER_RADIUS} fill="white" stroke="#c7d2fe" strokeWidth="2" />
 
-                <text x={center} y={22} textAnchor="middle" fontSize="12" fontWeight="800" fill="#9ca3af">体力</text>
-                <text x={678} y={center + 4} textAnchor="end" fontSize="12" fontWeight="800" fill="#9ca3af">知略</text>
-                <text x={center} y={688} textAnchor="middle" fontSize="12" fontWeight="800" fill="#9ca3af">器用</text>
-                <text x={22} y={center + 4} textAnchor="start" fontSize="12" fontWeight="800" fill="#9ca3af">特技</text>
+                <text x={center} y={16} textAnchor="middle" fontSize="16" fontWeight="900" fill="#111827">体力</text>
+                <text x={center} y={30} textAnchor="middle" fontSize="12" fontWeight="800" fill="#9ca3af">（Powerful）</text>
+                <text x={342} y={center - 4} textAnchor="end" fontSize="16" fontWeight="900" fill="#111827">知略</text>
+                <text x={342} y={center + 12} textAnchor="end" fontSize="12" fontWeight="800" fill="#9ca3af">（Wisdom）</text>
+                <text x={center} y={330} textAnchor="middle" fontSize="16" fontWeight="900" fill="#111827">器用</text>
+                <text x={center} y={344} textAnchor="middle" fontSize="12" fontWeight="800" fill="#9ca3af">（Technical）</text>
+                <text x={8} y={center - 4} textAnchor="start" fontSize="16" fontWeight="900" fill="#111827">特技</text>
+                <text x={8} y={center + 12} textAnchor="start" fontSize="12" fontWeight="800" fill="#9ca3af">（Special）</text>
 
                 {RADIAL_CODES.map((code, index) => {
                   const coordinate = coordinateMap.get(code);
@@ -319,7 +316,7 @@ export default function CoordinateRadialMap({
                         y={labelPoint.y - 5}
                         textAnchor="middle"
                         dominantBaseline="middle"
-                        fontSize="18"
+                        fontSize="12"
                         fontWeight="900"
                         fill={color.text}
                         pointerEvents="none"
@@ -329,10 +326,10 @@ export default function CoordinateRadialMap({
 
                       <text
                         x={labelPoint.x}
-                        y={labelPoint.y + 14}
+                        y={labelPoint.y + 10}
                         textAnchor="middle"
                         dominantBaseline="middle"
-                        fontSize="9"
+                        fontSize="7"
                         fontWeight="800"
                         fill={isFull ? '#dc2626' : '#6b7280'}
                         pointerEvents="none"
@@ -383,23 +380,21 @@ export default function CoordinateRadialMap({
                       <circle
                         cx={center}
                         cy={center}
-                        r={INNER_RADIUS - 5}
+                        r={CENTER_CIRCLE_RADIUS}
                         fill="#ffffff"
                         stroke={isSelected ? '#6366f1' : '#a5b4fc'}
                         strokeWidth={isSelected ? 5 : 3}
                       />
-                      <text x={center} y={center - 23} textAnchor="middle" fontSize="11" fontWeight="900" fill="#6366f1" letterSpacing="2">A-1</text>
-                      <text x={center} y={center + 19} textAnchor="middle" fontSize="48" fontWeight="900" fill="#1e1b4b">均</text>
-                      <text x={center} y={center + 42} textAnchor="middle" fontSize="10" fontWeight="800" fill="#6b7280">体力＝知略＝器用＝特技</text>
+                      <text x={center} y={center - 7} textAnchor="middle" fontSize="10" fontWeight="900" fill="#6366f1" letterSpacing="1">A-1</text>
                       <text
                         x={center}
-                        y={center + 60}
+                        y={center + 12}
                         textAnchor="middle"
-                        fontSize="10"
+                        fontSize="8"
                         fontWeight="900"
                         fill={isFull ? '#dc2626' : '#6366f1'}
                       >
-                        {isFull ? '満員' : `${count}/${maxEntryLimit}人`}
+                        {isFull ? '満員' : `${count}/${maxEntryLimit}`}
                       </text>
                     </g>
                   );
@@ -420,8 +415,6 @@ export default function CoordinateRadialMap({
                 <h4 className="text-xl font-black text-indigo-950">{selectedCoordinate.name}</h4>
               </div>
               <div className="mt-2 text-sm font-black text-indigo-900">{getRankText(selectedCoordinate)}</div>
-              <div className="mt-1 text-[11px] text-indigo-700">略称：{getShortRankText(selectedCoordinate)}</div>
-              <div className="mt-1 text-[11px] text-indigo-700">傾向：{selectedCoordinate.tendency}</div>
 
               <div className="mt-4 rounded-2xl border border-indigo-100 bg-white p-4">
                 <div className="text-[10px] font-black tracking-[0.12em] text-indigo-500">CHARACTER IMAGE</div>
