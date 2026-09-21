@@ -4,7 +4,6 @@ import React, { useMemo, useState } from 'react';
 import type {
   CoordinatePreset,
   EntryRecord,
-  StatKey,
 } from './EntryHub';
 
 interface CoordinateRadialMapProps {
@@ -16,114 +15,214 @@ interface CoordinateRadialMapProps {
   ) => void;
 }
 
-const STAT_LABELS: Record<StatKey, string> = {
+type StatKey =
+  | 'hp'
+  | 'intellect'
+  | 'dexterity'
+  | 'charm';
+
+const STAT_LABELS: Record<
+  StatKey,
+  string
+> = {
   hp: '体力',
   intellect: '知略',
   dexterity: '器用',
   charm: '特技',
 };
 
-const RADIAL_ORDER: string[] = [
-  'a',
-  'b',
+const STAT_SHORT: Record<
+  StatKey,
+  string
+> = {
+  hp: '体',
+  intellect: '知',
+  dexterity: '器',
+  charm: '特',
+};
+
+/*
+ * 北西境界から時計回り。
+ *
+ * 北側：
+ * 体力＞特技
+ * 体力＞器用
+ * 体力＞知略
+ * 知略＞体力
+ * 知略＞器用
+ * 知略＞特技
+ *
+ * という「1位・2位の近さ」が連続するように配置する。
+ *
+ * 実際には既存の a〜x が以下に対応する。
+ */
+const RADIAL_CODES = [
+  // 北西 → 北 → 北東
+  'f',
+  'e',
   'c',
   'd',
-  'e',
-  'f',
+  'b',
+  'a',
 
-  'g',
-  'h',
-  'i',
-  'j',
-  'k',
+  // 北東 → 東 → 南東
   'l',
+  'k',
+  'j',
+  'i',
+  'h',
+  'g',
 
-  'm',
-  'n',
-  'o',
-  'p',
-  'q',
+  // 南東 → 南 → 南西
   'r',
+  'q',
+  'p',
+  'o',
+  'n',
+  'm',
 
-  's',
-  't',
-  'u',
-  'v',
-  'w',
+  // 南西 → 西 → 北西
   'x',
-];
+  'w',
+  'v',
+  'u',
+  't',
+  's',
+] as const;
 
-const ANGLES: number[] = [
-  240,
-  255,
-  270,
-  285,
-  300,
-  315,
+/*
+ * SVGの角度。
+ *
+ * 0 = 東
+ * 90 = 南
+ * 180 = 西
+ * 270 = 北
+ *
+ * 225°からスタートすると、
+ * 北西境界 → 北 → 北東境界
+ * という配置になる。
+ */
+const START_ANGLE = 225;
+const SLICE_ANGLE = 15;
 
-  330,
-  345,
-  0,
-  15,
-  30,
-  45,
-
-  60,
-  75,
-  90,
-  105,
-  120,
-  135,
-
-  150,
-  165,
-  180,
-  195,
-  210,
-  225,
-];
+const OUTER_RADIUS = 270;
+const INNER_RADIUS = 118;
 
 const PRIMARY_STYLES: Record<
   StatKey,
   {
-    node: string;
-    badge: string;
-    line: string;
+    fill: string;
+    stroke: string;
+    text: string;
   }
 > = {
   hp: {
-    node:
-      'border-red-200 bg-red-50 hover:bg-red-100',
-    badge:
-      'bg-red-100 text-red-800',
-    line: 'bg-red-300',
+    fill: '#fee2e2',
+    stroke: '#fca5a5',
+    text: '#991b1b',
   },
   intellect: {
-    node:
-      'border-blue-200 bg-blue-50 hover:bg-blue-100',
-    badge:
-      'bg-blue-100 text-blue-800',
-    line: 'bg-blue-300',
+    fill: '#dbeafe',
+    stroke: '#93c5fd',
+    text: '#1e40af',
   },
   dexterity: {
-    node:
-      'border-amber-200 bg-amber-50 hover:bg-amber-100',
-    badge:
-      'bg-amber-100 text-amber-800',
-    line: 'bg-amber-300',
+    fill: '#fef3c7',
+    stroke: '#fcd34d',
+    text: '#92400e',
   },
   charm: {
-    node:
-      'border-purple-200 bg-purple-50 hover:bg-purple-100',
-    badge:
-      'bg-purple-100 text-purple-800',
-    line: 'bg-purple-300',
+    fill: '#f3e8ff',
+    stroke: '#d8b4fe',
+    text: '#6b21a8',
   },
 };
 
-function getPrimaryStat(
+function polarToCartesian(
+  centerX: number,
+  centerY: number,
+  radius: number,
+  angleInDegrees: number,
+) {
+  const angleInRadians =
+    (angleInDegrees * Math.PI) /
+    180;
+
+  return {
+    x:
+      centerX +
+      radius *
+        Math.cos(
+          angleInRadians,
+        ),
+    y:
+      centerY +
+      radius *
+        Math.sin(
+          angleInRadians,
+        ),
+  };
+}
+
+function describeArc(
+  centerX: number,
+  centerY: number,
+  innerRadius: number,
+  outerRadius: number,
+  startAngle: number,
+  endAngle: number,
+) {
+  const outerStart =
+    polarToCartesian(
+      centerX,
+      centerY,
+      outerRadius,
+      startAngle,
+    );
+
+  const outerEnd =
+    polarToCartesian(
+      centerX,
+      centerY,
+      outerRadius,
+      endAngle,
+    );
+
+  const innerStart =
+    polarToCartesian(
+      centerX,
+      centerY,
+      innerRadius,
+      startAngle,
+    );
+
+  const innerEnd =
+    polarToCartesian(
+      centerX,
+      centerY,
+      innerRadius,
+      endAngle,
+    );
+
+  const largeArcFlag =
+    endAngle - startAngle >
+    180
+      ? 1
+      : 0;
+
+  return [
+    `M ${innerStart.x} ${innerStart.y}`,
+    `L ${outerStart.x} ${outerStart.y}`,
+    `A ${outerRadius} ${outerRadius} 0 ${largeArcFlag} 1 ${outerEnd.x} ${outerEnd.y}`,
+    `L ${innerEnd.x} ${innerEnd.y}`,
+    `A ${innerRadius} ${innerRadius} 0 ${largeArcFlag} 0 ${innerStart.x} ${innerStart.y}`,
+    'Z',
+  ].join(' ');
+}
+
+function getStatsRank(
   coordinate: CoordinatePreset,
-): StatKey {
+): StatKey[] {
   const values: Record<
     StatKey,
     number
@@ -136,79 +235,52 @@ function getPrimaryStat(
     charm: coordinate.stats.charm,
   };
 
-  const sorted = (
+  return (
     Object.entries(
       values,
-    ) as [StatKey, number][]
-  ).sort(
-    (a, b) => b[1] - a[1],
-  );
-
-  return sorted[0][0];
-}
-
-function getRankLabel(
-  coordinate: CoordinatePreset,
-): string {
-  const pairs: [
-    string,
-    number,
-  ][] = [
-    ['体力', coordinate.stats.hp],
-    [
-      '知略',
-      coordinate.stats.intellect,
-    ],
-    [
-      '器用',
-      coordinate.stats.dexterity,
-    ],
-    [
-      '特技',
-      coordinate.stats.charm,
-    ],
-  ];
-
-  return [...pairs]
+    ) as [
+      StatKey,
+      number,
+    ][]
+  )
     .sort(
       (a, b) => b[1] - a[1],
     )
     .map(
-      ([label]) => label,
+      ([key]) => key,
+    );
+}
+
+function getRankText(
+  coordinate: CoordinatePreset,
+): string {
+  return getStatsRank(
+    coordinate,
+  )
+    .map(
+      (key) => STAT_LABELS[key],
     )
     .join(' ＞ ');
 }
 
-function getShortRankLabel(
+function getShortRankText(
   coordinate: CoordinatePreset,
 ): string {
-  const pairs: [
-    string,
-    number,
-  ][] = [
-    ['体', coordinate.stats.hp],
-    [
-      '知',
-      coordinate.stats.intellect,
-    ],
-    [
-      '器',
-      coordinate.stats.dexterity,
-    ],
-    [
-      '特',
-      coordinate.stats.charm,
-    ],
-  ];
-
-  return [...pairs]
-    .sort(
-      (a, b) => b[1] - a[1],
-    )
+  return getStatsRank(
+    coordinate,
+  )
     .map(
-      ([label]) => label,
+      (key) => STAT_SHORT[key],
     )
     .join(' ＞ ');
+}
+
+function getPrimaryStat(
+  coordinate: CoordinatePreset,
+): StatKey {
+  return getStatsRank(
+    coordinate,
+  )[0];
 }
 
 export default function CoordinateRadialMap({
@@ -222,7 +294,7 @@ export default function CoordinateRadialMap({
     setSelectedCode,
   ] = useState<string>('y');
 
-  const coordinateByCode =
+  const coordinateMap =
     useMemo(
       () =>
         new Map(
@@ -239,18 +311,18 @@ export default function CoordinateRadialMap({
   const selectedCoordinate =
     useMemo(
       () =>
-        coordinateByCode.get(
+        coordinateMap.get(
           selectedCode,
         ) ??
-        coordinateByCode.get(
+        coordinateMap.get(
           'y',
         ) ??
         coordinates[0] ??
         null,
       [
-        coordinateByCode,
-        coordinates,
+        coordinateMap,
         selectedCode,
+        coordinates,
       ],
     );
 
@@ -270,280 +342,502 @@ export default function CoordinateRadialMap({
     selectedCount >=
     maxEntryLimit;
 
-  const handleSelect =
-    (
-      coordinate: CoordinatePreset,
-    ) => {
-      setSelectedCode(
-        coordinate.code,
+  const selectCoordinate = (
+    coordinate: CoordinatePreset,
+  ) => {
+    setSelectedCode(
+      coordinate.code,
+    );
+  };
+
+  const handleEntryClick = () => {
+    if (
+      selectedCoordinate &&
+      !selectedIsFull
+    ) {
+      onSelect?.(
+        selectedCoordinate,
       );
-    };
+    }
+  };
+
+  const center = 350;
 
   return (
-    <div className="space-y-5">
+    <div className="space-y-6">
       {/* ================================================= */}
-      {/* 配置図 */}
+      {/* 配置図本体 */}
       {/* ================================================= */}
-      <div className="rounded-3xl border border-gray-200 bg-gradient-to-b from-gray-50 to-white p-3 sm:p-5">
-        <div className="flex items-center justify-between gap-3 px-2 pb-3">
-          <div>
-            <div className="text-xs font-black tracking-[0.15em] text-indigo-500">
-              COORDINATE MAP
+      <div className="rounded-3xl border border-gray-200 bg-white shadow-sm overflow-hidden">
+        <div className="p-5 sm:p-6 bg-gradient-to-b from-gray-50 to-white border-b border-gray-200">
+          <div className="flex flex-col sm:flex-row sm:items-end sm:justify-between gap-3">
+            <div>
+              <div className="text-xs font-black tracking-[0.2em] text-indigo-500">
+                COORDINATE MAP
+              </div>
+
+              <h3 className="mt-1 text-2xl font-black text-gray-900">
+                25種類のコーデ配置図
+              </h3>
+
+              <p className="mt-2 text-xs text-gray-500 leading-relaxed">
+                中央の「均等型」を中心に、
+                4ステータスの順位による24種類を15°ずつ配置しています。
+              </p>
             </div>
 
-            <h3 className="text-lg sm:text-xl font-black text-gray-900">
-              コーデ配置図
-            </h3>
-          </div>
-
-          <div className="text-[10px] text-gray-500 text-right">
-            中央＝均等型
-            <br />
-            周囲＝24種類の順位型
+            <div className="text-[10px] text-gray-500 leading-relaxed sm:text-right">
+              北西・北東・南東・南西が
+              <br />
+              ステータスの入れ替わりライン
+            </div>
           </div>
         </div>
 
-        <div className="overflow-x-auto rounded-2xl border border-gray-200 bg-white">
-          <div className="relative min-w-[760px] h-[680px]">
-            {/* 同心円 */}
-            <div className="absolute left-1/2 top-1/2 w-[560px] h-[560px] -translate-x-1/2 -translate-y-1/2 rounded-full border border-dashed border-gray-200 pointer-events-none" />
+        <div className="p-2 sm:p-4 bg-gray-50">
+          <div className="overflow-x-auto rounded-2xl border border-gray-200 bg-white">
+            <div className="min-w-[720px] flex justify-center py-4">
+              <svg
+                width="700"
+                height="700"
+                viewBox="0 0 700 700"
+                className="max-w-full h-auto"
+                role="img"
+                aria-label="24種類のコーデ配置図"
+              >
+                {/* ================================ */}
+                {/* 外周リング */}
+                {/* ================================ */}
+                <circle
+                  cx={center}
+                  cy={center}
+                  r={OUTER_RADIUS}
+                  fill="none"
+                  stroke="#e5e7eb"
+                  strokeWidth="1"
+                />
 
-            <div className="absolute left-1/2 top-1/2 w-[430px] h-[430px] -translate-x-1/2 -translate-y-1/2 rounded-full border border-dashed border-gray-100 pointer-events-none" />
+                <circle
+                  cx={center}
+                  cy={center}
+                  r={INNER_RADIUS}
+                  fill="white"
+                  stroke="#c7d2fe"
+                  strokeWidth="2"
+                />
 
-            {/* ================================================= */}
-            {/* 放射線 */}
-            {/* ================================================= */}
-            {RADIAL_ORDER.map(
-              (code, index) => {
-                const coordinate =
-                  coordinateByCode.get(
-                    code,
-                  );
-
-                if (!coordinate) {
-                  return null;
-                }
-
-                const primary =
-                  getPrimaryStat(
-                    coordinate,
-                  );
-
-                const styles =
-                  PRIMARY_STYLES[
-                    primary
-                  ];
-
-                return (
-                  <div
-                    key={`line-${coordinate.id}`}
-                    className={`absolute left-1/2 top-1/2 h-px w-[300px] origin-left ${styles.line} opacity-60 pointer-events-none`}
-                    style={{
-                      transform:
-                        `rotate(${ANGLES[index]}deg)`,
-                    }}
-                  />
-                );
-              },
-            )}
-
-            {/* ================================================= */}
-            {/* 方向ラベル */}
-            {/* ================================================= */}
-            <div className="absolute left-1/2 top-5 -translate-x-1/2 text-[11px] font-black text-gray-400">
-              体力寄り
-            </div>
-
-            <div className="absolute right-5 top-1/2 -translate-y-1/2 text-[11px] font-black text-gray-400">
-              知略寄り
-            </div>
-
-            <div className="absolute left-1/2 bottom-5 -translate-x-1/2 text-[11px] font-black text-gray-400">
-              器用寄り
-            </div>
-
-            <div className="absolute left-5 top-1/2 -translate-y-1/2 text-[11px] font-black text-gray-400">
-              特技寄り
-            </div>
-
-            {/* ================================================= */}
-            {/* 24コーデ */}
-            {/* ================================================= */}
-            {RADIAL_ORDER.map(
-              (code, index) => {
-                const coordinate =
-                  coordinateByCode.get(
-                    code,
-                  );
-
-                if (!coordinate) {
-                  return null;
-                }
-
-                const count =
-                  entries.filter(
-                    (entry) =>
-                      entry.presetId ===
-                      coordinate.id,
-                  ).length;
-
-                const isSelected =
-                  selectedCode ===
-                  coordinate.code;
-
-                const primary =
-                  getPrimaryStat(
-                    coordinate,
-                  );
-
-                const styles =
-                  PRIMARY_STYLES[
-                    primary
-                  ];
-
-                return (
-                  <button
-                    key={coordinate.id}
-                    type="button"
-                    onClick={() =>
-                      handleSelect(
-                        coordinate,
-                      )
-                    }
-                    title={`${coordinate.code.toUpperCase()}：${getRankLabel(coordinate)} / ${count}/${maxEntryLimit}人`}
-                    className={`absolute left-1/2 top-1/2 w-[108px] -translate-x-1/2 -translate-y-1/2 rounded-2xl border-2 px-2 py-2 text-left shadow-sm transition cursor-pointer ${styles.node} ${
-                      isSelected
-                        ? 'ring-4 ring-indigo-200 scale-105 z-20'
-                        : 'hover:scale-105'
-                    }`}
-                    style={{
-                      transform:
-                        `translate(-50%, -50%) rotate(${ANGLES[index]}deg) translateX(300px) rotate(-${ANGLES[index]}deg)`,
-                    }}
-                  >
-                    <div className="flex items-center justify-between gap-1">
-                      <span
-                        className={`inline-flex items-center rounded-lg px-2 py-0.5 text-[10px] font-black ${styles.badge}`}
-                      >
-                        {coordinate.code.toUpperCase()}
-                      </span>
-
-                      <span className="text-[9px] font-black text-gray-500">
-                        {count}/
-                        {maxEntryLimit}
-                      </span>
-                    </div>
-
-                    <div className="mt-1 text-[10px] font-black text-gray-800 leading-tight">
-                      {getShortRankLabel(
-                        coordinate,
-                      )}
-                    </div>
-
-                    <div className="mt-1 text-[8px] text-gray-500 leading-tight">
-                      {coordinate.tendency.replaceAll(
-                        ' ＞ ',
-                        '→',
-                      )}
-                    </div>
-                  </button>
-                );
-              },
-            )}
-
-            {/* ================================================= */}
-            {/* 中央：均等型 */}
-            {/* ================================================= */}
-            {(() => {
-              const center =
-                coordinateByCode.get(
-                  'y',
-                );
-
-              if (!center) {
-                return null;
-              }
-
-              const count =
-                entries.filter(
-                  (entry) =>
-                    entry.presetId ===
-                    center.id,
-                ).length;
-
-              const isSelected =
-                selectedCode === 'y';
-
-              return (
-                <button
-                  type="button"
-                  onClick={() =>
-                    handleSelect(
-                      center,
-                    )
-                  }
-                  title={`Y：体力＝知略＝器用＝特技 / ${count}/${maxEntryLimit}人`}
-                  className={`absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 z-30 w-[145px] h-[145px] rounded-full border-4 border-indigo-300 bg-white shadow-xl transition cursor-pointer ${
-                    isSelected
-                      ? 'ring-4 ring-indigo-200 scale-105'
-                      : 'hover:scale-105'
-                  }`}
+                {/* ================================ */}
+                {/* 4方向のガイド */}
+                {/* ================================ */}
+                <text
+                  x={center}
+                  y={22}
+                  textAnchor="middle"
+                  fontSize="12"
+                  fontWeight="800"
+                  fill="#9ca3af"
                 >
-                  <div className="text-[10px] font-black tracking-[0.18em] text-indigo-500">
-                    BALANCE
-                  </div>
+                  体力
+                </text>
 
-                  <div className="mt-1 text-4xl font-black text-indigo-950">
-                    均
-                  </div>
+                <text
+                  x={678}
+                  y={center + 4}
+                  textAnchor="end"
+                  fontSize="12"
+                  fontWeight="800"
+                  fill="#9ca3af"
+                >
+                  知略
+                </text>
 
-                  <div className="mt-1 text-[9px] font-black text-gray-500">
-                    体力＝知略＝器用＝特技
-                  </div>
+                <text
+                  x={center}
+                  y={688}
+                  textAnchor="middle"
+                  fontSize="12"
+                  fontWeight="800"
+                  fill="#9ca3af"
+                >
+                  器用
+                </text>
 
-                  <div className="mt-2 text-[10px] font-black text-indigo-700">
-                    {count}/
-                    {maxEntryLimit}人
-                  </div>
-                </button>
-              );
-            })()}
+                <text
+                  x={22}
+                  y={center + 4}
+                  textAnchor="start"
+                  fontSize="12"
+                  fontWeight="800"
+                  fill="#9ca3af"
+                >
+                  特技
+                </text>
+
+                {/* ================================ */}
+                {/* 24スライス */}
+                {/* ================================ */}
+                {RADIAL_CODES.map(
+                  (code, index) => {
+                    const coordinate =
+                      coordinateMap.get(
+                        code,
+                      );
+
+                    if (!coordinate) {
+                      return null;
+                    }
+
+                    const startAngle =
+                      START_ANGLE +
+                      index *
+                        SLICE_ANGLE;
+
+                    const endAngle =
+                      startAngle +
+                      SLICE_ANGLE;
+
+                    const middleAngle =
+                      startAngle +
+                      SLICE_ANGLE /
+                        2;
+
+                    const labelRadius =
+                      (OUTER_RADIUS +
+                        INNER_RADIUS) /
+                      2;
+
+                    const labelPoint =
+                      polarToCartesian(
+                        center,
+                        center,
+                        labelRadius,
+                        middleAngle,
+                      );
+
+                    const count =
+                      entries.filter(
+                        (entry) =>
+                          entry.presetId ===
+                          coordinate.id,
+                      ).length;
+
+                    const isSelected =
+                      selectedCode ===
+                      coordinate.code;
+
+                    const primary =
+                      getPrimaryStat(
+                        coordinate,
+                      );
+
+                    const color =
+                      PRIMARY_STYLES[
+                        primary
+                      ];
+
+                    const path =
+                      describeArc(
+                        center,
+                        center,
+                        INNER_RADIUS,
+                        OUTER_RADIUS,
+                        startAngle,
+                        endAngle,
+                      );
+
+                    return (
+                      <g
+                        key={
+                          coordinate.id
+                        }
+                      >
+                        <path
+                          d={path}
+                          fill={
+                            isSelected
+                              ? '#eef2ff'
+                              : color.fill
+                          }
+                          stroke={
+                            isSelected
+                              ? '#6366f1'
+                              : color.stroke
+                          }
+                          strokeWidth={
+                            isSelected
+                              ? 3
+                              : 1.5
+                          }
+                          className="cursor-pointer transition-opacity hover:opacity-80"
+                          role="button"
+                          tabIndex={0}
+                          aria-label={`${coordinate.code.toUpperCase()} ${getRankText(coordinate)} / ${count}/${maxEntryLimit}人`}
+                          onClick={() =>
+                            selectCoordinate(
+                              coordinate,
+                            )
+                          }
+                          onKeyDown={(
+                            event,
+                          ) => {
+                            if (
+                              event.key ===
+                                'Enter' ||
+                              event.key ===
+                                ' '
+                            ) {
+                              event.preventDefault();
+                              selectCoordinate(
+                                coordinate,
+                              );
+                            }
+                          }}
+                        />
+
+                        {/* コード */}
+                        <text
+                          x={
+                            labelPoint.x
+                          }
+                          y={
+                            labelPoint.y -
+                            5
+                          }
+                          textAnchor="middle"
+                          dominantBaseline="middle"
+                          fontSize="18"
+                          fontWeight="900"
+                          fill={
+                            color.text
+                          }
+                          pointerEvents="none"
+                        >
+                          {coordinate.code.toUpperCase()}
+                        </text>
+
+                        {/* 登録数 */}
+                        <text
+                          x={
+                            labelPoint.x
+                          }
+                          y={
+                            labelPoint.y +
+                            14
+                          }
+                          textAnchor="middle"
+                          dominantBaseline="middle"
+                          fontSize="9"
+                          fontWeight="800"
+                          fill="#6b7280"
+                          pointerEvents="none"
+                        >
+                          {count}/
+                          {
+                            maxEntryLimit
+                          }
+                        </text>
+                      </g>
+                    );
+                  },
+                )}
+
+                {/* ================================ */}
+                {/* 4本の入れ替えライン */}
+                {/* ================================ */}
+                {[45, 135, 225, 315].map(
+                  (angle) => {
+                    const start =
+                      polarToCartesian(
+                        center,
+                        center,
+                        INNER_RADIUS,
+                        angle,
+                      );
+
+                    const end =
+                      polarToCartesian(
+                        center,
+                        center,
+                        OUTER_RADIUS,
+                        angle,
+                      );
+
+                    return (
+                      <line
+                        key={`axis-${angle}`}
+                        x1={start.x}
+                        y1={start.y}
+                        x2={end.x}
+                        y2={end.y}
+                        stroke="#9ca3af"
+                        strokeWidth="1"
+                        strokeDasharray="4 4"
+                        opacity="0.55"
+                        pointerEvents="none"
+                      />
+                    );
+                  },
+                )}
+
+                {/* ================================ */}
+                {/* 中央：均等型 */}
+                {/* ================================ */}
+                {(() => {
+                  const centerPreset =
+                    coordinateMap.get(
+                      'y',
+                    );
+
+                  if (!centerPreset) {
+                    return null;
+                  }
+
+                  const count =
+                    entries.filter(
+                      (entry) =>
+                        entry.presetId ===
+                        centerPreset.id,
+                    ).length;
+
+                  const isSelected =
+                    selectedCode ===
+                    'y';
+
+                  return (
+                    <g
+                      className="cursor-pointer"
+                      role="button"
+                      tabIndex={0}
+                      aria-label={`Y 均等型 / ${count}/${maxEntryLimit}人`}
+                      onClick={() =>
+                        selectCoordinate(
+                          centerPreset,
+                        )
+                      }
+                      onKeyDown={(
+                        event,
+                      ) => {
+                        if (
+                          event.key ===
+                            'Enter' ||
+                          event.key ===
+                            ' '
+                        ) {
+                          event.preventDefault();
+
+                          selectCoordinate(
+                            centerPreset,
+                          );
+                        }
+                      }}
+                    >
+                      <circle
+                        cx={center}
+                        cy={center}
+                        r={INNER_RADIUS - 5}
+                        fill="#ffffff"
+                        stroke={
+                          isSelected
+                            ? '#6366f1'
+                            : '#a5b4fc'
+                        }
+                        strokeWidth={
+                          isSelected
+                            ? 5
+                            : 3
+                        }
+                      />
+
+                      <text
+                        x={center}
+                        y={center - 23}
+                        textAnchor="middle"
+                        fontSize="11"
+                        fontWeight="900"
+                        fill="#6366f1"
+                        letterSpacing="2"
+                      >
+                        BALANCE
+                      </text>
+
+                      <text
+                        x={center}
+                        y={center + 19}
+                        textAnchor="middle"
+                        fontSize="48"
+                        fontWeight="900"
+                        fill="#1e1b4b"
+                      >
+                        均
+                      </text>
+
+                      <text
+                        x={center}
+                        y={center + 42}
+                        textAnchor="middle"
+                        fontSize="10"
+                        fontWeight="800"
+                        fill="#6b7280"
+                      >
+                        体力＝知略＝器用＝特技
+                      </text>
+
+                      <text
+                        x={center}
+                        y={center + 60}
+                        textAnchor="middle"
+                        fontSize="10"
+                        fontWeight="900"
+                        fill="#6366f1"
+                      >
+                        {count}/
+                        {maxEntryLimit}人
+                      </text>
+                    </g>
+                  );
+                })()}
+              </svg>
+            </div>
           </div>
         </div>
       </div>
 
       {/* ================================================= */}
-      {/* 選択中コーデ詳細 */}
+      {/* 選択中コーデ */}
       {/* ================================================= */}
       {selectedCoordinate && (
-        <section className="rounded-3xl border border-indigo-200 bg-indigo-50 p-5">
+        <section className="rounded-3xl border border-indigo-200 bg-indigo-50 p-5 sm:p-6">
           <div className="flex flex-col md:flex-row md:items-start md:justify-between gap-4">
             <div>
-              <div className="text-[10px] font-black tracking-[0.15em] text-indigo-500">
+              <div className="text-[10px] font-black tracking-[0.18em] text-indigo-500">
                 SELECTED COORDINATE
               </div>
 
-              <div className="mt-1 flex items-center gap-2">
-                <span className="inline-flex rounded-lg bg-indigo-100 px-2.5 py-1 text-xs font-black text-indigo-800">
+              <div className="mt-1 flex flex-wrap items-center gap-2">
+                <span className="inline-flex rounded-lg bg-indigo-100 px-3 py-1 text-sm font-black text-indigo-800">
                   {selectedCoordinate.code.toUpperCase()}
                 </span>
 
                 <h4 className="text-xl font-black text-indigo-950">
-                  {
-                    selectedCoordinate.name
-                  }
+                  {selectedCoordinate.name}
                 </h4>
               </div>
 
               <div className="mt-2 text-sm font-black text-indigo-900">
-                {getRankLabel(
+                {getRankText(
                   selectedCoordinate,
                 )}
               </div>
+
+              <div className="mt-1 text-[11px] text-indigo-700">
+                傾向：{
+                  selectedCoordinate.tendency
+                }
+              </div>
             </div>
 
-            <div className="text-left md:text-right">
-              <div className="text-[10px] font-bold text-gray-500">
+            <div className="rounded-2xl bg-white border border-indigo-100 px-4 py-3 text-right">
+              <div className="text-[10px] text-gray-500">
                 エントリー状況
               </div>
 
@@ -551,20 +845,24 @@ export default function CoordinateRadialMap({
                 {selectedCount} /{' '}
                 {maxEntryLimit}人
               </div>
+
+              {selectedIsFull && (
+                <div className="text-[10px] font-black text-red-600">
+                  満員
+                </div>
+              )}
             </div>
           </div>
 
-          {/* ステータス */}
           <div className="mt-4 grid grid-cols-2 sm:grid-cols-4 gap-2">
             <div className="rounded-xl bg-white border border-indigo-100 p-3">
               <div className="text-[10px] text-gray-500">
                 体力
               </div>
-
               <div className="text-lg font-black">
                 {
-                  selectedCoordinate.stats
-                    .hp
+                  selectedCoordinate
+                    .stats.hp
                 }
               </div>
             </div>
@@ -573,7 +871,6 @@ export default function CoordinateRadialMap({
               <div className="text-[10px] text-gray-500">
                 知略
               </div>
-
               <div className="text-lg font-black">
                 {
                   selectedCoordinate
@@ -586,7 +883,6 @@ export default function CoordinateRadialMap({
               <div className="text-[10px] text-gray-500">
                 器用
               </div>
-
               <div className="text-lg font-black">
                 {
                   selectedCoordinate
@@ -599,7 +895,6 @@ export default function CoordinateRadialMap({
               <div className="text-[10px] text-gray-500">
                 特技
               </div>
-
               <div className="text-lg font-black">
                 {
                   selectedCoordinate
@@ -609,111 +904,26 @@ export default function CoordinateRadialMap({
             </div>
           </div>
 
-          {/* 4技 */}
-          <div className="mt-4 rounded-2xl bg-white border border-indigo-100 p-4">
-            <div className="text-[10px] font-black text-indigo-600">
-              固定4技
-            </div>
-
-            <div className="mt-2 grid grid-cols-1 md:grid-cols-2 gap-2">
-              {selectedCoordinate.defaultSkills.map(
-                (
-                  skill,
-                  index,
-                ) => (
-                  <div
-                    key={`${selectedCoordinate.id}-detail-${index}`}
-                    className="rounded-xl bg-gray-50 border border-gray-200 p-3"
-                  >
-                    <div className="text-[11px] font-black">
-                      技{index + 1}{' '}
-                      {skill}
-                    </div>
-
-                    <div className="mt-1 text-[10px] text-gray-600 leading-relaxed">
-                      {
-                        selectedCoordinate
-                          .skillDescriptions[
-                          index
-                        ]
-                      }
-                    </div>
-                  </div>
-                ),
-              )}
-            </div>
+          <div className="mt-4">
+            <button
+              type="button"
+              disabled={
+                selectedIsFull
+              }
+              onClick={
+                handleEntryClick
+              }
+              className={`w-full rounded-xl px-4 py-3 text-xs font-black transition ${
+                selectedIsFull
+                  ? 'bg-gray-200 text-gray-400 cursor-not-allowed'
+                  : 'bg-indigo-600 hover:bg-indigo-700 text-white'
+              }`}
+            >
+              {selectedIsFull
+                ? 'このコーデはエントリー満員'
+                : 'このコーデでエントリーする'}
+            </button>
           </div>
-
-          {/* 登録済みアバター */}
-          {selectedEntries.length >
-            0 && (
-            <div className="mt-4 rounded-2xl bg-white border border-indigo-100 p-4">
-              <div className="text-[10px] font-black text-gray-500">
-                このコーデに登録されているアバター
-              </div>
-
-              <div className="mt-2 flex flex-wrap gap-2">
-                {selectedEntries.map(
-                  (entry) => (
-                    <div
-                      key={entry.id}
-                      className="flex items-center gap-2 rounded-xl bg-indigo-50 border border-indigo-100 px-3 py-2"
-                    >
-                      {entry.imageDataUrl ? (
-                        <img
-                          src={
-                            entry.imageDataUrl
-                          }
-                          alt=""
-                          className="w-8 h-8 rounded-lg object-cover border border-indigo-100"
-                        />
-                      ) : (
-                        <div className="w-8 h-8 rounded-lg bg-white flex items-center justify-center">
-                          👤
-                        </div>
-                      )}
-
-                      <span className="text-xs font-black text-indigo-900">
-                        {
-                          entry.userName
-                        }
-                      </span>
-                    </div>
-                  ),
-                )}
-              </div>
-            </div>
-          )}
-
-          {/* 登録ボタン */}
-          {onSelect && (
-            <div className="mt-4">
-              <button
-                type="button"
-                disabled={
-                  selectedIsFull
-                }
-                onClick={() => {
-                  if (
-                    !selectedIsFull
-                  ) {
-                    onSelect(
-                      selectedCoordinate,
-                    );
-                  }
-                }}
-                className={`w-full rounded-xl px-4 py-3 text-xs font-black transition ${
-                  selectedIsFull
-                    ? 'bg-gray-100 text-gray-400 cursor-not-allowed'
-                    : 'bg-indigo-600 hover:bg-indigo-700 text-white'
-                }`}
-              >
-                {selectedIsFull
-                  ? 'このコーデはエントリー満員'
-                  : 'このコーデでエントリーする'}
-              </button>
-            </div>
-          )}
         </section>
       )}
     </div>
