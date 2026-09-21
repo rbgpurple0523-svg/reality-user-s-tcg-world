@@ -21,10 +21,10 @@ const STAT_LABELS: Record<StatKey, string> = {
 };
 
 const RADIAL_CODES = [
-  'f', 'd', 'e', 'c', 'b', 'a',
-  'h', 'g', 'n', 't', 'm', 's',
-  'o', 'u', 'i', 'k', 'w', 'q',
-  'x', 'r', 'v', 'p', 'l', 'j',
+  'p1', 'p2', 'p3', 'p4', 'p5', 'p6',
+  'w1', 'w2', 'w3', 'w4', 'w5', 'w6',
+  't1', 't2', 't3', 't4', 't5', 't6',
+  's1', 's2', 's3', 's4', 's5', 's6',
 ] as const;
 
 const START_ANGLE = 225;
@@ -90,7 +90,9 @@ function getStatsRank(coordinate: CoordinatePreset): StatKey[] {
 }
 
 function getRankText(coordinate: CoordinatePreset) {
-  return getStatsRank(coordinate).map((key) => STAT_LABELS[key]).join(' ＞ ');
+  return getStatsRank(coordinate)
+    .map((key) => STAT_LABELS[key])
+    .join(' ＞ ');
 }
 
 function getShortRankText(coordinate: CoordinatePreset) {
@@ -106,7 +108,12 @@ function getShortRankText(coordinate: CoordinatePreset) {
     .join(' ＞ ');
 }
 
-function getPrimaryStat(coordinate: CoordinatePreset) {
+function getCoordinateDisplayCode(coordinate: CoordinatePreset) {
+  if (coordinate.code === 'a1') return 'A-1';
+  return `${coordinate.code[0].toUpperCase()}-${coordinate.code.slice(1)}`;
+}
+
+function getPrimaryStat(coordinate: CoordinatePreset): StatKey {
   return getStatsRank(coordinate)[0];
 }
 
@@ -182,7 +189,7 @@ export default function CoordinateRadialMap({
   maxEntryLimit,
   onSelect,
 }: CoordinateRadialMapProps) {
-  const [selectedCode, setSelectedCode] = useState('y');
+  const [selectedCode, setSelectedCode] = useState('a1');
 
   const coordinateMap = useMemo(
     () => new Map(coordinates.map((coordinate) => [coordinate.code, coordinate])),
@@ -192,7 +199,7 @@ export default function CoordinateRadialMap({
   const selectedCoordinate = useMemo(
     () =>
       coordinateMap.get(selectedCode) ??
-      coordinateMap.get('y') ??
+      coordinateMap.get('a1') ??
       coordinates[0] ??
       null,
     [coordinateMap, selectedCode, coordinates],
@@ -225,7 +232,7 @@ export default function CoordinateRadialMap({
               <div className="text-xs font-black tracking-[0.2em] text-indigo-500">COORDINATE MAP</div>
               <h3 className="mt-1 text-2xl font-black text-gray-900">25種類のコーデ配置図</h3>
               <p className="mt-2 text-xs text-gray-500 leading-relaxed">
-                中央の「均等型」を中心に、4ステータスの順位による24種類を15°ずつ配置しています。
+                中央の「A-1」を中心に、4ステータスの順位による24種類を15°ずつ配置しています。
               </p>
             </div>
             <div className="text-[10px] text-gray-500 leading-relaxed sm:text-right">
@@ -277,7 +284,7 @@ export default function CoordinateRadialMap({
                         strokeWidth={isSelected ? 3 : 1.5}
                         className="cursor-pointer transition-opacity hover:opacity-80"
                         onClick={() => selectCoordinate(coordinate)}
-                        aria-label={`${coordinate.code.toUpperCase()} ${getRankText(coordinate)} / ${count}/${maxEntryLimit}人`}
+                        aria-label={`${getCoordinateDisplayCode(coordinate)} ${getRankText(coordinate)} / ${count}/${maxEntryLimit}人`}
                       />
 
                       <text
@@ -290,7 +297,7 @@ export default function CoordinateRadialMap({
                         fill={color.text}
                         pointerEvents="none"
                       >
-                        {coordinate.code.toUpperCase()}
+                        {getCoordinateDisplayCode(coordinate)}
                       </text>
 
                       <text
@@ -329,11 +336,11 @@ export default function CoordinateRadialMap({
                 })}
 
                 {(() => {
-                  const centerPreset = coordinateMap.get('y');
+                  const centerPreset = coordinateMap.get('a1');
                   if (!centerPreset) return null;
 
                   const count = getEntryCount(centerPreset.id);
-                  const isSelected = selectedCode === 'y';
+                  const isSelected = selectedCode === 'a1';
 
                   return (
                     <g className="cursor-pointer" onClick={() => selectCoordinate(centerPreset)}>
@@ -345,7 +352,7 @@ export default function CoordinateRadialMap({
                         stroke={isSelected ? '#6366f1' : '#a5b4fc'}
                         strokeWidth={isSelected ? 5 : 3}
                       />
-                      <text x={center} y={center - 23} textAnchor="middle" fontSize="11" fontWeight="900" fill="#6366f1" letterSpacing="2">BALANCE</text>
+                      <text x={center} y={center - 23} textAnchor="middle" fontSize="11" fontWeight="900" fill="#6366f1" letterSpacing="2">A-1</text>
                       <text x={center} y={center + 19} textAnchor="middle" fontSize="48" fontWeight="900" fill="#1e1b4b">均</text>
                       <text x={center} y={center + 42} textAnchor="middle" fontSize="10" fontWeight="800" fill="#6b7280">体力＝知略＝器用＝特技</text>
                       <text x={center} y={center + 60} textAnchor="middle" fontSize="10" fontWeight="900" fill="#6366f1">{count}/{maxEntryLimit}人</text>
@@ -364,7 +371,7 @@ export default function CoordinateRadialMap({
             <div className="flex-1">
               <div className="text-[10px] font-black tracking-[0.18em] text-indigo-500">SELECTED COORDINATE</div>
               <div className="mt-1 flex flex-wrap items-center gap-2">
-                <span className="inline-flex rounded-lg bg-indigo-100 px-3 py-1 text-sm font-black text-indigo-800">{selectedCoordinate.code.toUpperCase()}</span>
+                <span className="inline-flex rounded-lg bg-indigo-100 px-3 py-1 text-sm font-black text-indigo-800">{getCoordinateDisplayCode(selectedCoordinate)}</span>
                 <h4 className="text-xl font-black text-indigo-950">{selectedCoordinate.name}</h4>
               </div>
               <div className="mt-2 text-sm font-black text-indigo-900">{getRankText(selectedCoordinate)}</div>
