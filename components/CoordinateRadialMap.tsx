@@ -21,10 +21,10 @@ const STAT_LABELS: Record<StatKey, string> = {
 };
 
 const RADIAL_CODES = [
-  'e', 'f', 'c', 'd', 'b', 'a',
-  'h', 'g', 'k', 'l', 'j', 'i',
-  'o', 'p', 'm', 'n', 'r', 'q',
-  'x', 'w', 'v', 'u', 't', 's',
+  'd', 'f', 'e', 'c', 'b', 'a',
+  'h', 'g', 'n', 't', 's', 'm',
+  'o', 'u', 'i', 'k', 'w', 'q',
+  'x', 'r', 'v', 'p', 'l', 'j',
 ] as const;
 
 const START_ANGLE = 225;
