@@ -7,6 +7,7 @@ import { EMOTION_PRESETS } from './emotionPresets';
 import type { EmotionPreset } from './emotionPresets';
 import { COORDINATE_PRESETS } from './coordinatePresets';
 import type { Archetype, CardColor, CoordinatePreset, Season } from './coordinatePresets';
+import type { ColorType } from './colorTypes';
 import CoordinateRadialMap from './CoordinateRadialMap';
 
 // =========================================================
@@ -33,6 +34,8 @@ export interface EntryRecord {
   skillVoices?: [string, string, string, string];
   flavorText?: string;
   color?: CardColor;
+  colorHex?: string;
+  colorType?: ColorType;
   season?: Season;
   archetype?: Archetype;
 

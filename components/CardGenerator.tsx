@@ -4,6 +4,13 @@ import React, { ChangeEvent, FormEvent, useEffect, useMemo, useState } from 'rea
 import { CoordinatePreset, COORDINATE_PRESETS, EntryRecord } from './EntryHub';
 import { EMOTION_PRESETS } from './emotionPresets';
 import CoordinateRadialMap from './CoordinateRadialMap';
+import {
+  COLOR_PALETTE,
+  getColorTypeFromHex,
+  getColorTypeLabel,
+  getLegacyColorHex,
+  hexToRgb,
+} from './colorTypes';
 
 interface CardGeneratorProps {
   selectedCoordinate?: CoordinatePreset | null;
@@ -23,6 +30,8 @@ type DraftData = {
   customSkills: [string, string, string, string];
   skillVoices?: [string, string, string, string];
   flavorText?: string;
+  colorHex?: string;
+  colorType?: import('./colorTypes').ColorType;
 };
 
 const emptySkills: [string, string, string, string] = ['', '', '', ''];
@@ -147,6 +156,16 @@ export default function CardGenerator({ selectedCoordinate, onBackToHub }: CardG
   const [customSkills, setCustomSkills] = useState<[string, string, string, string]>(emptySkills);
   const [skillVoices, setSkillVoices] = useState<[string, string, string, string]>(emptySkillVoices);
   const [flavorText, setFlavorText] = useState('');
+  const [selectedColorHex, setSelectedColorHex] = useState('#22D3EE');
+
+  const selectedColorRgb = useMemo(
+    () => hexToRgb(selectedColorHex),
+    [selectedColorHex],
+  );
+  const selectedColorType = useMemo(
+    () => getColorTypeFromHex(selectedColorHex),
+    [selectedColorHex],
+  );
 
   const [entries, setEntries] = useState<EntryRecord[]>([]);
   const [editingId, setEditingId] = useState<string | null>(null);
@@ -210,13 +229,15 @@ export default function CardGenerator({ selectedCoordinate, onBackToHub }: CardG
         customSkills,
         skillVoices,
         flavorText,
+        colorHex: selectedColorHex,
+        colorType: selectedColorType,
       };
       localStorage.setItem(DRAFT_KEY, JSON.stringify(draft));
       setDraftAvailable(true);
     } catch {
       // localStorageが利用できない場合も入力自体は継続可能。
     }
-  }, [profileUrl, userName, imageDataUrl, password, currentCoordinate, customSkills, skillVoices, flavorText, draftChecked]);
+  }, [profileUrl, userName, imageDataUrl, password, currentCoordinate, customSkills, skillVoices, flavorText, selectedColorHex, draftChecked]);
 
   const restoreDraft = () => {
     try {
@@ -247,6 +268,11 @@ export default function CardGenerator({ selectedCoordinate, onBackToHub }: CardG
             ],
       );
       setFlavorText(draft.flavorText ?? '');
+      setSelectedColorHex(
+        draft.colorHex && /^#[0-9a-fA-F]{6}$/.test(draft.colorHex)
+          ? draft.colorHex.toUpperCase()
+          : getLegacyColorHex(undefined),
+      );
       setDraftAvailable(false);
       setSuccessMessage('前回の続きから復元しました。');
       setTimeout(() => setSuccessMessage(''), 2000);
@@ -288,6 +314,13 @@ export default function CardGenerator({ selectedCoordinate, onBackToHub }: CardG
     const reader = new FileReader();
     reader.onload = () => setImageDataUrl(reader.result as string);
     reader.readAsDataURL(file);
+  };
+
+  const handleColorChange = (hex: string) => {
+    const normalized = hex.toUpperCase();
+    if (!/^#[0-9A-F]{6}$/.test(normalized)) return;
+    setSelectedColorHex(normalized);
+    setErrorMessage('');
   };
 
   const handleSkillChange = (index: number, value: string) => {
@@ -418,6 +451,8 @@ export default function CardGenerator({ selectedCoordinate, onBackToHub }: CardG
       customSkills: normalizedCustomSkills,
       skillVoices: normalizedSkillVoices,
       flavorText: flavorText.trim(),
+      colorHex: selectedColorHex,
+      colorType: getColorTypeFromHex(selectedColorHex),
       createdAt: editingEntry?.createdAt || now,
       updatedAt: now,
     };
@@ -496,6 +531,11 @@ export default function CardGenerator({ selectedCoordinate, onBackToHub }: CardG
           ],
     );
     setFlavorText(entry.flavorText ?? '');
+    setSelectedColorHex(
+      entry.colorHex && /^#[0-9a-fA-F]{6}$/.test(entry.colorHex)
+        ? entry.colorHex.toUpperCase()
+        : getLegacyColorHex(entry.color),
+    );
     setEditingId(entry.id);
     setErrorMessage('');
     window.scrollTo({ top: 0, behavior: 'smooth' });
@@ -588,6 +628,52 @@ export default function CardGenerator({ selectedCoordinate, onBackToHub }: CardG
               <input type="file" accept="image/*" onChange={handleImageUpload} className="w-full text-gray-700" />
             </div>
 
+            <div className="pt-3 border-t border-gray-100 space-y-3">
+              <div>
+                <label className="block font-bold text-gray-700 mb-1">カードカラー</label>
+                <p className="text-[10px] text-gray-500">好きな色を選べます。色そのものとは別に、ゲーム用のカラータイプを自動判定して保持します。</p>
+              </div>
+
+              <div className="flex flex-wrap gap-2">
+                {COLOR_PALETTE.map((color) => (
+                  <button
+                    key={color}
+                    type="button"
+                    onClick={() => handleColorChange(color)}
+                    aria-label={`カラー ${color}`}
+                    className={`h-8 w-8 rounded-full border-2 transition ${selectedColorHex.toUpperCase() === color.toUpperCase() ? 'border-gray-900 ring-2 ring-offset-1 ring-gray-300' : 'border-white shadow-sm'}`}
+                    style={{ backgroundColor: color }}
+                  />
+                ))}
+              </div>
+
+              <div className="flex flex-col sm:flex-row sm:items-center gap-3 rounded-xl border border-gray-200 bg-gray-50 p-3">
+                <div className="flex items-center gap-3">
+                  <input
+                    type="color"
+                    value={selectedColorHex}
+                    onChange={(e) => handleColorChange(e.target.value)}
+                    aria-label="自由な色を選択"
+                    className="h-12 w-16 cursor-pointer rounded-lg border border-gray-300 bg-white p-1"
+                  />
+                  <div>
+                    <div className="text-[11px] font-black text-gray-700">自由な色を選択</div>
+                    <div className="text-[10px] text-gray-500">HEX {selectedColorHex.toUpperCase()}</div>
+                    <div className="text-[10px] text-gray-500">RGB {selectedColorRgb.r}, {selectedColorRgb.g}, {selectedColorRgb.b}</div>
+                  </div>
+                </div>
+
+                <div className="sm:ml-auto rounded-lg bg-white border border-gray-200 px-3 py-2">
+                  <div className="text-[10px] text-gray-500">カラータイプ</div>
+                  <div className="mt-0.5 flex items-center gap-2 text-sm font-black text-gray-900">
+                    <span className="inline-block h-3 w-3 rounded-full border border-gray-300" style={{ backgroundColor: selectedColorHex }} />
+                    {getColorTypeLabel(selectedColorType)}
+                  </div>
+                  <div className="text-[10px] text-gray-400">内部値: {selectedColorType.toUpperCase()}</div>
+                </div>
+              </div>
+            </div>
+
             <div className="pt-3 border-t border-gray-100 space-y-4">
               <div>
                 <label className="block font-bold text-gray-700">所持ワザ設定（4つ） <span className="text-red-500">*</span></label>
@@ -668,6 +754,14 @@ export default function CardGenerator({ selectedCoordinate, onBackToHub }: CardG
                   </div>
                 )}
 
+                <div className="rounded-xl border border-gray-200 bg-gray-50 p-3">
+                  <div className="h-2 rounded-full" style={{ backgroundColor: selectedColorHex }} />
+                  <div className="mt-2 flex items-center justify-between gap-3 text-[10px]">
+                    <span className="font-bold text-gray-600">カードカラー {selectedColorHex.toUpperCase()}</span>
+                    <span className="font-black text-gray-900">{getColorTypeLabel(selectedColorType)}</span>
+                  </div>
+                </div>
+
                 <div className="text-xs bg-gray-50 border p-3 rounded-lg grid grid-cols-2 gap-2">
                   <div>体力：<b>{currentCoordinate.stats.hp}</b></div>
                   <div>知略：<b>{currentCoordinate.stats.intellect}</b></div>
@@ -723,6 +817,11 @@ export default function CardGenerator({ selectedCoordinate, onBackToHub }: CardG
                     <div className="min-w-0">
                       <div className="font-bold truncate">{entry.userName}</div>
                       <div className="text-xs text-pink-700 font-bold">{preset ? `${preset.code.toUpperCase()} / ${preset.name}` : entry.presetId}</div>
+                      <div className="flex items-center gap-2 text-[10px] text-gray-600">
+                        <span className="inline-block h-3 w-3 rounded-full border border-gray-300" style={{ backgroundColor: entry.colorHex || getLegacyColorHex(entry.color) }} />
+                        <span>{entry.colorType ? getColorTypeLabel(entry.colorType) : 'カラータイプ未設定'}</span>
+                        {entry.colorHex && <span className="text-gray-400">{entry.colorHex.toUpperCase()}</span>}
+                      </div>
                       <div className="text-[10px] text-gray-500 truncate">{entry.profileUrl}</div>
                     </div>
                   </div>
