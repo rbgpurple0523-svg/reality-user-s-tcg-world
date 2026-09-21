@@ -13,6 +13,7 @@ interface CoordinateRadialMapProps {
   initialSelectedId?: string | null;
   mode?: 'entry' | 'picker';
   onSelect?: (coordinate: CoordinatePreset) => void;
+  onEntry?: (coordinate: CoordinatePreset) => void;
 }
 
 const STAT_LABELS: Record<StatKey, string> = {
@@ -185,6 +186,7 @@ export default function CoordinateRadialMap({
   initialSelectedId,
   mode = 'entry',
   onSelect,
+  onEntry,
 }: CoordinateRadialMapProps) {
   const initialCoordinate = initialSelectedId
     ? coordinates.find((coordinate) => coordinate.id === initialSelectedId)
@@ -225,17 +227,27 @@ export default function CoordinateRadialMap({
     const canKeepCurrentSelection =
       mode === 'picker' && coordinate.id === initialSelectedId;
 
-    if (isFull && !canKeepCurrentSelection) return;
+    if (mode === 'picker' && isFull && !canKeepCurrentSelection) return;
     setSelectedCode(coordinate.code);
   };
 
-  const handleEntryClick = () => {
-    if (selectedCoordinate && !selectedIsLocked) {
+  const handleActionClick = () => {
+    if (!selectedCoordinate || selectedIsLocked) return;
+
+    if (mode === 'picker') {
       onSelect?.(selectedCoordinate);
+      return;
     }
+
+    onEntry?.(selectedCoordinate);
   };
 
-  const center = SVG_SIZE / 2;
+  const isEntryMode = mode === 'entry';
+  const displaySvgSize = isEntryMode ? 520 : SVG_SIZE;
+  const displayOuterRadius = isEntryMode ? 205 : OUTER_RADIUS;
+  const displayInnerRadius = isEntryMode ? 105 : INNER_RADIUS;
+  const displayCenterCircleRadius = isEntryMode ? 54 : CENTER_CIRCLE_RADIUS;
+  const center = displaySvgSize / 2;
 
   return (
     <div className="space-y-6">
@@ -246,11 +258,15 @@ export default function CoordinateRadialMap({
               <div className="text-xs font-black tracking-[0.2em] text-indigo-500">COORDINATE MAP</div>
               <h3 className="mt-1 text-2xl font-black text-gray-900">25種類のコーデ配置図</h3>
               <p className="mt-2 text-xs text-gray-500 leading-relaxed">
-                中央の「A-1」を中心に、4ステータスの順位による24種類を15°ずつ配置しています。
+                {isEntryMode
+                  ? 'コーデ枠に登録されたアバターをアイコンで表示しています。枠を選ぶと、そのコーデの詳細が下に表示されます。'
+                  : '中央の「A-1」を中心に、4ステータスの順位による24種類を15°ずつ配置しています。'}
               </p>
             </div>
             <div className="text-[10px] text-gray-500 leading-relaxed sm:text-right">
-              4本の境界線では、隣り合う2ステータスの順位が入れ替わります
+              {isEntryMode
+                ? 'アイコン付きの枠 = 登録あり　／　数字 = 登録人数'
+                : '4本の境界線では、隣り合う2ステータスの順位が入れ替わります'}
             </div>
           </div>
         </div>
@@ -259,24 +275,24 @@ export default function CoordinateRadialMap({
           <div className="overflow-x-auto rounded-2xl border border-gray-200 bg-white">
             <div className="flex justify-center py-3">
               <svg
-                width={SVG_SIZE}
-                height={SVG_SIZE}
-                viewBox={`0 0 ${SVG_SIZE} ${SVG_SIZE}`}
+                width={displaySvgSize}
+                height={displaySvgSize}
+                viewBox={`0 0 ${displaySvgSize} ${displaySvgSize}`}
                 className="max-w-full h-auto"
                 role="img"
-                aria-label="24種類のコーデ配置図"
+                aria-label="25種類のコーデ配置図"
               >
-                <circle cx={center} cy={center} r={OUTER_RADIUS} fill="none" stroke="#e5e7eb" strokeWidth="1" />
-                <circle cx={center} cy={center} r={INNER_RADIUS} fill="white" stroke="#c7d2fe" strokeWidth="2" />
+                <circle cx={center} cy={center} r={displayOuterRadius} fill="none" stroke="#e5e7eb" strokeWidth="1" />
+                <circle cx={center} cy={center} r={displayInnerRadius} fill="white" stroke="#c7d2fe" strokeWidth="2" />
 
-                <text x={center} y={16} textAnchor="middle" fontSize="16" fontWeight="900" fill="#111827">体力</text>
-                <text x={center} y={30} textAnchor="middle" fontSize="12" fontWeight="800" fill="#9ca3af">（Powerful）</text>
-                <text x={342} y={center - 4} textAnchor="end" fontSize="16" fontWeight="900" fill="#111827">知略</text>
-                <text x={342} y={center + 12} textAnchor="end" fontSize="12" fontWeight="800" fill="#9ca3af">（Wisdom）</text>
-                <text x={center} y={330} textAnchor="middle" fontSize="16" fontWeight="900" fill="#111827">器用</text>
-                <text x={center} y={344} textAnchor="middle" fontSize="12" fontWeight="800" fill="#9ca3af">（Technical）</text>
-                <text x={8} y={center - 4} textAnchor="start" fontSize="16" fontWeight="900" fill="#111827">特技</text>
-                <text x={8} y={center + 12} textAnchor="start" fontSize="12" fontWeight="800" fill="#9ca3af">（Special）</text>
+                <text x={center} y={isEntryMode ? 24 : 16} textAnchor="middle" fontSize="16" fontWeight="900" fill="#111827">体力</text>
+                <text x={center} y={isEntryMode ? 39 : 30} textAnchor="middle" fontSize="12" fontWeight="800" fill="#9ca3af">（Powerful）</text>
+                <text x={displaySvgSize - 10} y={center - 4} textAnchor="end" fontSize="16" fontWeight="900" fill="#111827">知略</text>
+                <text x={displaySvgSize - 10} y={center + 12} textAnchor="end" fontSize="12" fontWeight="800" fill="#9ca3af">（Wisdom）</text>
+                <text x={center} y={displaySvgSize - (isEntryMode ? 36 : 20)} textAnchor="middle" fontSize="16" fontWeight="900" fill="#111827">器用</text>
+                <text x={center} y={displaySvgSize - (isEntryMode ? 20 : 6)} textAnchor="middle" fontSize="12" fontWeight="800" fill="#9ca3af">（Technical）</text>
+                <text x={10} y={center - 4} textAnchor="start" fontSize="16" fontWeight="900" fill="#111827">特技</text>
+                <text x={10} y={center + 12} textAnchor="start" fontSize="12" fontWeight="800" fill="#9ca3af">（Special）</text>
 
                 {RADIAL_CODES.map((code, index) => {
                   const coordinate = coordinateMap.get(code);
@@ -285,17 +301,25 @@ export default function CoordinateRadialMap({
                   const startAngle = START_ANGLE + index * SLICE_ANGLE;
                   const endAngle = startAngle + SLICE_ANGLE;
                   const middleAngle = startAngle + SLICE_ANGLE / 2;
-                  const labelRadius = (OUTER_RADIUS + INNER_RADIUS) / 2;
+                  const labelRadius = (displayOuterRadius + displayInnerRadius) / 2;
                   const labelPoint = polarToCartesian(center, center, labelRadius, middleAngle);
                   const count = getEntryCount(coordinate.id);
+                  const presetEntries = entries.filter((entry) => entry.presetId === coordinate.id);
                   const isSelected = selectedCode === coordinate.code;
                   const isFull = count >= maxEntryLimit;
                   const canKeepCurrentSelection =
                     mode === 'picker' && coordinate.id === initialSelectedId;
-                  const isSelectable = !isFull || canKeepCurrentSelection;
+                  const isSelectable = !isFull || mode === 'entry' || canKeepCurrentSelection;
                   const primary = getPrimaryStat(coordinate);
                   const color = PRIMARY_STYLES[primary];
-                  const path = describeArc(center, center, INNER_RADIUS, OUTER_RADIUS, startAngle, endAngle);
+                  const path = describeArc(
+                    center,
+                    center,
+                    displayInnerRadius,
+                    displayOuterRadius,
+                    startAngle,
+                    endAngle,
+                  );
 
                   return (
                     <g key={coordinate.id}>
@@ -313,10 +337,10 @@ export default function CoordinateRadialMap({
 
                       <text
                         x={labelPoint.x}
-                        y={labelPoint.y - 5}
+                        y={labelPoint.y - (isEntryMode ? 16 : 5)}
                         textAnchor="middle"
                         dominantBaseline="middle"
-                        fontSize="12"
+                        fontSize={isEntryMode ? 13 : 12}
                         fontWeight="900"
                         fill={color.text}
                         pointerEvents="none"
@@ -324,12 +348,50 @@ export default function CoordinateRadialMap({
                         {getCoordinateDisplayCode(coordinate)}
                       </text>
 
+                      {isEntryMode && presetEntries.length > 0 && (
+                        <g pointerEvents="none">
+                          {presetEntries.slice(0, 3).map((entry, avatarIndex) => {
+                            const shownEntries = presetEntries.slice(0, 3);
+                            const avatarSize = 16;
+                            const overlap = 5;
+                            const totalWidth = avatarSize * shownEntries.length - overlap * (shownEntries.length - 1);
+                            const avatarX = labelPoint.x - totalWidth / 2 + avatarSize / 2 + avatarIndex * (avatarSize - overlap);
+                            const avatarY = labelPoint.y + 1;
+                            const clipId = `avatar-clip-${coordinate.code}-${avatarIndex}`;
+
+                            return (
+                              <g key={`${entry.id}-${avatarIndex}`}>
+                                <defs>
+                                  <clipPath id={clipId}>
+                                    <circle cx={avatarX} cy={avatarY} r={avatarSize / 2} />
+                                  </clipPath>
+                                </defs>
+                                <circle cx={avatarX} cy={avatarY} r={avatarSize / 2 + 1} fill="white" />
+                                {entry.imageDataUrl ? (
+                                  <image
+                                    href={entry.imageDataUrl}
+                                    x={avatarX - avatarSize / 2}
+                                    y={avatarY - avatarSize / 2}
+                                    width={avatarSize}
+                                    height={avatarSize}
+                                    preserveAspectRatio="xMidYMid slice"
+                                    clipPath={`url(#${clipId})`}
+                                  />
+                                ) : (
+                                  <circle cx={avatarX} cy={avatarY} r={avatarSize / 2} fill="#e5e7eb" />
+                                )}
+                              </g>
+                            );
+                          })}
+                        </g>
+                      )}
+
                       <text
                         x={labelPoint.x}
-                        y={labelPoint.y + 10}
+                        y={labelPoint.y + (isEntryMode ? 19 : 10)}
                         textAnchor="middle"
                         dominantBaseline="middle"
-                        fontSize="7"
+                        fontSize={isEntryMode ? 8 : 7}
                         fontWeight="800"
                         fill={isFull ? '#dc2626' : '#6b7280'}
                         pointerEvents="none"
@@ -341,8 +403,8 @@ export default function CoordinateRadialMap({
                 })}
 
                 {[45, 135, 225, 315].map((angle) => {
-                  const start = polarToCartesian(center, center, INNER_RADIUS, angle);
-                  const end = polarToCartesian(center, center, OUTER_RADIUS, angle);
+                  const start = polarToCartesian(center, center, displayInnerRadius, angle);
+                  const end = polarToCartesian(center, center, displayOuterRadius, angle);
                   return (
                     <line
                       key={`axis-${angle}`}
@@ -364,11 +426,12 @@ export default function CoordinateRadialMap({
                   if (!centerPreset) return null;
 
                   const count = getEntryCount(centerPreset.id);
+                  const presetEntries = entries.filter((entry) => entry.presetId === centerPreset.id);
                   const isSelected = selectedCode === 'a1';
                   const isFull = count >= maxEntryLimit;
                   const canKeepCurrentSelection =
                     mode === 'picker' && centerPreset.id === initialSelectedId;
-                  const isSelectable = !isFull || canKeepCurrentSelection;
+                  const isSelectable = !isFull || mode === 'entry' || canKeepCurrentSelection;
 
                   return (
                     <g
@@ -380,17 +443,56 @@ export default function CoordinateRadialMap({
                       <circle
                         cx={center}
                         cy={center}
-                        r={CENTER_CIRCLE_RADIUS}
+                        r={displayCenterCircleRadius}
                         fill="#ffffff"
                         stroke={isSelected ? '#6366f1' : '#a5b4fc'}
                         strokeWidth={isSelected ? 5 : 3}
                       />
-                      <text x={center} y={center - 7} textAnchor="middle" fontSize="10" fontWeight="900" fill="#6366f1" letterSpacing="1">A-1</text>
+                      <text x={center} y={center - (isEntryMode ? 27 : 7)} textAnchor="middle" fontSize={isEntryMode ? 13 : 10} fontWeight="900" fill="#6366f1" letterSpacing="1">A-1</text>
+
+                      {isEntryMode && presetEntries.length > 0 && (
+                        <g pointerEvents="none">
+                          {presetEntries.slice(0, 3).map((entry, avatarIndex) => {
+                            const shownEntries = presetEntries.slice(0, 3);
+                            const avatarSize = 27;
+                            const overlap = 8;
+                            const totalWidth = avatarSize * shownEntries.length - overlap * (shownEntries.length - 1);
+                            const avatarX = center - totalWidth / 2 + avatarSize / 2 + avatarIndex * (avatarSize - overlap);
+                            const avatarY = center + 1;
+                            const clipId = `avatar-clip-center-${avatarIndex}`;
+
+                            return (
+                              <g key={`${entry.id}-${avatarIndex}`}>
+                                <defs>
+                                  <clipPath id={clipId}>
+                                    <circle cx={avatarX} cy={avatarY} r={avatarSize / 2} />
+                                  </clipPath>
+                                </defs>
+                                <circle cx={avatarX} cy={avatarY} r={avatarSize / 2 + 1.5} fill="white" />
+                                {entry.imageDataUrl ? (
+                                  <image
+                                    href={entry.imageDataUrl}
+                                    x={avatarX - avatarSize / 2}
+                                    y={avatarY - avatarSize / 2}
+                                    width={avatarSize}
+                                    height={avatarSize}
+                                    preserveAspectRatio="xMidYMid slice"
+                                    clipPath={`url(#${clipId})`}
+                                  />
+                                ) : (
+                                  <circle cx={avatarX} cy={avatarY} r={avatarSize / 2} fill="#e5e7eb" />
+                                )}
+                              </g>
+                            );
+                          })}
+                        </g>
+                      )}
+
                       <text
                         x={center}
-                        y={center + 12}
+                        y={center + (isEntryMode ? 25 : 12)}
                         textAnchor="middle"
-                        fontSize="8"
+                        fontSize={isEntryMode ? 9 : 8}
                         fontWeight="900"
                         fill={isFull ? '#dc2626' : '#6366f1'}
                       >
@@ -435,6 +537,37 @@ export default function CoordinateRadialMap({
                   <div className="mt-1 text-[10px] text-gray-500">このコーデは現在エントリーできます。</div>
                 )}
               </div>
+
+              {mode === 'entry' && (
+                <div className="mt-4 rounded-2xl border border-indigo-100 bg-white p-4">
+                  <div className="text-[10px] font-black tracking-[0.12em] text-indigo-500">REGISTERED AVATARS</div>
+                  {selectedCount === 0 ? (
+                    <div className="mt-3 rounded-xl border border-dashed border-gray-200 bg-gray-50 p-4 text-center text-xs text-gray-500">
+                      まだこのコーデに登録されたアバターはいません。
+                    </div>
+                  ) : (
+                    <div className="mt-3 space-y-2">
+                      {entries.filter((entry) => entry.presetId === selectedCoordinate.id).slice(0, maxEntryLimit).map((entry) => (
+                        <div key={entry.id} className="flex items-center gap-3 rounded-xl border border-gray-100 bg-gray-50 p-2.5">
+                          {entry.imageDataUrl ? (
+                            <img src={entry.imageDataUrl} alt={`${entry.userName}のアバター`} className="h-11 w-11 shrink-0 rounded-full object-cover border-2 border-white shadow-sm" />
+                          ) : (
+                            <div className="h-11 w-11 shrink-0 rounded-full border-2 border-white bg-gray-200 flex items-center justify-center text-sm font-black text-gray-500">
+                              {entry.userName?.slice(0, 1) || '？'}
+                            </div>
+                          )}
+                          <div className="min-w-0 flex-1">
+                            <div className="text-sm font-black text-gray-900 truncate">{entry.userName || '名無しのアバター'}</div>
+                            {entry.profileUrl && (
+                              <a href={entry.profileUrl} target="_blank" rel="noreferrer" className="mt-0.5 inline-block text-[10px] font-bold text-indigo-600 hover:text-indigo-800">REALITYプロフィールを見る ↗</a>
+                            )}
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              )}
             </div>
 
             <div className="shrink-0 rounded-2xl border border-indigo-100 bg-white p-4">
@@ -447,7 +580,7 @@ export default function CoordinateRadialMap({
             <button
               type="button"
               disabled={selectedIsLocked}
-              onClick={handleEntryClick}
+              onClick={handleActionClick}
               className={`w-full rounded-xl px-4 py-3 text-xs font-black transition ${
                 selectedIsLocked
                   ? 'bg-gray-200 text-gray-400 cursor-not-allowed'

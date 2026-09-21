@@ -21,9 +21,16 @@ type DraftData = {
   password: string;
   selectedCoordinateId: string | null;
   customSkills: [string, string, string, string];
+  skillVoices?: [string, string, string, string];
+  flavorText?: string;
 };
 
 const emptySkills: [string, string, string, string] = ['', '', '', ''];
+const emptySkillVoices: [string, string, string, string] = ['', '', '', ''];
+
+function getDefaultSkillVoice(skillName: string): string {
+  return `『${skillName}』！`;
+}
 
 function getStoredEntries(): EntryRecord[] {
   try {
@@ -81,6 +88,21 @@ export default function CardGenerator({ selectedCoordinate, onBackToHub }: CardG
 
   useEffect(() => {
     setCurrentCoordinate(selectedCoordinate ?? null);
+    if (selectedCoordinate) {
+      setCustomSkills([
+        selectedCoordinate.defaultSkills[0],
+        selectedCoordinate.defaultSkills[1],
+        selectedCoordinate.defaultSkills[2],
+        selectedCoordinate.defaultSkills[3],
+      ]);
+      setSkillVoices([
+        getDefaultSkillVoice(selectedCoordinate.defaultSkills[0]),
+        getDefaultSkillVoice(selectedCoordinate.defaultSkills[1]),
+        getDefaultSkillVoice(selectedCoordinate.defaultSkills[2]),
+        getDefaultSkillVoice(selectedCoordinate.defaultSkills[3]),
+      ]);
+      setFlavorText('');
+    }
   }, [selectedCoordinate]);
 
   // ---------------------------------------------------------
@@ -91,6 +113,8 @@ export default function CardGenerator({ selectedCoordinate, onBackToHub }: CardG
   const [imageDataUrl, setImageDataUrl] = useState('');
   const [password, setPassword] = useState('');
   const [customSkills, setCustomSkills] = useState<[string, string, string, string]>(emptySkills);
+  const [skillVoices, setSkillVoices] = useState<[string, string, string, string]>(emptySkillVoices);
+  const [flavorText, setFlavorText] = useState('');
 
   const [entries, setEntries] = useState<EntryRecord[]>([]);
   const [editingId, setEditingId] = useState<string | null>(null);
@@ -133,7 +157,9 @@ export default function CardGenerator({ selectedCoordinate, onBackToHub }: CardG
       Boolean(imageDataUrl) ||
       Boolean(password) ||
       Boolean(currentCoordinate) ||
-      customSkills.some(Boolean);
+      customSkills.some(Boolean) ||
+      skillVoices.some(Boolean) ||
+      Boolean(flavorText);
 
     try {
       if (!hasDraft) {
@@ -149,13 +175,15 @@ export default function CardGenerator({ selectedCoordinate, onBackToHub }: CardG
         password,
         selectedCoordinateId: currentCoordinate?.id ?? null,
         customSkills,
+        skillVoices,
+        flavorText,
       };
       localStorage.setItem(DRAFT_KEY, JSON.stringify(draft));
       setDraftAvailable(true);
     } catch {
       // localStorageが利用できない場合も入力自体は継続可能。
     }
-  }, [profileUrl, userName, imageDataUrl, password, currentCoordinate, customSkills, draftChecked]);
+  }, [profileUrl, userName, imageDataUrl, password, currentCoordinate, customSkills, skillVoices, flavorText, draftChecked]);
 
   const restoreDraft = () => {
     try {
@@ -170,11 +198,22 @@ export default function CardGenerator({ selectedCoordinate, onBackToHub }: CardG
       setImageDataUrl(draft.imageDataUrl ?? '');
       setPassword(draft.password ?? '');
       setCurrentCoordinate(preset);
-      setCustomSkills(
+      const restoredSkills: [string, string, string, string] =
         draft.customSkills?.length === 4
           ? [draft.customSkills[0], draft.customSkills[1], draft.customSkills[2], draft.customSkills[3]]
-          : preset?.defaultSkills ?? emptySkills,
+          : preset?.defaultSkills ?? emptySkills;
+      setCustomSkills(restoredSkills);
+      setSkillVoices(
+        draft.skillVoices?.length === 4
+          ? [draft.skillVoices[0], draft.skillVoices[1], draft.skillVoices[2], draft.skillVoices[3]]
+          : [
+              getDefaultSkillVoice(restoredSkills[0] || preset?.defaultSkills[0] || '技1'),
+              getDefaultSkillVoice(restoredSkills[1] || preset?.defaultSkills[1] || '技2'),
+              getDefaultSkillVoice(restoredSkills[2] || preset?.defaultSkills[2] || '技3'),
+              getDefaultSkillVoice(restoredSkills[3] || preset?.defaultSkills[3] || '技4'),
+            ],
       );
+      setFlavorText(draft.flavorText ?? '');
       setDraftAvailable(false);
       setSuccessMessage('前回の続きから復元しました。');
       setTimeout(() => setSuccessMessage(''), 2000);
@@ -201,6 +240,12 @@ export default function CardGenerator({ selectedCoordinate, onBackToHub }: CardG
       preset.defaultSkills[2],
       preset.defaultSkills[3],
     ]);
+    setSkillVoices([
+      getDefaultSkillVoice(preset.defaultSkills[0]),
+      getDefaultSkillVoice(preset.defaultSkills[1]),
+      getDefaultSkillVoice(preset.defaultSkills[2]),
+      getDefaultSkillVoice(preset.defaultSkills[3]),
+    ]);
     setErrorMessage('');
   };
 
@@ -213,7 +258,23 @@ export default function CardGenerator({ selectedCoordinate, onBackToHub }: CardG
   };
 
   const handleSkillChange = (index: number, value: string) => {
+    const previousSkill = customSkills[index];
     setCustomSkills((prev) => {
+      const next = [...prev] as [string, string, string, string];
+      next[index] = value;
+      return next;
+    });
+    setSkillVoices((prev) => {
+      const next = [...prev] as [string, string, string, string];
+      if (next[index] === getDefaultSkillVoice(previousSkill)) {
+        next[index] = getDefaultSkillVoice(value || `技${index + 1}`);
+      }
+      return next;
+    });
+  };
+
+  const handleSkillVoiceChange = (index: number, value: string) => {
+    setSkillVoices((prev) => {
       const next = [...prev] as [string, string, string, string];
       next[index] = value;
       return next;
@@ -263,6 +324,13 @@ export default function CardGenerator({ selectedCoordinate, onBackToHub }: CardG
     if (!creatorToken) creatorToken = makeCreatorToken();
 
     const now = new Date().toISOString();
+    const normalizedSkillVoices: [string, string, string, string] = [
+      skillVoices[0].trim() || getDefaultSkillVoice(customSkills[0].trim()),
+      skillVoices[1].trim() || getDefaultSkillVoice(customSkills[1].trim()),
+      skillVoices[2].trim() || getDefaultSkillVoice(customSkills[2].trim()),
+      skillVoices[3].trim() || getDefaultSkillVoice(customSkills[3].trim()),
+    ];
+
     const newEntry: EntryRecord = {
       id: editingId || `entry_${Date.now()}`,
       presetId: currentCoordinate.id,
@@ -274,6 +342,8 @@ export default function CardGenerator({ selectedCoordinate, onBackToHub }: CardG
       passwordHash: password,
       firstUser: editingEntry?.firstUser || userName.trim(),
       customSkills: [...customSkills],
+      skillVoices: normalizedSkillVoices,
+      flavorText: flavorText.trim(),
       createdAt: editingEntry?.createdAt || now,
       updatedAt: now,
     };
@@ -336,11 +406,22 @@ export default function CardGenerator({ selectedCoordinate, onBackToHub }: CardG
     setUserName(entry.userName);
     setImageDataUrl(entry.imageDataUrl);
     setPassword(entry.passwordHash);
-    setCustomSkills(
+    const restoredSkills: [string, string, string, string] =
       entry.customSkills?.length === 4
         ? [entry.customSkills[0], entry.customSkills[1], entry.customSkills[2], entry.customSkills[3]]
-        : preset?.defaultSkills ?? emptySkills,
+        : preset?.defaultSkills ?? emptySkills;
+    setCustomSkills(restoredSkills);
+    setSkillVoices(
+      entry.skillVoices?.length === 4
+        ? [entry.skillVoices[0], entry.skillVoices[1], entry.skillVoices[2], entry.skillVoices[3]]
+        : [
+            getDefaultSkillVoice(restoredSkills[0] || preset?.defaultSkills[0] || '技1'),
+            getDefaultSkillVoice(restoredSkills[1] || preset?.defaultSkills[1] || '技2'),
+            getDefaultSkillVoice(restoredSkills[2] || preset?.defaultSkills[2] || '技3'),
+            getDefaultSkillVoice(restoredSkills[3] || preset?.defaultSkills[3] || '技4'),
+          ],
     );
+    setFlavorText(entry.flavorText ?? '');
     setEditingId(entry.id);
     setErrorMessage('');
     window.scrollTo({ top: 0, behavior: 'smooth' });
@@ -433,14 +514,34 @@ export default function CardGenerator({ selectedCoordinate, onBackToHub }: CardG
               <input type="file" accept="image/*" onChange={handleImageUpload} className="w-full text-gray-700" />
             </div>
 
-            <div className="pt-3 border-t border-gray-100 space-y-2">
-              <label className="block font-bold text-gray-700">所持ワザ名称設定（4つ・変更可能） <span className="text-red-500">*</span></label>
+            <div className="pt-3 border-t border-gray-100 space-y-4">
+              <div>
+                <label className="block font-bold text-gray-700">所持ワザ設定（4つ） <span className="text-red-500">*</span></label>
+                <p className="text-[10px] text-gray-500 mt-1">技名は変更できます。使用時のセリフは技名に合わせたデフォルトが入り、自由に変更できます。</p>
+              </div>
               {[0, 1, 2, 3].map((index) => (
-                <div key={index} className="flex items-center gap-2">
-                  <span className="text-pink-600 font-bold w-10">技{index + 1}:</span>
-                  <input disabled={!currentCoordinate} type="text" value={customSkills[index]} onChange={(e) => handleSkillChange(index, e.target.value)} className="w-full px-3 py-1.5 border rounded-lg bg-white disabled:bg-gray-100" />
+                <div key={index} className="rounded-xl border border-pink-100 bg-pink-50/40 p-3 space-y-2">
+                  <div className="font-bold text-pink-700">技{index + 1}</div>
+                  <div>
+                    <label className="block text-[10px] font-bold text-gray-600 mb-1">技名</label>
+                    <input disabled={!currentCoordinate} type="text" value={customSkills[index]} onChange={(e) => handleSkillChange(index, e.target.value)} className="w-full px-3 py-2 border rounded-lg bg-white disabled:bg-gray-100" />
+                  </div>
+                  <div>
+                    <label className="block text-[10px] font-bold text-gray-600 mb-1">使用時のセリフ</label>
+                    <input disabled={!currentCoordinate} type="text" value={skillVoices[index]} onChange={(e) => handleSkillVoiceChange(index, e.target.value)} className="w-full px-3 py-2 border rounded-lg bg-white disabled:bg-gray-100" placeholder={currentCoordinate ? getDefaultSkillVoice(customSkills[index] || `技${index + 1}`) : ''} />
+                  </div>
+                  <div className="rounded-lg bg-white/80 border border-gray-100 px-3 py-2">
+                    <div className="text-[10px] font-bold text-gray-500 mb-0.5">効果説明（固定）</div>
+                    <div className="text-[11px] text-gray-600 leading-relaxed">{currentCoordinate?.skillDescriptions[index] ?? 'コーデを選択すると表示されます。'}</div>
+                  </div>
                 </div>
               ))}
+            </div>
+
+            <div className="pt-3 border-t border-gray-100">
+              <label className="block font-bold text-gray-700 mb-1">カードの一言（フレーバーテキスト）</label>
+              <textarea value={flavorText} onChange={(e) => setFlavorText(e.target.value)} rows={3} maxLength={120} placeholder="このキャラらしい一言をどうぞ。" className="w-full px-3 py-2 border rounded-lg bg-white resize-none" />
+              <p className="text-[10px] text-gray-500 mt-1">キャラクターの雰囲気や個性が伝わる一言です。最大120文字。</p>
             </div>
 
             <div className="pt-3 border-t border-gray-100">
@@ -494,14 +595,26 @@ export default function CardGenerator({ selectedCoordinate, onBackToHub }: CardG
                   <div>器用：<b>{currentCoordinate.stats.dexterity}</b></div>
                 </div>
 
-                <div className="text-xs bg-pink-50 border border-pink-100 p-3 rounded-lg space-y-2">
+                <div className="text-xs bg-pink-50 border border-pink-100 p-3 rounded-lg space-y-3">
                   <div className="font-bold text-pink-900">⚔️ 所持ワザ</div>
-                  {[0, 1, 2, 3].map((index) => (
-                    <div key={index}>
-                      <div className="font-bold text-pink-700">技{index + 1}：{customSkills[index] || currentCoordinate.defaultSkills[index]}</div>
-                      <div className="text-[10px] text-gray-600">{currentCoordinate.skillDescriptions[index]}</div>
-                    </div>
-                  ))}
+                  {[0, 1, 2, 3].map((index) => {
+                    const skillName = customSkills[index] || currentCoordinate.defaultSkills[index];
+                    const skillVoice = skillVoices[index] || getDefaultSkillVoice(skillName);
+                    return (
+                      <div key={index} className="rounded-lg bg-white/80 border border-pink-100 p-2.5">
+                        <div className="font-bold text-pink-700">技{index + 1}：{skillName}</div>
+                        <div className="mt-1 text-[11px] font-semibold text-gray-800">使用時のセリフ：{skillVoice}</div>
+                        <div className="mt-1 text-[10px] text-gray-600">{currentCoordinate.skillDescriptions[index]}</div>
+                      </div>
+                    );
+                  })}
+                </div>
+
+                <div className="rounded-xl border border-amber-200 bg-amber-50 p-3">
+                  <div className="text-[10px] font-bold text-amber-700">💬 カードの一言</div>
+                  <div className="mt-1 text-sm leading-relaxed text-amber-950 min-h-10">
+                    {flavorText || 'このキャラらしい一言がここに入ります。'}
+                  </div>
                 </div>
               </>
             )}
