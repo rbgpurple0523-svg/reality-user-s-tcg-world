@@ -197,13 +197,9 @@ const isStageStale = (
         const roomData =
           roomSnap.data() as RoomRecord;
 
-        if (
-          roomData.roomClosed !== true ||
-          roomData.exitHost === true ||
-          roomData.exitGuest === true
-        ) {
-          throw new Error('ROOM_CLOSED');
-        }
+if (roomData.roomClosed !== true) {
+  throw new Error('ROOM_CLOSED');
+}
 
         const hostPresenceSnap =
           await transaction.get(
@@ -398,19 +394,10 @@ const isStageStale = (
             const roomData =
               snapshot.data() as RoomRecord;
 
-            if (
-              roomData.roomClosed === true
-            ) {
-              if (
-                roomData.exitHost === true ||
-                roomData.exitGuest === true
-              ) {
-                throw new Error(
-                  'ROOM_CLOSED',
-                );
-              }
-
-              const hostPresenceSnap =
+if (
+  roomData.roomClosed === true
+) {
+  const hostPresenceSnap =
                 await transaction.get(
                   hostPresenceRef,
                 );
