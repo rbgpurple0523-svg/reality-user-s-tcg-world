@@ -19,9 +19,21 @@ import {
   Archetype,
 } from '@/types/card';
 import { CHARACTER_SAMPLE_CARDS } from './characterSampleCards';
-import { COORDINATE_PRESETS } from './EntryHub';
+import { COORDINATE_PRESETS } from './coordinatePresets';
 import { createVirtualSupportCards, VIRTUAL_SUPPORT_PREFIX } from './supportSampleCards';
 import { EMOTION_PRESETS, type EmotionPreset } from './emotionPresets';
+
+import BattleEffectLayer, {
+  isBattlePreResultEffectPlaying,
+  playSkillPreResultEffect,
+  playSupportPreResultEffect,
+} from './battle/BattleEffectLayer';
+import VerticalScoreGauge from './battle/VerticalScoreGauge';
+import {
+  getCharacterSkillBattleEffect,
+  getSupportBattleEffect,
+} from './battle/battleEffectResolver';
+
 
 // ===== 対戦の基本設定 =====
 type Season = '春' | '夏' | '秋' | '冬';
@@ -140,6 +152,8 @@ type EntryRecordWithSkills = {
   userName?: string;
   imageDataUrl?: string;
   color?: string;
+  colorHex?: string;
+  colorType?: string;
   archetype?: string;
   hp?: number;
   ap?: number;
@@ -544,8 +558,28 @@ const currentUserUidRef =
 // onSnapshotの複数回発火で重複しないようにする。
 const roomCloseRedirectRef =
   useRef<number | null>(null);
+const supportSubmitInProgressRef = useRef(false);
 
   const addLog = (message: string) => setLog((prev) => [...prev, message]);
+
+type BattleVisualCard = AvatarCard & {
+  colorHex?: string;
+  colorType?: string;
+};
+
+const getBattleVisualColorHex = (card: AvatarCard) =>
+  (card as BattleVisualCard).colorHex;
+
+const getSupportBattleTarget = (
+  preset: EmotionPreset | undefined,
+  actorIsLocal: boolean,
+): 'self' | 'opponent' | 'both' => {
+  if (!preset || preset.target === '自分・相手') return 'both';
+  if (preset.target === '自分') {
+    return actorIsLocal ? 'self' : 'opponent';
+  }
+  return actorIsLocal ? 'opponent' : 'self';
+};
 
   // ===== CPU用一時デッキを自動構築 =====
   // 6人の正式な仮キャラから3人をランダム選出し、35種の仮サポートから
@@ -611,7 +645,7 @@ const roomCloseRedirectRef =
       localStorage.setItem('reality_active_deck_id', chosen.id);
       setActiveDeckId(chosen.id);
 
-      const cards: AvatarCard[] = [...CHARACTER_SAMPLE_CARDS];
+      const cards: Array< AvatarCard & { colorHex?: string; colorType?: string; } > = [...CHARACTER_SAMPLE_CARDS];
       for (const entry of entries.filter((e) => e.cardType === 'coordinate')) {
         const archetype = (entry.archetype as Archetype) || 'マッスル型';
         const fallback = cards.find((c) => c.id === entry.id);
@@ -621,6 +655,8 @@ const roomCloseRedirectRef =
           userName: entry.userName || 'キャラ',
           imageDataUrl: entry.imageDataUrl || fallback?.imageDataUrl || '',
           color: (entry.color as '赤' | '青' | '黄') || '赤',
+          colorHex: entry.colorHex,
+          colorType: entry.colorType,
           archetype,
           favoredSeason:
             archetype === 'マッスル型'
@@ -3354,19 +3390,24 @@ const handleIncomingActionRef =
       // =====================================================
       // サポートカード効果を受信側でも再現
       // =====================================================
-      //
-      // 送信側・CPU側と同じ
-      // applyEmotionToPair() を使用する。
-      //
-      // Firebaseには計算済み結果を送らず、
-      // supportCardId からカードを特定して、
-      // 双方で同じ公式エモーション定義を使って計算する。
-      // =====================================================
 
       const opponentPreset =
         getEmotionPresetForCard(
           opponentSupportCard,
         );
+
+      await playSupportPreResultEffect({
+        effectKey: getSupportBattleEffect(
+          opponentPreset,
+        ),
+        cardName: opponentSupportCard.name,
+        dialogue: opponentPreset?.description,
+        colorHex: undefined,
+        target: getSupportBattleTarget(
+          opponentPreset,
+          false,
+        ),
+      });
 
       const applied =
         applyEmotionToPair(
@@ -3399,10 +3440,6 @@ const handleIncomingActionRef =
               : avatar,
         );
 
-      // -----------------------------------------------------
-      // スコア効果
-      // -----------------------------------------------------
-
       const gainedScore =
         applied.scoreDelta;
 
@@ -3421,11 +3458,7 @@ const handleIncomingActionRef =
       // =====================================================
       // サポート効果を受けた自分のAvatar状態を正式保存
       // =====================================================
-      //
-      // 相手Playerは自分から保存しない。
-      // 自分に反映された nextMyAvatars だけ保存する。
-      // =====================================================
-      
+
       if (
         isOnline &&
         roomId
@@ -3438,13 +3471,12 @@ const handleIncomingActionRef =
             'players',
             playerRole,
           );
-      
+
         void updateDoc(
           myPlayerBattleRef,
           {
             avatars:
               nextMyAvatars,
-      
           },
         ).catch((error) => {
           console.error(
@@ -3452,39 +3484,6 @@ const handleIncomingActionRef =
             error,
           );
         });
-      }
-
-      // =====================================================
-      // スコア反映
-      // =====================================================
-
-      if (gainedScore !== 0) {
-        setOppClassScores(
-          (prev) => {
-            const next =
-              [...prev];
-
-            next[avatarIndex] =
-              (next[avatarIndex] || 0) +
-              gainedScore;
-
-            return next;
-          },
-        );
-
-        if (
-          playerRole === 'host'
-        ) {
-          setGuestTotalScore(
-            (prev) =>
-              prev + gainedScore,
-          );
-        } else {
-          setHostTotalScore(
-            (prev) =>
-              prev + gainedScore,
-          );
-        }
       }
 
       // =====================================================
@@ -3505,6 +3504,8 @@ const handleIncomingActionRef =
       // =====================================================
       //
       // サポート使用では turnIndex を変更しない。
+      // スコアはここでのみ正式に加算し、Room snapshotを通じて
+      // 受信側のスコア表示・ゲージへ反映する。
       // =====================================================
 
       if (
@@ -3533,69 +3534,65 @@ const handleIncomingActionRef =
             ? 'hostTotalScore'
             : 'guestTotalScore';
 
-        void runTransaction(
-          db,
-          async (transaction) => {
-            const snapshot =
-              await transaction.get(
+        try {
+          await runTransaction(
+            db,
+            async (transaction) => {
+              const snapshot =
+                await transaction.get(
+                  roomRef,
+                );
+
+              if (!snapshot.exists()) {
+                return;
+              }
+
+              const roomData =
+                snapshot.data() as Record<
+                  string,
+                  any
+                >;
+
+              const scores =
+                Array.isArray(
+                  roomData[scoreField],
+                )
+                  ? [
+                      ...roomData[
+                        scoreField
+                      ],
+                    ]
+                  : [0, 0, 0];
+
+              scores[avatarIndex] =
+                Number(
+                  scores[avatarIndex] ||
+                    0,
+                ) + gainedScore;
+
+              const nextTotal =
+                Number(
+                  roomData[totalField] ||
+                    0,
+                ) + gainedScore;
+
+              transaction.update(
                 roomRef,
-              );
-
-            if (!snapshot.exists()) {
-              return;
-            }
-
-            const roomData =
-              snapshot.data() as Record<
-                string,
-                any
-              >;
-
-            // -----------------------------------------------
-            // 同じActionを二重処理しない
-            // -----------------------------------------------
-
-            const scores =
-              Array.isArray(
-                roomData[scoreField],
-              )
-                ? [
-                    ...roomData[
-                      scoreField
-                    ],
-                  ]
-                : [0, 0, 0];
-
-            scores[avatarIndex] =
-              Number(
-                scores[avatarIndex] ||
-                  0,
-              ) + gainedScore;
-
-            const nextTotal =
-              Number(
-                roomData[totalField] ||
-                  0,
-              ) + gainedScore;
-
-            transaction.update(
-              roomRef,
-              {
-                [scoreField]:
-                  scores,
-
-                [totalField]:
-                  nextTotal,
-
+                {
+                  [scoreField]:
+                    scores,
+                  [totalField]:
+                    nextTotal,
                 },
-            );
-          },
-        ).catch((error) => {
+              );
+            },
+          );
+        } catch (error) {
           console.error(
             '相手のサポート結果同期エラー:',
             error,
           );
-        });
+        }
       }
 
       return;
@@ -3960,6 +3957,25 @@ const handleIncomingActionRef =
           );
       }
 
+// 相手の技使用演出
+const opponentSkillPreset = getPresetForCard(opponentAvatar.card);
+const opponentSkillIndex = opponentAvatar.skills.findIndex(
+  (item) => item.id === skill.id,
+);
+
+await playSkillPreResultEffect({
+  effectKey: getCharacterSkillBattleEffect(
+    opponentSkillPreset,
+    opponentSkillIndex,
+  ),
+  characterName: opponentAvatar.card.userName,
+  skillName: skill.name,
+  dialogue: skill.description,
+  colorHex: getBattleVisualColorHex(opponentAvatar.card),
+  side: 'right',
+});
+addLog(`相手が「${skill.name}」を使用しました。`);
+
       // -----------------------------------------------------
       // 状態反映
       // -----------------------------------------------------
@@ -4284,6 +4300,7 @@ if (
   // ===== 技の発動・スコア集計・相手への干渉 =====
   // コーデ25種のプリセットに定義された技効果を、そのままゲーム処理へ反映します。
   const handleUseSkill = async (skill: Skill) => {
+    if (isBattlePreResultEffectPlaying()) return;
     if (!myTurn || battlePhase !== 'battle') return;
 
     const usedKey = `${currentYear}`;
@@ -4329,7 +4346,6 @@ if (
             ? { ...avatar, currentDebuff: { ...avatar.currentDebuff, [target]: avatar.currentDebuff[target] + debuffAmount } }
             : avatar,
         );
-        setOppAvatars(nextOppAvatars);
       }
     } else if (skill.rule === 'y_total_score') {
       gainedScore = Object.values(effective).reduce((sum, value) => sum + value, 0) * 5;
@@ -4351,7 +4367,6 @@ if (
           ? { ...avatar, statBoost: { ...(avatar.statBoost || {}), [selectedBoostStat!]: 2 } }
           : avatar,
       );
-      setMyAvatars(nextMyAvatars);
     } else if (skill.rule === 'y_crash') {
       Object.entries(opponentEffective).forEach(([key, value]) => {
         const stat = key as StatKey;
@@ -4371,7 +4386,6 @@ if (
               }
             : avatar,
         );
-        setOppAvatars(nextOppAvatars);
       }
     } else {
       // 旧形式の技データを持つカードとの互換処理。
@@ -4394,6 +4408,23 @@ if (
 
     const next = getNextTurnState();
 
+    const skillPreset = getPresetForCard(myActiveAvatar.card);
+    const skillIndex = myActiveAvatar.skills.findIndex(
+      (item) => item.id === skill.id,
+    );
+
+    await playSkillPreResultEffect({
+      effectKey: getCharacterSkillBattleEffect(
+        skillPreset,
+        skillIndex,
+      ),
+      characterName: myActiveAvatar.card.userName,
+      skillName: skill.name,
+      dialogue: skill.description,
+      colorHex: getBattleVisualColorHex(myActiveAvatar.card),
+      side: 'left',
+    });
+
     // ===== CPU対戦：Firebaseを使わずローカル状態だけを更新 =====
     if (!isOnline) {
       const nextScores = [...myClassScores];
@@ -4404,7 +4435,7 @@ if (
       setMyAvatars(nextMyAvatars);
       setOppAvatars(nextOppAvatars);
       setUsedSkillsByClass(nextUsed);
-      addLog(`「${skill.name}」発動！ +${gainedScore}スコア`);
+      addLog(`「${skill.name}」発動！`);
       if (Object.keys(debuffs).length > 0 && !oppActiveAvatar.debuffImmune) {
         const detail = Object.entries(debuffs)
           .map(([key, value]) => `${STAT_LABELS[key as StatKey]} -${value}`)
@@ -4495,6 +4526,9 @@ if (!actionSubmitted) {
   return;
 }
 
+    setMyAvatars(nextMyAvatars);
+    setOppAvatars(nextOppAvatars);
+
     // =====================================================
     // ローカル表示も即時更新
     // =====================================================
@@ -4563,7 +4597,7 @@ if (!actionSubmitted) {
     // =====================================================
 
     addLog(
-      `「${skill.name}」発動！ +${gainedScore}スコア`,
+      `「${skill.name}」発動！`,
     );
 
     if (
@@ -4736,7 +4770,8 @@ if (!actionSubmitted) {
     cpuTurnRef.current = key;
 
     const timer = window.setTimeout(() => {
-      // CPUの手番は「ドロー → サポート使用 → 技」の順。
+      void (async () => {
+        // CPUの手番は「ドロー → サポート使用 → 技」の順。
       // プレイヤー側と同じく、手札上限7枚を守りながら山札から1枚引きます。
       if (cpuHand.length < MAX_HAND && cpuDeck.length > 0) {
         const drawnCard = cpuDeck[0];
@@ -4757,6 +4792,16 @@ if (!actionSubmitted) {
         const applied = applyCpuSupport(supportChoice.card, workingCpu, workingPlayer);
         workingCpu = applied.cpuAvatar;
         workingPlayer = applied.playerAvatar;
+
+        const supportPreset = getEmotionPresetForCard(supportChoice.card);
+        await playSupportPreResultEffect({
+          effectKey: getSupportBattleEffect(supportPreset),
+          cardName: supportChoice.card.name,
+          dialogue: supportPreset?.description,
+          colorHex: undefined,
+          target: getSupportBattleTarget(supportPreset, false),
+        });
+
         setCpuHand((prev) => prev.filter((_, index) => index !== supportChoice.index));
         addLog(`CPUがサポート「${supportChoice.card.name}」を使用しました。`);
         setOppAvatars((prev) => prev.map((avatar, index) => index === activeIndex ? workingCpu : avatar));
@@ -4827,6 +4872,23 @@ if (!actionSubmitted) {
         gainedScore = effective.hp * 10;
       }
 
+      const cpuSkillPreset = getPresetForCard(workingCpu.card);
+      const cpuSkillIndex = workingCpu.skills.findIndex(
+        (item) => item.id === skill.id,
+      );
+
+      await playSkillPreResultEffect({
+        effectKey: getCharacterSkillBattleEffect(
+          cpuSkillPreset,
+          cpuSkillIndex,
+        ),
+        characterName: workingCpu.card.userName,
+        skillName: skill.name,
+        dialogue: skill.description,
+        colorHex: getBattleVisualColorHex(workingCpu.card),
+        side: 'right',
+      });
+
       if (Object.keys(debuffs).length > 0 && !workingPlayer.debuffImmune) {
         setMyAvatars((prev) =>
           prev.map((avatar, index) =>
@@ -4896,6 +4958,7 @@ if (!actionSubmitted) {
         setDeckConfirmed(true);
         setPreparationMessage(`${next.currentYear}年目の準備を開始します。\nコイントスを行ってください。`);
       }
+      })();
     }, 650);
 
     return () => window.clearTimeout(timer);
@@ -4925,272 +4988,229 @@ const handleUseSupportCard = async (
     return;
   }
 
-  // -------------------------------------------------------
-  // 二重使用防止
-  // -------------------------------------------------------
+  if (isBattlePreResultEffectPlaying()) return;
+  if (supportSubmitInProgressRef.current) return;
+  if (!myHand[index]) return;
 
-  if (!myHand[index]) {
-    return;
-  }
+  supportSubmitInProgressRef.current = true;
 
-  const applied =
-    applyEmotionToPair(
-      card,
-      myActiveAvatar,
-      oppActiveAvatar,
-    );
-
-  // =======================================================
-  // ① 使用後のAvatar状態を先に確定
-  // =======================================================
-
-  const nextMyAvatars =
-    myAvatars.map(
-      (avatar, avatarIndex) =>
-        avatarIndex === activeIndex
-          ? applied.actor
-          : avatar,
-    );
-
-  // -------------------------------------------------------
-  // 相手側はローカル表示だけ更新
-  //
-  // 相手PlayerのFirestoreデータは
-  // 自分側から書き換えない。
-  // =======================================================
-
-  const nextOppAvatars =
-    oppAvatars.map(
-      (avatar, avatarIndex) =>
-        avatarIndex === activeIndex
-          ? applied.target
-          : avatar,
-    );
-
-  // =======================================================
-  // ② 使用後のローカル手札を計算
-  //
-  // オンラインではFirestore Transaction側が
-  // 実際のカード消費を確定する。
-  // =======================================================
-  
-  let nextHand =
-    myHand.filter(
-      (_, handIndex) =>
-        handIndex !== index,
-    );
-  
-  let nextDeck =
-    [...myDeck];
-
-  // =======================================================
-  // ③ ドロー効果
-  // =======================================================
-
-  if (applied.extraDraw > 0) {
-    const drawCount =
-      Math.min(
-        applied.extraDraw,
-        Math.max(
-          0,
-          MAX_HAND - nextHand.length,
-        ),
-        nextDeck.length,
+  try {
+    const applied =
+      applyEmotionToPair(
+        card,
+        myActiveAvatar,
+        oppActiveAvatar,
       );
 
-    const drawnCards =
-      nextDeck.slice(
-        0,
-        drawCount,
+    const nextMyAvatars =
+      myAvatars.map(
+        (avatar, avatarIndex) =>
+          avatarIndex === activeIndex
+            ? applied.actor
+            : avatar,
       );
 
-    nextHand = [
-      ...nextHand,
-      ...drawnCards,
-    ];
-
-    nextDeck =
-      nextDeck.slice(
-        drawCount,
+    const nextOppAvatars =
+      oppAvatars.map(
+        (avatar, avatarIndex) =>
+          avatarIndex === activeIndex
+            ? applied.target
+            : avatar,
       );
-  }
 
+    let nextHand =
+      myHand.filter(
+        (_, handIndex) =>
+          handIndex !== index,
+      );
 
-  // =======================================================
-  // ⑤ スコア効果
-  // =======================================================
+    let nextDeck =
+      [...myDeck];
 
-  if (applied.scoreDelta !== 0) {
-    setMyClassScores((prev) => {
-      const next = [...prev];
-
-      next[activeIndex] =
-        Math.max(
-          0,
-          (next[activeIndex] || 0) +
-            applied.scoreDelta,
+    if (applied.extraDraw > 0) {
+      const drawCount =
+        Math.min(
+          applied.extraDraw,
+          Math.max(
+            0,
+            MAX_HAND - nextHand.length,
+          ),
+          nextDeck.length,
         );
 
-      return next;
-    });
+      const drawnCards =
+        nextDeck.slice(
+          0,
+          drawCount,
+        );
 
-    if (playerRole === 'host') {
-      setHostTotalScore(
-        (prev) =>
-          Math.max(
-            0,
-            prev +
-              applied.scoreDelta,
-          ),
-      );
-    } else {
-      setGuestTotalScore(
-        (prev) =>
-          Math.max(
-            0,
-            prev +
-              applied.scoreDelta,
-          ),
-      );
+      nextHand = [
+        ...nextHand,
+        ...drawnCards,
+      ];
+
+      nextDeck =
+        nextDeck.slice(
+          drawCount,
+        );
     }
-  }
 
-  // =======================================================
-  // ⑥ ログ
-  // =======================================================
+    const supportPreset =
+      getEmotionPresetForCard(
+        card,
+      );
 
-  const preset =
-    getEmotionPresetForCard(
-      card,
-    );
+    // =====================================================
+    // CPU戦：演出完了後にローカル結果を反映
+    // =====================================================
 
-  addLog(
-    `サポート「${card.name}」を使用しました。` +
-      (
-        preset?.description
-          ? ` ${preset.description}`
-          : ''
-      ),
-  );
+    if (!isOnline) {
+      await playSupportPreResultEffect({
+        effectKey: getSupportBattleEffect(
+          supportPreset,
+        ),
+        cardName: card.name,
+        dialogue: supportPreset?.description,
+        colorHex: undefined,
+        target: getSupportBattleTarget(
+          supportPreset,
+          true,
+        ),
+      });
 
+      setMyAvatars(
+        nextMyAvatars,
+      );
+      setOppAvatars(
+        nextOppAvatars,
+      );
+      setMyHand(
+        nextHand,
+      );
+      setMyDeck(
+        nextDeck,
+      );
 
-  // =======================================================
-  // CPU戦
-  // =======================================================
-  //
-  // CPU戦ではFirestoreを使わず、
-  // 計算済みのローカル状態をそのまま反映する。
-  //
-  // サポートカードはターン終了を伴わないため、
-  // ここでは手番を変更しない。
-  // =======================================================
+      if (applied.scoreDelta !== 0) {
+        setMyClassScores((prev) => {
+          const next = [...prev];
+          next[activeIndex] = Math.max(
+            0,
+            (next[activeIndex] || 0) +
+              applied.scoreDelta,
+          );
+          return next;
+        });
 
-  if (!isOnline) {
-    setMyAvatars(nextMyAvatars);
-    setOppAvatars(nextOppAvatars);
-    setMyHand(nextHand);
-    setMyDeck(nextDeck);
-    return;
-  }
+        if (playerRole === 'host') {
+          setHostTotalScore(
+            (prev) =>
+              Math.max(
+                0,
+                prev +
+                  applied.scoreDelta,
+              ),
+          );
+        } else {
+          setGuestTotalScore(
+            (prev) =>
+              Math.max(
+                0,
+                prev +
+                  applied.scoreDelta,
+              ),
+          );
+        }
+      }
 
-  // =======================================================
-  // ⑦ オンライン戦
-  //
-  // ★重要★
-  //
-  // pendingAction を送る前に、
-  // 自分自身の正式なBattle状態をFirestoreへ保存する。
-  //
-  // これにより、自分のonSnapshotが発火しても
-  // DEFAULT_AVATARSなどの古い状態で
-  // 上書きされなくなる。
-  // =======================================================
-
-// =======================================================
-// ⑦ オンライン戦
-//
-// サポートカードの場合は、
-// submitBattleAction() 内のFirestore Transactionで
-//
-//   ・カード所持確認
-//   ・カード1枚消費
-//   ・pendingAction保存
-//
-// を同時に確定する。
-//
-// Transactionが成功してから、ローカル状態を反映する。
-// =======================================================
-
-  if (isOnline) {
-    if (!myPlayerRef) {
       addLog(
-        '⚠️ 自分のPlayer情報が見つかりません。',
+        `サポート「${card.name}」を使用しました。` +
+          (
+            supportPreset?.description
+              ? ` ${supportPreset.description}`
+              : ''
+          ),
       );
 
       return;
     }
 
     // =====================================================
-    // ⑧ 保存＋カード消費＋Action送信
+    // オンライン戦：Transaction成功後にサポート演出
     // =====================================================
-  
+
+    if (!myPlayerRef) {
+      addLog(
+        '⚠️ 自分のPlayer情報が見つかりません。',
+      );
+      return;
+    }
+
     const submitted =
       await submitBattleAction(
         {
           type:
             'PLAY_SUPPORT',
-
           year:
             currentYear,
-
           turnIndex,
-
           avatarIndex:
             activeIndex,
-
           supportCardId:
             card.id,
         },
         {
           avatars:
             nextMyAvatars,
-
           deck:
             nextDeck,
         },
       );
 
-    // =====================================================
-    // Transaction失敗
-    // =====================================================
-
     if (!submitted) {
       addLog(
         '⚠️ サポート使用Actionの送信に失敗しました。',
       );
-
       return;
     }
 
-    // =====================================================
-    // Transaction成功後にローカル状態を反映
-    // =====================================================
-  
+    await playSupportPreResultEffect({
+      effectKey: getSupportBattleEffect(
+        supportPreset,
+      ),
+      cardName: card.name,
+      dialogue: supportPreset?.description,
+      colorHex: undefined,
+      target: getSupportBattleTarget(
+        supportPreset,
+        true,
+      ),
+    });
+
+    // オンラインの正式スコアはRoom snapshotを正とする。
     setMyAvatars(
       nextMyAvatars,
     );
-  
     setOppAvatars(
       nextOppAvatars,
     );
-  
     setMyHand(
       nextHand,
     );
-  
     setMyDeck(
       nextDeck,
     );
+
+    addLog(
+      `サポート「${card.name}」を使用しました。` +
+        (
+          supportPreset?.description
+            ? ` ${supportPreset.description}`
+            : ''
+        ),
+    );
+  } finally {
+    supportSubmitInProgressRef.current = false;
   }
 };
 
@@ -6196,6 +6216,7 @@ const field =
 
   return (
     <div className="relative min-h-[calc(100vh-120px)] overflow-hidden text-slate-900">
+      <BattleEffectLayer />
       <OutdoorStageBackground season={currentSeason} />
 
       <div className="relative z-10 mx-auto w-full max-w-7xl p-2 sm:p-3 md:p-5">
@@ -6530,11 +6551,21 @@ const field =
 
                   <div className="mt-2 flex flex-col items-center gap-3 sm:flex-row sm:items-start">
                     <div className="min-w-0 flex-1">
-                      <img
-                        src={mySideActiveAvatar.card.imageDataUrl}
-                        alt=""
-                        className="mx-auto h-52 w-full max-w-[180px] rounded-2xl bg-white object-contain p-2 shadow-md sm:h-56"
-                      />
+                      <div className="flex items-start justify-center gap-2">
+                        <img
+                          src={mySideActiveAvatar.card.imageDataUrl}
+                          alt=""
+                          className="mx-auto h-52 w-full max-w-[180px] rounded-2xl bg-white object-contain p-2 shadow-md sm:h-56"
+                        />
+                        <VerticalScoreGauge
+                          label="このクラス"
+                          score={mySideActiveClassScore}
+                          side="self"
+                          active={myTurn}
+                          compact
+                          baseHeightPx={224}
+                        />
+                      </div>
                       <h3 className="mt-2 text-center text-xl font-black">
                         {mySideActiveAvatar.card.userName}
                       </h3>
@@ -6564,11 +6595,21 @@ const field =
 
                   <div className="mt-2 flex flex-col items-center gap-3 sm:flex-row sm:items-start">
                     <div className="min-w-0 flex-1">
-                      <img
-                        src={opponentSideActiveAvatar.card.imageDataUrl}
-                        alt=""
-                        className="mx-auto h-52 w-full max-w-[180px] rounded-2xl bg-white object-contain p-2 shadow-md sm:h-56"
-                      />
+                      <div className="flex items-start justify-center gap-2">
+                        <img
+                          src={opponentSideActiveAvatar.card.imageDataUrl}
+                          alt=""
+                          className="mx-auto h-52 w-full max-w-[180px] rounded-2xl bg-white object-contain p-2 shadow-md sm:h-56"
+                        />
+                        <VerticalScoreGauge
+                          label="このクラス"
+                          score={opponentSideActiveClassScore}
+                          side="opponent"
+                          active={!myTurn}
+                          compact
+                          baseHeightPx={224}
+                        />
+                      </div>
                       <h3 className="mt-2 text-center text-xl font-black">
                         {opponentSideActiveAvatar.card.userName}
                       </h3>

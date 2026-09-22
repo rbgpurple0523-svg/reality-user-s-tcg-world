@@ -1,3 +1,5 @@
+import type { BattlePreResultEffectKey } from './battle/battleEffectTypes';
+
 export type CardColor = '赤' | '青' | '黄';
 export type Archetype =
   | 'マッスル型'
@@ -29,6 +31,7 @@ export interface CoordinatePreset {
   skillDescriptions: [string, string, string, string];
   tendency: string;
   description: string;
+  battleEffects: [BattlePreResultEffectKey, BattlePreResultEffectKey, BattlePreResultEffectKey, BattlePreResultEffectKey];
 }
 
 const COORD_CODES = [
@@ -193,6 +196,21 @@ const skillNamesFor = (
   ];
 };
 
+const BATTLE_EFFECTS_BY_CODE: Record<
+  string,
+  [BattlePreResultEffectKey, BattlePreResultEffectKey, BattlePreResultEffectKey, BattlePreResultEffectKey]
+> = Object.fromEntries(
+  COORD_CODES.map((code) => [
+    code,
+    code === 'a1'
+      ? ['skill-total', 'skill-response', 'skill-burst', 'skill-crash']
+      : ['skill-primary', 'skill-product', 'skill-difference', 'skill-combo'],
+  ]),
+) as Record<
+  string,
+  [BattlePreResultEffectKey, BattlePreResultEffectKey, BattlePreResultEffectKey, BattlePreResultEffectKey]
+>;
+
 const skillDescriptionsFor = (
   code: string,
 ): [string, string, string, string] => {
@@ -252,6 +270,8 @@ export const COORDINATE_PRESETS: CoordinatePreset[] =
               .join(' ＞ '),
       description:
         DESCRIPTIONS[code],
+      battleEffects:
+        BATTLE_EFFECTS_BY_CODE[code],
     };
   });
 
