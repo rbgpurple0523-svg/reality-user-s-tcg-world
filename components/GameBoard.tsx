@@ -30,6 +30,7 @@ import BattleEffectLayer, {
 } from './battle/BattleEffectLayer';
 import VerticalScoreGauge from './battle/VerticalScoreGauge';
 import BattleCardReveal from './battle/BattleCardReveal';
+import BattleDeckPile from './battle/BattleDeckPile';
 import {
   getCharacterSkillBattleEffect,
   getSupportBattleEffect,
@@ -531,6 +532,7 @@ void ensureAnonymousAuth()
   const [readyGuest, setReadyGuest] = useState(false);
 
   const [activeCardsRevealed, setActiveCardsRevealed] = useState(false);
+  const [battleDealAnimationKey, setBattleDealAnimationKey] = useState(0);
 
   // 相手の手札・山札枚数。オンラインではFirebaseから同期し、CPU戦ではCPUのローカル状態を表示する。
   const [opponentHandCount, setOpponentHandCount] = useState(0);
@@ -2034,9 +2036,10 @@ return () => {
     }
 
     setActiveCardsRevealed(false);
+    setBattleDealAnimationKey((prev) => prev + 1);
     const timer = window.setTimeout(() => {
       setActiveCardsRevealed(true);
-    }, 70);
+    }, 570);
 
     return () => window.clearTimeout(timer);
   }, [battlePhase, currentYear, activeIndex]);
@@ -5244,6 +5247,8 @@ const handleUseSupportCard = async (
         supportPreset,
       ),
       cardName: card.name,
+      imageUrl: getSupportImage(card),
+      targetPositions: getSupportTargetPositions(),
       dialogue: supportPreset?.description,
       colorHex: undefined,
       target: getSupportBattleTarget(
@@ -6737,13 +6742,31 @@ const field =
 
             {/* ===== ④ サポートカード ===== */}
             <section className="rounded-2xl border border-white/60 bg-white/75 p-3 shadow-lg backdrop-blur-md">
-              <div className="flex items-center justify-between">
+              <div className="flex items-center justify-between gap-2">
                 <div className="text-sm font-black">🃏 サポートカード</div>
                 <div className="text-right text-[10px] font-bold leading-relaxed opacity-60 sm:text-xs">
-                  <div>あなた：手札 {myHand.length}/{MAX_HAND}　山札 {myDeck.length}</div>
-                  <div>相手：手札 {isOnline ? opponentHandCount : cpuHand.length}/{MAX_HAND}　山札 {isOnline ? opponentDeckCount : cpuDeck.length}</div>
+                  <div>あなた：手札 {myHand.length}/{MAX_HAND}</div>
+                  <div>相手：手札 {isOnline ? opponentHandCount : cpuHand.length}/{MAX_HAND}</div>
                 </div>
               </div>
+
+              <div className="mt-2 grid grid-cols-1 gap-2 sm:grid-cols-2">
+                <BattleDeckPile
+                  label="あなたの山札"
+                  count={myDeck.length}
+                  animationKey={battleDealAnimationKey}
+                  dealCount={battlePhase === 'battle' && !activeCardsRevealed ? INITIAL_HAND_SIZE : 0}
+                  side="self"
+                />
+                <BattleDeckPile
+                  label="相手の山札"
+                  count={isOnline ? opponentDeckCount : cpuDeck.length}
+                  animationKey={battleDealAnimationKey}
+                  dealCount={battlePhase === 'battle' && !activeCardsRevealed ? INITIAL_HAND_SIZE : 0}
+                  side="opponent"
+                />
+              </div>
+
               <div className="mt-2 grid grid-cols-1 gap-2 min-[420px]:grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 pb-1">
                 {myHand.length === 0 ? (
                   <div className="py-4 text-xs font-bold opacity-40">手札がありません。</div>

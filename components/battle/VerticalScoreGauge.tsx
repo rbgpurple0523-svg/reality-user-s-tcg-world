@@ -115,19 +115,6 @@ export default function VerticalScoreGauge({
           {SCORE_GAUGE_REFERENCE_SCORE}
         </div>
 
-        {overReference && (
-          <div
-            className="absolute left-1/2 z-40 -translate-x-1/2 whitespace-nowrap rounded-full px-1.5 py-0.5 text-[7px] font-black text-white shadow-lg"
-            style={{
-              top: -28,
-              background: accent,
-              boxShadow: `0 0 14px ${accent}`,
-            }}
-          >
-            5000突破
-          </div>
-        )}
-
         {active && (
           <div
             className="absolute inset-x-[-5px] bottom-0 rounded-full border border-white/80"
