@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useEffect, useMemo, useRef, useState } from 'react';
+import React, { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { db, ensureAnonymousAuth } from '@/lib/firebase';
 import {
   doc,
@@ -533,6 +533,7 @@ void ensureAnonymousAuth()
 
   const [activeCardsRevealed, setActiveCardsRevealed] = useState(false);
   const [battleDealAnimationKey, setBattleDealAnimationKey] = useState(0);
+  const [battleDealAnimationActive, setBattleDealAnimationActive] = useState(false);
 
   // 相手の手札・山札枚数。オンラインではFirebaseから同期し、CPU戦ではCPUのローカル状態を表示する。
   const [opponentHandCount, setOpponentHandCount] = useState(0);
@@ -2029,19 +2030,30 @@ return () => {
   const currentMyClassScore = myClassScores[activeIndex] || 0;
   const currentOppClassScore = oppClassScores[activeIndex] || 0;
 
-  useEffect(() => {
+  useLayoutEffect(() => {
     if (battlePhase !== 'battle') {
+      setBattleDealAnimationActive(false);
       setActiveCardsRevealed(true);
       return;
     }
 
     setActiveCardsRevealed(false);
+    setBattleDealAnimationActive(false);
     setBattleDealAnimationKey((prev) => prev + 1);
-    const timer = window.setTimeout(() => {
-      setActiveCardsRevealed(true);
-    }, 570);
 
-    return () => window.clearTimeout(timer);
+    const dealTimer = window.setTimeout(() => {
+      setBattleDealAnimationActive(true);
+    }, 450);
+
+    const revealTimer = window.setTimeout(() => {
+      setActiveCardsRevealed(true);
+      setBattleDealAnimationActive(false);
+    }, 1500);
+
+    return () => {
+      window.clearTimeout(dealTimer);
+      window.clearTimeout(revealTimer);
+    };
   }, [battlePhase, currentYear, activeIndex]);
 
   const getSupportTargetPositions = () => {
@@ -6742,29 +6754,22 @@ const field =
 
             {/* ===== ④ サポートカード ===== */}
             <section className="rounded-2xl border border-white/60 bg-white/75 p-3 shadow-lg backdrop-blur-md">
-              <div className="flex items-center justify-between gap-2">
+              <div className="flex items-start justify-between gap-2">
                 <div className="text-sm font-black">🃏 サポートカード</div>
-                <div className="text-right text-[10px] font-bold leading-relaxed opacity-60 sm:text-xs">
-                  <div>あなた：手札 {myHand.length}/{MAX_HAND}</div>
-                  <div>相手：手札 {isOnline ? opponentHandCount : cpuHand.length}/{MAX_HAND}</div>
+                <div className="flex shrink-0 flex-col items-end gap-1">
+                  <div className="text-right text-[10px] font-bold leading-relaxed opacity-60 sm:text-xs">
+                    <div>あなた：手札 {myHand.length}/{MAX_HAND}</div>
+                    <div>相手：手札 {isOnline ? opponentHandCount : cpuHand.length}/{MAX_HAND}</div>
+                  </div>
+                  <BattleDeckPile
+                    label="山札"
+                    count={myDeck.length}
+                    animationKey={battleDealAnimationKey}
+                    dealCount={battlePhase === 'battle' && battleDealAnimationActive ? INITIAL_HAND_SIZE : 0}
+                    side="self"
+                    compact
+                  />
                 </div>
-              </div>
-
-              <div className="mt-2 grid grid-cols-1 gap-2 sm:grid-cols-2">
-                <BattleDeckPile
-                  label="あなたの山札"
-                  count={myDeck.length}
-                  animationKey={battleDealAnimationKey}
-                  dealCount={battlePhase === 'battle' && !activeCardsRevealed ? INITIAL_HAND_SIZE : 0}
-                  side="self"
-                />
-                <BattleDeckPile
-                  label="相手の山札"
-                  count={isOnline ? opponentDeckCount : cpuDeck.length}
-                  animationKey={battleDealAnimationKey}
-                  dealCount={battlePhase === 'battle' && !activeCardsRevealed ? INITIAL_HAND_SIZE : 0}
-                  side="opponent"
-                />
               </div>
 
               <div className="mt-2 grid grid-cols-1 gap-2 min-[420px]:grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 pb-1">
