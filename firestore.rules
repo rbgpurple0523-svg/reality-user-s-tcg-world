@@ -317,7 +317,16 @@ allow create: if request.auth != null
   && request.resource.data.hostUid == request.auth.uid
   && request.resource.data.roomClosed == false
   && request.resource.data.exitHost == false
-  && request.resource.data.exitGuest == false;
+  && request.resource.data.exitGuest == false
+  && request.resource.data.battlePhase == 'setup'
+  && request.resource.data.currentYear == 1
+  && request.resource.data.turnIndex == 0
+  && request.resource.data.firstPlayer == null
+  && request.resource.data.startSeasonIdx == null
+  && request.resource.data.hostTotalScore == 0
+  && request.resource.data.guestTotalScore == 0
+  && request.resource.data.hostClassScores == [0, 0, 0]
+  && request.resource.data.guestClassScores == [0, 0, 0];
 
       // ルーム更新
 allow update: if request.auth != null
@@ -351,8 +360,6 @@ allow update: if request.auth != null
   'hostJoined',
   'hostRejoinedAt',
   'hostLastSeenAt',
-  'hostClassScores',
-  'hostTotalScore',
   'currentYear',
   'firstPlayer',
   'startSeasonIdx',
@@ -362,65 +369,14 @@ allow update: if request.auth != null
 
 && isValidBattleStateTransition()
 
-&& (
-  // =====================================================
-  // HostのScoreを変更していない場合
-  // =====================================================
-  !request.resource.data.diff(resource.data)
-    .affectedKeys()
-    .hasAny([
-      'hostClassScores',
-      'hostTotalScore'
-    ])
-
-  ||
-
-  // =====================================================
-  // HostのScoreを変更する場合
-  // 同じTransaction内でSkill Actionが処理されていること
-  // =====================================================
-  (
-    getAfter(
-      /databases/$(database)/documents/rooms/$(roomId)/players/host
-    ).data.lastSkillActionId is string
-
-    && getAfter(
-      /databases/$(database)/documents/rooms/$(roomId)/players/host
-    ).data.lastSkillActionId != ''
-
-    // Score更新と一緒にlastSkillActionIdが更新されている
-    && (
-      !get(
-        /databases/$(database)/documents/rooms/$(roomId)/players/host
-      ).data.keys().hasAny([
-        'lastSkillActionId'
-      ])
-      ||
-      getAfter(
-        /databases/$(database)/documents/rooms/$(roomId)/players/host
-      ).data.lastSkillActionId
-      !=
-      get(
-        /databases/$(database)/documents/rooms/$(roomId)/players/host
-      ).data.lastSkillActionId
-    )
-
-    // pendingActionとAction IDが一致
-    && getAfter(
-      /databases/$(database)/documents/rooms/$(roomId)/players/host
-    ).data.pendingAction.actionId
-      ==
-      getAfter(
-        /databases/$(database)/documents/rooms/$(roomId)/players/host
-      ).data.lastSkillActionId
-
-    // USE_SKILLである
-    && getAfter(
-      /databases/$(database)/documents/rooms/$(roomId)/players/host
-    ).data.pendingAction.type
-      == 'USE_SKILL'
-  )
-)
+&& !request.resource.data.diff(resource.data)
+  .affectedKeys()
+  .hasAny([
+    'hostClassScores',
+    'guestClassScores',
+    'hostTotalScore',
+    'guestTotalScore'
+  ])
 
 && (
   // =====================================================
@@ -704,8 +660,6 @@ allow update: if request.auth != null
     'guestJoined',
     'guestLastSeenAt',
     'guestRejoinedAt',
-    'guestClassScores',
-    'guestTotalScore',
     'currentYear',
     'firstPlayer',
     'startSeasonIdx',
@@ -715,55 +669,14 @@ allow update: if request.auth != null
 
 && isValidBattleStateTransition()
 
-&& (
-  !request.resource.data.diff(resource.data)
-    .affectedKeys()
-    .hasAny([
-      'guestClassScores',
-      'guestTotalScore'
-    ])
-
-  ||
-
-  (
-    getAfter(
-      /databases/$(database)/documents/rooms/$(roomId)/players/guest
-    ).data.lastSkillActionId is string
-
-    && getAfter(
-      /databases/$(database)/documents/rooms/$(roomId)/players/guest
-    ).data.lastSkillActionId != ''
-
-    && (
-      !get(
-        /databases/$(database)/documents/rooms/$(roomId)/players/guest
-      ).data.keys().hasAny([
-        'lastSkillActionId'
-      ])
-      ||
-      getAfter(
-        /databases/$(database)/documents/rooms/$(roomId)/players/guest
-      ).data.lastSkillActionId
-      !=
-      get(
-        /databases/$(database)/documents/rooms/$(roomId)/players/guest
-      ).data.lastSkillActionId
-    )
-
-    && getAfter(
-      /databases/$(database)/documents/rooms/$(roomId)/players/guest
-    ).data.pendingAction.actionId
-      ==
-      getAfter(
-        /databases/$(database)/documents/rooms/$(roomId)/players/guest
-      ).data.lastSkillActionId
-
-    && getAfter(
-      /databases/$(database)/documents/rooms/$(roomId)/players/guest
-    ).data.pendingAction.type
-      == 'USE_SKILL'
-  )
-)
+&& !request.resource.data.diff(resource.data)
+  .affectedKeys()
+  .hasAny([
+    'hostClassScores',
+    'guestClassScores',
+    'hostTotalScore',
+    'guestTotalScore'
+  ])
 
 && (
   !request.resource.data.diff(resource.data)
@@ -1017,6 +930,13 @@ allow delete: if
 allow create: if request.auth != null
   && request.resource.data.uid == request.auth.uid
   && request.resource.data.role == playerRole
+  && request.resource.data.avatars is list
+  && request.resource.data.avatars.size() == 0
+  && request.resource.data.handCount == 0
+  && request.resource.data.deckCount == 0
+  && request.resource.data.usedSkills is map
+  && request.resource.data.usedSkills.keys().size() == 0
+  && !request.resource.data.keys().hasAny(['hand', 'deck', 'pendingAction'])
   && (
     (
       playerRole == 'host'
@@ -1122,6 +1042,38 @@ allow update: if request.auth != null
     'hand',
     'deck'
   ])
+
+  // =====================================================
+  // オンライン対戦中の正式状態はサーバーのみが変更する。
+  // avatars / usedSkills / Action結果系は、クライアントから変更させない。
+  // setup中のavatars変更と再戦初期化は別条件で許可する。
+  // =====================================================
+  && (
+    !request.resource.data.diff(resource.data)
+      .affectedKeys()
+      .hasAny(['avatars'])
+    ||
+    getAfter(/databases/$(database)/documents/rooms/$(roomId)).data.battlePhase == 'setup'
+    ||
+    isRematchPlayerReset()
+  )
+  && (
+    !request.resource.data.diff(resource.data)
+      .affectedKeys()
+      .hasAny([
+        'usedSkills',
+        'pendingAction',
+        'lastSkillActionId',
+        'lastSkillAction',
+        'lastSupportActionId',
+        'lastSupportCardId',
+        'lastSupportCardCountBefore',
+        'lastSupportCardCountAfter',
+        'lastSupportActionAt'
+      ])
+    ||
+    isRematchPlayerReset()
+  )
 
   // =====================================================
   // Stage 4-①-A
@@ -1374,6 +1326,7 @@ match /privatePlayers/{playerRole} {
   // 自分自身のprivatePlayerだけ作成可能
   // -----------------------------------------
   allow create: if request.auth != null
+    && get(/databases/$(database)/documents/rooms/$(roomId)).data.battlePhase == 'setup'
     && request.resource.data.uid == request.auth.uid
     && (
       (
@@ -1428,32 +1381,35 @@ allow update: if request.auth != null
           'hand',
           'deck'
         ])
+      && (
+        get(/databases/$(database)/documents/rooms/$(roomId)).data.battlePhase == 'setup'
+        ||
+        (
+          get(/databases/$(database)/documents/rooms/$(roomId)).data.battlePhase == 'finished'
+          && get(/databases/$(database)/documents/rooms/$(roomId)).data.rematchHost == true
+          && get(/databases/$(database)/documents/rooms/$(roomId)).data.rematchGuest == true
+        )
+      )
     )
     ||
     (
-      (
-        (
-          playerRole == 'host'
-          && get(
-            /databases/$(database)/documents/rooms/$(roomId)
-          ).data.hostUid == request.auth.uid
-        )
-        ||
-        (
-          playerRole == 'guest'
-          && get(
-            /databases/$(database)/documents/rooms/$(roomId)
-          ).data.guestUid == request.auth.uid
-        )
-      )
-      &&
-      request.resource.data.diff(resource.data)
+      resource.data.uid == request.auth.uid
+      && request.resource.data.diff(resource.data)
         .affectedKeys()
         .hasOnly([
           'uid',
           'hand',
           'deck'
         ])
+      && (
+        get(/databases/$(database)/documents/rooms/$(roomId)).data.battlePhase == 'setup'
+        ||
+        (
+          get(/databases/$(database)/documents/rooms/$(roomId)).data.battlePhase == 'finished'
+          && get(/databases/$(database)/documents/rooms/$(roomId)).data.rematchHost == true
+          && get(/databases/$(database)/documents/rooms/$(roomId)).data.rematchGuest == true
+        )
+      )
     )
   );
 

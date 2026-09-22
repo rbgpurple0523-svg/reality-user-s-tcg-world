@@ -9,7 +9,6 @@ import {
   runTransaction,
   updateDoc,
   setDoc,
-  increment,
   deleteField,
 } from 'firebase/firestore';
 import {
@@ -145,10 +144,9 @@ type SupportControlEffectState = {
   id: string;
   sourcePresetId: string;
   duration: '一時' | '永続';
-  kind: 'limit' | 'free' | 'extra_draw' | 'score';
+  kind: 'limit' | 'free' | 'extra_draw';
   maxUsesPerTurn?: number;
   extraDrawPerTurn?: number;
-  scoreDeltaPerTurn?: number;
   expiresAtTurnOrdinal: number | null;
 };
 
@@ -242,17 +240,6 @@ const getAdditionalDrawFromEffects = (
       effect.kind === 'extra_draw',
     )
     .reduce((sum, effect) => sum + Number(effect.extraDrawPerTurn || 0), 0);
-
-const getSupportScoreModifierFromEffects = (
-  effects: SupportControlEffectState[] | undefined,
-  turnOrdinal: number,
-) =>
-  (effects || [])
-    .filter((effect) =>
-      isSupportEffectActive(effect, turnOrdinal) &&
-      effect.kind === 'score',
-    )
-    .reduce((sum, effect) => sum + Number(effect.scoreDeltaPerTurn || 0), 0);
 
 const hasSkillSeal = (
   avatar: BattleAvatar,
@@ -902,7 +889,14 @@ const getSupportBattleTarget = (
   const getSupportPool = (entries: EntryRecordWithSkills[]) => {
     const emotionEntries = entries.filter((entry) => entry.cardType === 'emotion');
     const enteredPresetIds = new Set(emotionEntries.map((entry) => entry.presetId).filter((id): id is string => Boolean(id)));
-    const virtualSupports = createVirtualSupportCards(enteredPresetIds);
+    const virtualSupports = createVirtualSupportCards(enteredPresetIds).map((card) => ({
+      ...card,
+      presetId:
+        (card.id.match(/emo_\d{2}$/)?.[0]) ||
+        (card.id.startsWith(VIRTUAL_SUPPORT_PREFIX)
+          ? card.id.slice(VIRTUAL_SUPPORT_PREFIX.length)
+          : undefined),
+    }));
     const realSupports: SupportCard[] = emotionEntries.map((entry) => {
       const name = entry.customEffectName || entry.userName || 'サポート';
       return {
@@ -910,7 +904,8 @@ const getSupportBattleTarget = (
         name,
         description: entry.effect || entry.description || '',
         imageDataUrl: entry.imageDataUrl || `/support_sample/${encodeURIComponent(name)}.jpg`,
-      } as SupportCard & { imageDataUrl: string };
+        presetId: entry.presetId,
+      } as SupportCard & { imageDataUrl: string; presetId?: string };
     });
     return [...virtualSupports, ...realSupports];
   };
@@ -2392,32 +2387,43 @@ useEffect(() => {
   let cancelled = false;
 
   const drawCard = async () => {
-    if (isOnline && myPlayerRef && myPrivatePlayerRef) {
-      try {
-        await setDoc(
-          myPrivatePlayerRef,
-          { hand: nextHand, deck: nextDeck },
-          { merge: true },
-        );
+    if (cancelled) return;
 
-        await updateDoc(myPlayerRef, {
-          handCount: nextHand.length,
-          deckCount: nextDeck.length,
-        });
+    if (isOnline) {
+      const result = await submitTurnDrawAction(
+        currentYear,
+        turnIndex,
+        activeIndex,
+      );
 
-        if (cancelled) return;
-
-        setMyHand(nextHand);
-        setMyDeck(nextDeck);
-        triggerSupportDealAnimation(drawCount);
-        revealSupportCardIndexes(Array.from({ length: drawCount }, (_, index) => myHand.length + index));
-        previousTurnRef.current = key;
+      if (!result) {
         drawInProgressRef.current = '';
-        addLog(`サポートカードを${drawCount}枚ドローしました。`);
-      } catch (error) {
-        drawInProgressRef.current = '';
-        console.error('ターン開始ドロー保存エラー:', error);
+        return;
       }
+
+      if (result.hand && result.deck) {
+        setMyHand(result.hand);
+        setMyDeck(result.deck);
+      }
+
+      const actualDrawCount = result.drawCount;
+      if (actualDrawCount > 0) {
+        triggerSupportDealAnimation(actualDrawCount);
+        revealSupportCardIndexes(
+          Array.from(
+            { length: actualDrawCount },
+            (_, index) => myHand.length + index,
+          ),
+        );
+      }
+
+      previousTurnRef.current = key;
+      drawInProgressRef.current = '';
+      addLog(
+        actualDrawCount > 0
+          ? `サポートカードを${actualDrawCount}枚ドローしました。`
+          : 'サポートカードをドローできませんでした。',
+      );
       return;
     }
 
@@ -2426,7 +2432,12 @@ useEffect(() => {
     setMyHand(nextHand);
     setMyDeck(nextDeck);
     triggerSupportDealAnimation(drawCount);
-    revealSupportCardIndexes(Array.from({ length: drawCount }, (_, index) => myHand.length + index));
+    revealSupportCardIndexes(
+      Array.from(
+        { length: drawCount },
+        (_, index) => myHand.length + index,
+      ),
+    );
     previousTurnRef.current = key;
     drawInProgressRef.current = '';
     addLog(`サポートカードを${drawCount}枚ドローしました。`);
@@ -2451,14 +2462,14 @@ useEffect(() => {
   myActiveAvatar.supportControlEffects,
 ]);
 
-  // ===== オンライン対戦：手札・山札枚数をPlayerへ公開 =====
+  // ===== オンライン準備中：手札・山札枚数をPlayerへ公開 =====
   useEffect(() => {
     if (
       !isOnline ||
       !roomId ||
       !authReady ||
       !myPlayerRef ||
-      battlePhase === 'finished'
+      battlePhase !== 'setup'
     ) {
       return;
     }
@@ -2542,16 +2553,70 @@ type BattleActionPayload = {
   // =====================================================
 
   supportCardId?: string;
+  supportPresetId?: string;
+};
+
+const submitTurnDrawAction = async (
+  year: number,
+  turnIndex: number,
+  avatarIndex: number,
+) => {
+  if (!isOnline || !roomId || !authReady) {
+    return null;
+  }
+
+  try {
+    const currentUser = await ensureAnonymousAuth();
+    const actionId = `${currentUser.uid}-draw-${year}-${turnIndex}`;
+    const idToken = await currentUser.getIdToken();
+    const response = await fetch('/api/battle/action', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${idToken}`,
+      },
+      body: JSON.stringify({
+        roomId,
+        actionId,
+        type: 'DRAW_TURN',
+        year,
+        turnIndex,
+        avatarIndex,
+      }),
+    });
+
+    const responseData = (await response.json()) as {
+      ok?: boolean;
+      error?: string;
+      drawCount?: number;
+      hand?: SupportCard[];
+      deck?: SupportCard[];
+    };
+
+    if (!response.ok || responseData.ok !== true) {
+      throw new Error(
+        responseData.error ||
+          'ターンドローAPIに失敗しました。',
+      );
+    }
+
+    return {
+      drawCount: Math.max(0, Number(responseData.drawCount ?? 0)),
+      hand: Array.isArray(responseData.hand)
+        ? responseData.hand
+        : null,
+      deck: Array.isArray(responseData.deck)
+        ? responseData.deck
+        : null,
+    };
+  } catch (error) {
+    console.error('ターンドローAPI送信エラー:', error);
+    return null;
+  }
 };
 
 const submitBattleAction = async (
   action: BattleActionPayload,
-  options?: {
-    avatars?: BattleAvatar[];
-    hand?: SupportCard[];
-    deck?: SupportCard[];
-    usedSkills?: Record<string, string[]>;
-  },
 ) => {
   if (
     !isOnline ||
@@ -2645,337 +2710,62 @@ const submitBattleAction = async (
       }
     }
 
-    const playerRef =
-      doc(
-        db,
-        'rooms',
-        roomId,
-        'players',
-        playerRole,
-      );
-
-    const privatePlayerRef =
-      doc(
-        db,
-        'rooms',
-        roomId,
-        'privatePlayers',
-        playerRole,
-      );
-
     // =====================================================
     // PLAY_SUPPORT
     //
-    // 手札確認
-    // カード1枚消費
-    // Avatar状態保存
-    // 山札保存
-    // pendingAction保存
-    //
-    // を同一Transactionで確定する。
+    // オンラインではサーバーAPIだけがカード消費・効果計算・
+    // Avatar状態・スコア・使用回数を確定する。
+    // クライアントが計算したavatars / hand / deck / scoreは
+    // 正式状態としてFirestoreへ書き込まない。
     // =====================================================
 
-    if (
-      action.type ===
-      'PLAY_SUPPORT'
-    ) {
-      if (
-        !action.supportCardId
-      ) {
-        console.warn(
-          'supportCardIdがないサポートActionを拒否しました。',
-        );
-
+    if (action.type === 'PLAY_SUPPORT') {
+      if (!action.supportCardId) {
+        addLog('⚠️ supportCardIdがありません。');
         return false;
       }
 
-      await runTransaction(
-        db,
-        async (transaction) => {
-          const snapshot =
-            await transaction.get(
-              privatePlayerRef,
-            );
+      try {
+        const idToken = await currentUser.getIdToken();
+        const response = await fetch('/api/battle/action', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            Authorization: `Bearer ${idToken}`,
+          },
+          body: JSON.stringify({
+            roomId,
+            actionId,
+            type: action.type,
+            year: action.year,
+            turnIndex: action.turnIndex,
+            avatarIndex: action.avatarIndex,
+            supportCardId: action.supportCardId,
+          }),
+        });
 
-          const playerSnapshot =
-            await transaction.get(
-              playerRef,
-            );
+        const responseData = (await response.json()) as {
+          ok?: boolean;
+          error?: string;
+        };
 
-          if (!playerSnapshot.exists()) {
-            throw new Error(
-              'Playerデータが存在しません。',
-            );
-          }
-
-          const publicPlayerData =
-            playerSnapshot.data() as Record<
-              string,
-              any
-            >;
-
-          const lastSupportActionId =
-            typeof publicPlayerData.lastSupportActionId === 'string'
-              ? publicPlayerData.lastSupportActionId
-              : '';
-
-          if (
-            lastSupportActionId === actionId
-          ) {
-            throw new Error(
-              'このSupport Actionはすでに処理済みです。',
-            );
-          }
-
-          if (
-            !snapshot.exists()
-          ) {
-            throw new Error(
-              'Playerデータが存在しません。',
-            );
-          }
-
-          const playerData =
-            snapshot.data() as Record<
-              string,
-              any
-            >;
-
-          const currentHand =
-            Array.isArray(
-              playerData.hand,
-            )
-              ? [
-                  ...playerData.hand,
-                ]
-              : [];
-
-          const currentDeck =
-            Array.isArray(playerData.deck)
-              ? [...playerData.deck]
-              : [];
-
-          const actionTurnOrdinal = getBattleTurnOrdinal(
-            action.year,
-            action.turnIndex,
+        if (!response.ok || responseData.ok !== true) {
+          throw new Error(
+            responseData.error ||
+              'Battle Support Action APIに失敗しました。',
           );
+        }
 
-          const activePlayerAvatar =
-            Array.isArray(playerData.avatars)
-              ? (playerData.avatars[action.avatarIndex] as BattleAvatar | undefined)
-              : undefined;
-
-          const supportUsageLimit = getSupportUsageLimitFromEffects(
-            activePlayerAvatar?.supportControlEffects,
-            actionTurnOrdinal,
-          );
-
-          const currentUsedSkills =
-            playerData.usedSkills && typeof playerData.usedSkills === 'object'
-              ? (playerData.usedSkills as Record<string, string[]>)
-              : {};
-
-          const supportUseCountBefore = getSupportUseCountFromUsedSkills(
-            currentUsedSkills,
-            action.year,
-            action.turnIndex,
-          );
-
-          if (
-            Number.isFinite(supportUsageLimit) &&
-            supportUseCountBefore >= supportUsageLimit
-          ) {
-            throw new Error('SUPPORT_USE_LIMIT');
-          }
-
-          // =================================================
-          // ③-⑤ 使用前の所持確認
-          // =================================================
-
-          const supportCardIndex =
-            currentHand.findIndex(
-              (
-                handCard: SupportCard,
-              ) =>
-                handCard.id ===
-                action.supportCardId,
-            );
-
-          if (
-            supportCardIndex ===
-            -1
-          ) {
-            throw new Error(
-              '指定されたサポートカードが手札に存在しません。',
-            );
-          }
-
-          const supportCardCountBefore =
-            currentHand.filter(
-              (
-                handCard: SupportCard,
-              ) =>
-                handCard.id ===
-                action.supportCardId,
-            ).length;
-
-          // =================================================
-          // ③-⑥ 1枚だけ消費
-          // =================================================
-
-          const nextHand = options?.hand
-            ? [...options.hand]
-            : currentHand.filter(
-                (_handCard, index) => index !== supportCardIndex,
-              );
-
-          const nextDeck = options?.deck
-            ? [...options.deck]
-            : currentDeck;
-
-          const supportCardCountAfter =
-            nextHand.filter(
-              (handCard: SupportCard) =>
-                handCard.id === action.supportCardId,
-            ).length;
-
-          if (options?.hand || options?.deck) {
-            const currentTotalCards = currentHand.length + currentDeck.length;
-            const nextTotalCards = nextHand.length + nextDeck.length;
-            if (nextTotalCards !== currentTotalCards - 1 || nextDeck.length > currentDeck.length) {
-              throw new Error('サポートカード消費後の手札・山札枚数が不正です。');
-            }
-          }
-
-          if (
-            supportCardCountAfter !==
-            supportCardCountBefore - 1
-          ) {
-            throw new Error(
-              'サポートカードの消費枚数が不正です。',
-            );
-          }
-
-          // =================================================
-          // 非公開Player
-          //   hand / deck
-          // =================================================
-
-          transaction.set(
-            privatePlayerRef,
-            {
-              uid:
-                currentUser.uid,
-
-              hand:
-                nextHand,
-
-              deck:
-                nextDeck,
-            },
-            {
-              merge: true,
-            },
-          );
-
-          // =================================================
-          // 公開Player
-          //   枚数 / Avatar / Action
-          // =================================================
-
-          transaction.update(
-            playerRef,
-            {
-              handCount:
-                nextHand.length,
-
-              deckCount:
-                nextDeck.length,
-
-              ...(options?.avatars
-                ? {
-                    avatars:
-                      options.avatars,
-                  }
-                : {}),
-
-              usedSkills: setSupportUseCountInUsedSkills(
-                options?.usedSkills ?? currentUsedSkills,
-                action.year,
-                action.turnIndex,
-                supportUseCountBefore + 1,
-              ),
-
-              lastSupportActionId:
-                actionId,
-
-              lastSupportCardId:
-                action.supportCardId,
-
-              lastSupportCardCountBefore:
-                supportCardCountBefore,
-
-              lastSupportCardCountAfter:
-                supportCardCountAfter,
-
-              lastSupportActionAt:
-                Date.now(),
-
-              pendingAction: {
-                ...action,
-
-                actionId,
-
-                uid:
-                  currentUser.uid,
-
-                playerRole,
-
-                submittedAt:
-                  Date.now(),
-
-                supportCardConsumed:
-                  true,
-
-                supportCardCountBefore,
-
-                supportCardCountAfter,
-              },
-            },
-          );
-        },
-      );
-
-      return true;
+        return true;
+      } catch (error) {
+        console.error('Support Action API送信エラー:', error);
+        addLog('⚠️ サポートActionの送信に失敗しました。');
+        return false;
+      }
     }
 
-    // =====================================================
-    // PLAY_SUPPORT以外
-    //
-    // 現時点ではUSE_SKILLなどは
-    // 従来どおりpendingActionだけ保存する。
-    // =====================================================
-
-    await updateDoc(
-      playerRef,
-      {
-        pendingAction: {
-          ...action,
-
-          actionId,
-
-          uid:
-            currentUser.uid,
-
-          playerRole,
-
-          submittedAt:
-            Date.now(),
-        },
-      },
-    );
-
-    return true;
+    addLog('⚠️ 未対応のオンラインActionです。');
+    return false;
   } catch (error) {
     console.error(
       'Battle Action送信エラー:',
@@ -3388,483 +3178,34 @@ const handleIncomingActionRef =
     // -------------------------------------------------------
     // 相手のサポートカード使用
     // -------------------------------------------------------
+    // オンラインの正式な効果・Avatar・スコアはサーバーが確定する。
+    // ここでは演出とログだけを担当し、Firestoreの戦闘状態を直接変更しない。
+    // -------------------------------------------------------
     if (action.type === 'PLAY_SUPPORT') {
-      const avatarIndex =
-        typeof action.avatarIndex === 'number'
-          ? action.avatarIndex
-          : activeIndex;
-      
-      const opponentAvatar =
-        oppAvatars[avatarIndex];
+      const preset = action.supportPresetId
+        ? EMOTION_PRESETS.find((emotion) => emotion.id === action.supportPresetId)
+        : undefined;
 
-      const myAvatar =
-        myAvatars[avatarIndex];
-
-      if (
-        !opponentAvatar ||
-        !myAvatar
-      ) {
-        return;
-      }
-
-      // =====================================================
-      // 使用されたサポートカードを supportCardId から特定
-      // =====================================================
-      //
-      // Firebaseには効果計算済みの内部状態を送らない。
-      //
-      // 使用したサポートカードのIDだけを共有し、
-      // 受信側でも同じカード定義から効果を再現する。
-      // =====================================================
-
-      let entries: EntryRecordWithSkills[] = [];
-
-      try {
-        const entriesRaw =
-          localStorage.getItem(
-            'reality_world_entries',
-          );
-
-        entries =
-          entriesRaw
-            ? JSON.parse(entriesRaw)
-            : [];
-      } catch (error) {
-        console.error(
-          'サポートカード情報読み込みエラー:',
-          error,
-        );
-      }
-
-      const supportPool =
-        getSupportPool(entries);
-
-      const opponentSupportCard =
-        action.supportCardId
-          ? supportPool.find(
-              (card) =>
-                card.id ===
-                action.supportCardId,
-            )
-          : undefined;
-
-      // -----------------------------------------------------
-      // カードが特定できなかった場合
-      // -----------------------------------------------------
-
-      if (!opponentSupportCard) {
-        addLog(
-          '相手がサポートカードを使用しました。',
-        );
-
-        return;
-      }
-
-    // =====================================================
-    // ③-⑤ サポートActionとPlayer状態の整合性検証
-    //
-    // 送信側ではsubmitBattleAction()のTransactionによって
-    //
-    //   ① 手札に対象カードが存在する
-    //   ② 対象カードを1枚だけ消費する
-    //   ③ pendingActionを保存する
-    //
-    // を同時に確定している。
-    //
-    // 受信側では、その正式記録と受信Actionが
-    // 一致しているか確認する。
-    // =====================================================
-
-    if (
-      isOnline &&
-      opponentPlayerRef
-    ) {
-      try {
-        const opponentPlayerSnapshot =
-          await getDoc(
-            opponentPlayerRef,
-          );
-
-        if (
-          !opponentPlayerSnapshot.exists()
-        ) {
-          return;
-        }
-
-        const opponentPlayerData =
-          opponentPlayerSnapshot.data() as Record<
-            string,
-            any
-          >;
-
-        const pendingAction =
-          opponentPlayerData.pendingAction;
-
-        // ---------------------------------------------------
-        // Action ID一致確認
-        // ---------------------------------------------------
-
-        if (
-          !pendingAction ||
-          pendingAction.actionId !==
-            action.actionId
-        ) {
-          console.warn(
-            'PlayerのpendingActionと受信Actionが一致しません。',
-            {
-              actionId:
-                action.actionId,
-              pendingActionId:
-                pendingAction?.actionId,
-            },
-          );
-
-          return;
-        }
-
-        // ---------------------------------------------------
-        // supportCardId一致確認
-        // ---------------------------------------------------
-
-        if (
-          pendingAction.supportCardId !==
-          action.supportCardId
-        ) {
-          console.warn(
-            'pendingActionのsupportCardIdと受信Actionが一致しません。',
-            {
-              actionSupportCardId:
-                action.supportCardId,
-              pendingSupportCardId:
-                pendingAction?.supportCardId,
-            },
-          );
-
-          return;
-        }
-
-        // ---------------------------------------------------
-        // カード消費済み確認
-        // ---------------------------------------------------
-    
-        if (
-          pendingAction.supportCardConsumed !==
-          true
-        ) {
-          console.warn(
-            'サポートカード消費済みフラグが確認できないActionを無視しました。',
-          );
-    
-          return;
-        }
-
-        // ---------------------------------------------------
-        // 使用前・使用後の枚数を確認
-        // ---------------------------------------------------
-    
-        const countBefore =
-          Number(
-            pendingAction.supportCardCountBefore,
-          );
-
-        const countAfter =
-          Number(
-            pendingAction.supportCardCountAfter,
-          );
-    
-        if (
-          !Number.isInteger(
-            countBefore,
-          ) ||
-          !Number.isInteger(
-            countAfter,
-          ) ||
-          countBefore <= 0 ||
-          countAfter !==
-            countBefore - 1
-        ) {
-          console.warn(
-            'サポートカードの消費枚数が不正なActionを無視しました。',
-            {
-              supportCardId:
-                action.supportCardId,
-              countBefore,
-              countAfter,
-            },
-          );
-    
-          return;
-        }
-
-        // ---------------------------------------------------
-        // Player側に記録された消費情報も確認
-        // ---------------------------------------------------
-
-        const recordedCardId =
-          opponentPlayerData.lastSupportCardId;
-
-        const recordedActionId =
-          opponentPlayerData.lastSupportActionId;
-
-        if (
-          recordedCardId !==
-            action.supportCardId ||
-          recordedActionId !==
-            action.actionId
-        ) {
-          console.warn(
-            'サポートカード消費記録とActionが一致しません。',
-            {
-              actionId:
-                action.actionId,
-              supportCardId:
-                action.supportCardId,
-              recordedActionId,
-              recordedCardId,
-            },
-          );
-    
-          return;
-        }
-      } catch (error) {
-        console.error(
-          'サポートAction整合性検証エラー:',
-          error,
-        );
-
-        return;
-      }
-    }
-
-      // =====================================================
-      // サポートカード効果を受信側でも再現
-      // =====================================================
-
-      const opponentPreset =
-        getEmotionPresetForCard(
-          opponentSupportCard,
-        );
+      const supportCard: SupportCard = {
+        id: action.supportCardId || 'support',
+        name: preset?.name || 'サポートカード',
+        description: preset?.description || '',
+      };
 
       await playSupportPreResultEffect({
-        effectKey: getSupportBattleEffect(
-          opponentPreset,
-        ),
-        cardName: opponentSupportCard.name,
-        imageUrl: getSupportImage(opponentSupportCard),
+        effectKey: getSupportBattleEffect(preset),
+        cardName: supportCard.name,
+        imageUrl: getSupportImage(supportCard),
         targetPositions: getSupportTargetPositions(),
-        dialogue: opponentPreset?.description,
+        dialogue: preset?.description,
         colorHex: undefined,
-        target: getSupportBattleTarget(
-          opponentPreset,
-          false,
-        ),
+        target: getSupportBattleTarget(preset, false),
       });
 
-      const applied =
-        applyEmotionToPair(
-          opponentSupportCard,
-          opponentAvatar,
-          myAvatar,
-        );
-
-      // -----------------------------------------------------
-      // 相手（カード使用者）側
-      // -----------------------------------------------------
-
-      let nextOppAvatars =
-        oppAvatars.map(
-          (avatar, index) =>
-            index === avatarIndex
-              ? applied.actor
-              : avatar,
-        );
-
-      // -----------------------------------------------------
-      // 自分（カード効果対象側）
-      // -----------------------------------------------------
-
-      let nextMyAvatars =
-        myAvatars.map(
-          (avatar, index) =>
-            index === avatarIndex
-              ? applied.target
-              : avatar,
-        );
-
-      const incomingSupportTurnOrdinal = getBattleTurnOrdinal(
-        action.year,
-        action.turnIndex,
-      );
-
-      if (applied.actorSupportControlEffect) {
-        nextOppAvatars = applySupportControlToAllAvatars(
-          nextOppAvatars,
-          applied.actorSupportControlEffect,
-          incomingSupportTurnOrdinal,
-        );
-      }
-      if (applied.targetSupportControlEffect) {
-        nextMyAvatars = applySupportControlToAllAvatars(
-          nextMyAvatars,
-          applied.targetSupportControlEffect,
-          incomingSupportTurnOrdinal,
-        );
-      }
-
-      const gainedScore =
-        applied.scoreDelta;
-
-      // =====================================================
-      // 状態反映
-      // =====================================================
-
-      setMyAvatars(
-        nextMyAvatars,
-      );
-
-      setOppAvatars(
-        nextOppAvatars,
-      );
-
-      // =====================================================
-      // サポート効果を受けた自分のAvatar状態を正式保存
-      // =====================================================
-
-      if (
-        isOnline &&
-        roomId
-      ) {
-        const myPlayerBattleRef =
-          doc(
-            db,
-            'rooms',
-            roomId,
-            'players',
-            playerRole,
-          );
-
-        void updateDoc(
-          myPlayerBattleRef,
-          {
-            avatars:
-              nextMyAvatars,
-          },
-        ).catch((error) => {
-          console.error(
-            'サポート効果を受けた側のAvatar保存エラー:',
-            error,
-          );
-        });
-      }
-
-      // =====================================================
-      // ログ
-      // =====================================================
-
       addLog(
-        `相手がサポート「${opponentSupportCard.name}」を使用しました。` +
-          (
-            opponentPreset?.description
-              ? ` ${opponentPreset.description}`
-              : ''
-          ),
+        `相手がサポート「${supportCard.name}」を使用しました。` +
+          (preset?.description ? ` ${preset.description}` : ''),
       );
-
-      // =====================================================
-      // Firestoreの正式状態を更新
-      // =====================================================
-      //
-      // サポート使用では turnIndex を変更しない。
-      // スコアはここでのみ正式に加算し、Room snapshotを通じて
-      // 受信側のスコア表示・ゲージへ反映する。
-      // =====================================================
-
-      if (
-        isOnline &&
-        roomId
-      ) {
-        const roomRef =
-          doc(
-            db,
-            'rooms',
-            roomId,
-          );
-
-        const actorRole =
-          action.playerRole === 'host'
-            ? 'host'
-            : 'guest';
-
-        const scoreField =
-          actorRole === 'host'
-            ? 'hostClassScores'
-            : 'guestClassScores';
-
-        const totalField =
-          actorRole === 'host'
-            ? 'hostTotalScore'
-            : 'guestTotalScore';
-
-        try {
-          await runTransaction(
-            db,
-            async (transaction) => {
-              const snapshot =
-                await transaction.get(
-                  roomRef,
-                );
-
-              if (!snapshot.exists()) {
-                return;
-              }
-
-              const roomData =
-                snapshot.data() as Record<
-                  string,
-                  any
-                >;
-
-              const scores =
-                Array.isArray(
-                  roomData[scoreField],
-                )
-                  ? [
-                      ...roomData[
-                        scoreField
-                      ],
-                    ]
-                  : [0, 0, 0];
-
-              scores[avatarIndex] =
-                Number(
-                  scores[avatarIndex] ||
-                    0,
-                ) + gainedScore;
-
-              const nextTotal =
-                Number(
-                  roomData[totalField] ||
-                    0,
-                ) + gainedScore;
-
-              transaction.update(
-                roomRef,
-                {
-                  [scoreField]:
-                    scores,
-                  [totalField]:
-                    nextTotal,
-                },
-              );
-            },
-          );
-        } catch (error) {
-          console.error(
-            '相手のサポート結果同期エラー:',
-            error,
-          );
-        }
-      }
 
       return;
     }
@@ -4214,12 +3555,6 @@ const handleIncomingActionRef =
                 : avatar,
           );
       }
-
-const opponentSupportScoreModifier = getSupportScoreModifierFromEffects(
-  opponentAvatar.supportControlEffects,
-  getBattleTurnOrdinal(action.year, action.turnIndex),
-);
-gainedScore = Math.max(0, gainedScore + opponentSupportScoreModifier);
 
 // 相手の技使用演出
 const opponentSkillPreset = getPresetForCard(opponentAvatar.card);
@@ -4671,6 +4006,7 @@ if (
           : avatar,
       );
     } else if (skill.rule === 'y_crash') {
+      gainedScore = Object.values(effective).reduce((sum, value) => sum + value, 0) * 2;
       Object.entries(opponentEffective).forEach(([key, value]) => {
         const stat = key as StatKey;
         debuffs[stat] = Math.ceil(value * 0.25);
@@ -4700,12 +4036,6 @@ if (
         debuffs.hp = debuffAmount;
       }
     }
-
-    const supportScoreModifier = getSupportScoreModifierFromEffects(
-      myActiveAvatar.supportControlEffects,
-      getBattleTurnOrdinal(currentYear, turnIndex),
-    );
-    gainedScore = Math.max(0, gainedScore + supportScoreModifier);
 
     const nextUsed = {
       ...usedSkillsByClass,
@@ -4957,9 +4287,13 @@ if (!actionSubmitted) {
 
   // ===== サポートカードの公式エモーション効果 =====
   const getEmotionPresetForCard = (card: SupportCard) => {
-    const presetId = card.id.startsWith(VIRTUAL_SUPPORT_PREFIX)
-      ? card.id.slice(VIRTUAL_SUPPORT_PREFIX.length)
-      : undefined;
+    const withPreset = card as SupportCard & { presetId?: string };
+    const presetId =
+      withPreset.presetId ||
+      (card.id.match(/emo_\d{2}$/)?.[0]) ||
+      (card.id.startsWith(VIRTUAL_SUPPORT_PREFIX)
+        ? card.id.slice(VIRTUAL_SUPPORT_PREFIX.length)
+        : undefined);
     return presetId
       ? EMOTION_PRESETS.find((emotion) => emotion.id === presetId)
       : EMOTION_PRESETS.find((emotion) => emotion.name === card.name);
@@ -5050,6 +4384,7 @@ if (!actionSubmitted) {
         actor,
         target,
         scoreDelta: 0,
+        targetScoreDelta: 0,
         extraDraw: 0,
         actorSupportControlEffect: undefined as SupportControlEffectState | undefined,
         targetSupportControlEffect: undefined as SupportControlEffectState | undefined,
@@ -5073,6 +4408,7 @@ if (!actionSubmitted) {
       supportEffects: [...(target.supportEffects || [])],
     };
     let scoreDelta = 0;
+    let targetScoreDelta = 0;
     let extraDraw = 0;
     let actorSupportControlEffect: SupportControlEffectState | undefined;
     let targetSupportControlEffect: SupportControlEffectState | undefined;
@@ -5110,7 +4446,6 @@ if (!actionSubmitted) {
       };
       if (kind === 'limit') effect.maxUsesPerTurn = Math.max(0, amount || 1);
       if (kind === 'extra_draw') effect.extraDrawPerTurn = Math.max(0, amount || 1);
-      if (kind === 'score') effect.scoreDeltaPerTurn = amount;
       return effect;
     };
 
@@ -5153,15 +4488,9 @@ if (!actionSubmitted) {
       }
     } else if (preset.effectCategory === 'スコア') {
       if (preset.target === '自分') {
-        actorSupportControlEffect = makeControlEffect('score', false);
-        if (actorSupportControlEffect) {
-          actorSupportControlEffect.scoreDeltaPerTurn = Math.abs(amount);
-        }
+        scoreDelta = Math.abs(amount);
       } else if (preset.target === '相手') {
-        targetSupportControlEffect = makeControlEffect('score', true);
-        if (targetSupportControlEffect) {
-          targetSupportControlEffect.scoreDeltaPerTurn = -Math.abs(amount);
-        }
+        targetScoreDelta = -Math.abs(amount);
       }
     } else if (preset.effectCategory === 'サポートカード使用数') {
       if (preset.statEffect.includes('制限されない')) {
@@ -5271,6 +4600,7 @@ if (!actionSubmitted) {
       actor: nextActor,
       target: nextTarget,
       scoreDelta,
+      targetScoreDelta,
       extraDraw,
       actorSupportControlEffect,
       targetSupportControlEffect,
@@ -5295,7 +4625,23 @@ if (!actionSubmitted) {
       currentYear,
       turnIndex,
     );
-    if (Number.isFinite(supportLimit) && supportUseCount >= supportLimit) return null;
+    const hasFreeSupportCard = hand.some((card) => {
+      const presetId = card.id.startsWith(VIRTUAL_SUPPORT_PREFIX)
+        ? card.id.slice(VIRTUAL_SUPPORT_PREFIX.length)
+        : undefined;
+      const preset = presetId
+        ? EMOTION_PRESETS.find((emotion) => emotion.id === presetId)
+        : EMOTION_PRESETS.find((emotion) => emotion.name === card.name);
+      return Boolean(
+        preset?.effectCategory === 'サポートカード使用数' &&
+          preset.statEffect.includes('制限されない'),
+      );
+    });
+    if (
+      Number.isFinite(supportLimit) &&
+      supportUseCount >= supportLimit &&
+      !hasFreeSupportCard
+    ) return null;
     const scored = hand.map((card, index) => {
       const presetId = card.id.startsWith(VIRTUAL_SUPPORT_PREFIX)
         ? card.id.slice(VIRTUAL_SUPPORT_PREFIX.length)
@@ -5339,6 +4685,7 @@ if (!actionSubmitted) {
       scoreDelta: applied.scoreDelta,
       actorSupportControlEffect: applied.actorSupportControlEffect,
       targetSupportControlEffect: applied.targetSupportControlEffect,
+      targetScoreDelta: applied.targetScoreDelta,
     };
   };
 
@@ -5455,6 +4802,18 @@ if (!actionSubmitted) {
           });
           setGuestTotalScore((prev) => Math.max(0, prev + applied.scoreDelta));
         }
+        if (applied.targetScoreDelta !== 0) {
+          setMyClassScores((prev) => {
+            const next = [...prev];
+            next[activeIndex] = Math.max(0, (next[activeIndex] || 0) + applied.targetScoreDelta);
+            return next;
+          });
+          if (playerRole === 'host') {
+            setHostTotalScore((prev) => Math.max(0, prev + applied.targetScoreDelta));
+          } else {
+            setGuestTotalScore((prev) => Math.max(0, prev + applied.targetScoreDelta));
+          }
+        }
       }
 
       const usedKey = `${currentYear}`;
@@ -5493,21 +4852,13 @@ if (!actionSubmitted) {
       } else if (skill.rule === 'y_burst') {
         gainedScore = 100;
       } else if (skill.rule === 'y_crash') {
+        gainedScore = Object.values(effective).reduce((sum, value) => sum + value, 0) * 2;
         Object.entries(opponentEffective).forEach(([key, value]) => {
           debuffs[key as StatKey] = Math.ceil(value * 0.25);
         });
       } else {
         gainedScore = effective.hp * 10;
       }
-
-      gainedScore = Math.max(
-        0,
-        gainedScore +
-          getSupportScoreModifierFromEffects(
-            workingCpu.supportControlEffects,
-            cpuTurnOrdinal,
-          ),
-      );
 
       const cpuSkillPreset = getPresetForCard(workingCpu.card);
       const cpuSkillIndex = workingCpu.skills.findIndex(
@@ -5630,6 +4981,10 @@ const handleUseSupportCard = async (
   if (!myHand[index]) return;
 
   const supportTurnOrdinal = getBattleTurnOrdinal(currentYear, turnIndex);
+  const supportPreset = getEmotionPresetForCard(card);
+  const isFreeSupportCard =
+    supportPreset?.effectCategory === 'サポートカード使用数' &&
+    supportPreset.statEffect.includes('制限されない');
   const supportUseLimit = getSupportUsageLimitFromEffects(
     myActiveAvatar.supportControlEffects,
     supportTurnOrdinal,
@@ -5640,6 +4995,7 @@ const handleUseSupportCard = async (
     turnIndex,
   );
   if (
+    !isFreeSupportCard &&
     Number.isFinite(supportUseLimit) &&
     supportUseCount >= supportUseLimit
   ) {
@@ -5731,11 +5087,6 @@ const handleUseSupportCard = async (
           drawCount,
         );
     }
-
-    const supportPreset =
-      getEmotionPresetForCard(
-        card,
-      );
 
     // =====================================================
     // CPU戦：演出完了後にローカル結果を反映
@@ -5839,16 +5190,6 @@ const handleUseSupportCard = async (
             activeIndex,
           supportCardId:
             card.id,
-        },
-        {
-          avatars:
-            nextMyAvatars,
-          hand:
-            nextHand,
-          deck:
-            nextDeck,
-          usedSkills:
-            nextUsedSkills,
         },
       );
 

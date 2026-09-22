@@ -9,7 +9,7 @@ const SKILL_EFFECTS: readonly BattlePreResultEffectKey[] = [
   'skill-combo',
 ];
 
-const BALANCE_SKILL_EFFECTS: readonly BattlePreResultEffectKey[] = [
+const A1_SKILL_EFFECTS: readonly BattlePreResultEffectKey[] = [
   'skill-total',
   'skill-response',
   'skill-burst',
@@ -20,11 +20,13 @@ export function getCharacterSkillBattleEffect(
   preset: CoordinatePreset | undefined,
   skillIndex: number,
 ): BattlePreResultEffectKey {
-  const fallback = preset?.code === 'a1'
-    ? BALANCE_SKILL_EFFECTS[skillIndex] ?? 'skill-total'
-    : SKILL_EFFECTS[skillIndex] ?? 'skill-primary';
+  const fallback =
+    preset?.code === 'a1'
+      ? A1_SKILL_EFFECTS[skillIndex] ?? 'skill-total'
+      : SKILL_EFFECTS[skillIndex] ?? 'skill-primary';
 
   const effects = preset?.battleEffects;
+
   if (effects && skillIndex >= 0 && skillIndex < effects.length) {
     return effects[skillIndex];
   }
@@ -33,7 +35,7 @@ export function getCharacterSkillBattleEffect(
 }
 
 export function getSupportBattleEffect(
-  preset: EmotionPreset | undefined,
+  _preset: EmotionPreset | undefined,
 ): BattlePreResultEffectKey {
-  return preset?.battleEffect ?? 'support-impact';
+  return 'support-impact';
 }

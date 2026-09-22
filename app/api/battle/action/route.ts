@@ -11,6 +11,8 @@ import {
   type Transaction,
 } from 'firebase-admin/firestore';
 import { adminDb } from '@/lib/firebaseAdmin';
+import { COORDINATE_PRESETS, STAT_RANKS } from '@/components/coordinatePresets';
+import { EMOTION_PRESETS, type EmotionPreset } from '@/components/emotionPresets';
 
 export const runtime = 'nodejs';
 
@@ -48,6 +50,25 @@ type Skill = {
   maxUsesPerClass: number;
 };
 
+type SupportAvatarEffectState = {
+  id: string;
+  sourcePresetId: string;
+  statDelta?: Partial<Record<StatKey, number>>;
+  statOverride?: Partial<Record<StatKey, number>>;
+  skillSealIndex?: number;
+  expiresAtTurnOrdinal: number | null;
+};
+
+type SupportControlEffectState = {
+  id: string;
+  sourcePresetId: string;
+  duration: '一時' | '永続';
+  kind: 'limit' | 'free' | 'extra_draw';
+  maxUsesPerTurn?: number;
+  extraDrawPerTurn?: number;
+  expiresAtTurnOrdinal: number | null;
+};
+
 type BattleAvatar = {
   card: {
     id: string;
@@ -66,12 +87,23 @@ type BattleAvatar = {
 
   statBoost?: Partial<Record<StatKey, number>>;
 
+  supportEffects?: SupportAvatarEffectState[];
+
+  supportControlEffects?: SupportControlEffectState[];
+
   skills: Skill[];
+};
+
+type SupportCardState = {
+  id: string;
+  name?: string;
+  description?: string;
+  presetId?: string;
 };
 
 type BattleAction = {
   actionId?: string;
-  type?: 'USE_SKILL' | 'PLAY_SUPPORT';
+  type?: 'USE_SKILL' | 'PLAY_SUPPORT' | 'DRAW_TURN';
 
   playerRole?: PlayerRole;
   uid?: string;
@@ -84,6 +116,7 @@ type BattleAction = {
   selectedBoostStat?: StatKey;
 
   supportCardId?: string;
+  supportPresetId?: string;
 
   submittedAt?: number;
 };
@@ -115,6 +148,22 @@ type PlayerData = {
   lastSkillAction?: LastSkillAction;
 
   battleStateVersion?: number;
+  lastDrawTurnOrdinal?: number;
+
+  lastSupportActionId?: string;
+  lastSupportAction?: {
+    actionId: string;
+    player: PlayerRole;
+    year: number;
+    turnIndex: number;
+    avatarIndex: number;
+    supportCardId: string;
+    supportPresetId: string;
+    supportName: string;
+    actorScoreDelta: number;
+    targetScoreDelta: number;
+    processedAt: number;
+  };
 };
 
 type RoomData = {
@@ -139,6 +188,12 @@ type RoomData = {
   guestTotalScore?: number;
 };
 
+type PrivatePlayerData = {
+  uid?: string;
+  hand?: SupportCardState[];
+  deck?: SupportCardState[];
+};
+
 type BattleActionRequest = {
   roomId?: unknown;
   actionId?: unknown;
@@ -148,6 +203,7 @@ type BattleActionRequest = {
   avatarIndex?: unknown;
   skillId?: unknown;
   selectedBoostStat?: unknown;
+  supportCardId?: unknown;
 };
 
 const STAT_KEYS: StatKey[] = [
@@ -156,6 +212,51 @@ const STAT_KEYS: StatKey[] = [
   'dexterity',
   'charm',
 ];
+
+const getBattleTurnOrdinal = (
+  year: number,
+  turnIndex: number,
+) =>
+  Math.max(0, (year - 1) * 8 + turnIndex);
+
+const isSupportEffectActive = (
+  effect: { expiresAtTurnOrdinal: number | null },
+  turnOrdinal: number,
+) =>
+  effect.expiresAtTurnOrdinal === null ||
+  turnOrdinal < effect.expiresAtTurnOrdinal;
+
+const getSupportEffectExpiration = (
+  preset: EmotionPreset,
+  turnOrdinal: number,
+  appliesToOpponent: boolean,
+) => {
+  if (preset.duration === '一時') {
+    return turnOrdinal + 2;
+  }
+
+  if (preset.note?.includes('最大4ターン')) {
+    return turnOrdinal + (appliesToOpponent ? 5 : 4);
+  }
+
+  return null;
+};
+
+const getAdditionalDrawFromEffects = (
+  effects: SupportControlEffectState[] | undefined,
+  turnOrdinal: number,
+) =>
+  (effects ?? [])
+    .filter(
+      (effect) =>
+        isSupportEffectActive(effect, turnOrdinal) &&
+        effect.kind === 'extra_draw',
+    )
+    .reduce(
+      (sum, effect) =>
+        sum + Number(effect.extraDrawPerTurn ?? 0),
+      0,
+    );
 
 const isPlayerRole = (
   value: unknown,
@@ -185,35 +286,164 @@ const getExpectedPlayer = (
       ? 'guest'
       : 'host';
 
+const getCoordinatePresetForAvatar = (
+  avatar: BattleAvatar,
+) => {
+  const card = avatar.card as BattleAvatar['card'] & {
+    presetId?: string;
+    coordinateCode?: string;
+    code?: string;
+  };
+
+  const presetId = card.presetId;
+  const code = card.coordinateCode || card.code;
+
+  return COORDINATE_PRESETS.find(
+    (preset) =>
+      (presetId && preset.id === presetId) ||
+      (code && preset.code === code),
+  );
+};
+
+const getCanonicalSkill = (
+  avatar: BattleAvatar,
+  skillId: string,
+): Skill => {
+  const preset = getCoordinatePresetForAvatar(avatar);
+
+  if (!preset) {
+    throw new Error(
+      'Avatarの公式コーデ性能を確認できません。',
+    );
+  }
+
+  const match = /^skill_([1-4])$/.exec(skillId);
+  if (!match) {
+    throw new Error('Skill IDが不正です。');
+  }
+
+  const index = Number(match[1]) - 1;
+  const rank = STAT_RANKS[preset.code];
+  if (!rank) {
+    throw new Error('公式コーデ順位が存在しません。');
+  }
+
+  const displayedSkill = avatar.skills?.find(
+    (item) => item.id === skillId,
+  );
+  const name =
+    displayedSkill?.name ||
+    preset.defaultSkills[index];
+  const description =
+    preset.skillDescriptions[index];
+
+  if (preset.code === 'a1') {
+    const rules: SkillRule[] = [
+      'y_total_score',
+      'y_response_score',
+      'y_burst',
+      'y_crash',
+    ];
+
+    return {
+      id: skillId,
+      name,
+      description,
+      maxUsesPerClass:
+        index >= 2 ? 1 : 0,
+      type:
+        index === 3
+          ? 'debuff_attack'
+          : 'score',
+      rule: rules[index],
+    };
+  }
+
+  const rules: SkillRule[] = [
+    'primary_score',
+    'product_score',
+    'difference_score',
+    'combo_score_and_debuff',
+  ];
+
+  return {
+    id: skillId,
+    name,
+    description,
+    maxUsesPerClass:
+      index === 3 ? 1 : 0,
+    type:
+      index === 3
+        ? 'debuff_attack'
+        : 'score',
+    rule: rules[index],
+    primaryStat:
+      index === 1 ? rank[2] : rank[0],
+    secondaryStat:
+      index === 1 ? rank[3] : rank[1],
+    tertiaryStat: rank[3],
+  };
+};
+
 const getEffectiveStats = (
   avatar: BattleAvatar,
+  turnOrdinal: number,
 ): Record<StatKey, number> => {
-  const result: Record<
-    StatKey,
-    number
-  > = {
-    hp: Number(
-      avatar.stats?.hp ?? 0,
-    ),
+  const preset = getCoordinatePresetForAvatar(avatar);
+  if (!preset) {
+    throw new Error(
+      'Avatarの公式コーデ性能を確認できません。',
+    );
+  }
 
-    intellect: Number(
-      avatar.stats?.intellect ?? 0,
-    ),
-
-    dexterity: Number(
-      avatar.stats?.dexterity ?? 0,
-    ),
-
-    charm: Number(
-      avatar.stats?.charm ?? 0,
-    ),
+  const result: Record<StatKey, number> = {
+    hp: Number(preset.stats.hp),
+    intellect: Number(preset.stats.intellect),
+    dexterity: Number(preset.stats.dexterity),
+    charm: Number(preset.stats.charm),
   };
+
+  const activeSupportEffects =
+    (avatar.supportEffects ?? []).filter(
+      (effect) =>
+        isSupportEffectActive(
+          effect,
+          turnOrdinal,
+        ),
+    );
+
+  for (const effect of activeSupportEffects) {
+    if (effect.statDelta) {
+      for (const key of STAT_KEYS) {
+        result[key] = Math.max(
+          0,
+          result[key] +
+            Number(
+              effect.statDelta[key] ??
+                0,
+            ),
+        );
+      }
+    }
+
+    if (effect.statOverride) {
+      for (const key of STAT_KEYS) {
+        const override =
+          effect.statOverride[key];
+        if (typeof override === 'number') {
+          result[key] = Math.max(
+            0,
+            override,
+          );
+        }
+      }
+    }
+  }
 
   for (const key of STAT_KEYS) {
     const debuff = Number(
       avatar.currentDebuff?.[key] ?? 0,
     );
-
     const boost = Number(
       avatar.statBoost?.[key] ?? 1,
     );
@@ -226,6 +456,46 @@ const getEffectiveStats = (
 
   return result;
 };
+
+const sanitizeFreshBattleAvatars = (
+  avatars: BattleAvatar[],
+): BattleAvatar[] =>
+  avatars.map((avatar) => {
+    const preset = getCoordinatePresetForAvatar(avatar);
+    if (!preset) {
+      throw new Error(
+        'Avatarの公式コーデ性能を確認できません。',
+      );
+    }
+
+    return {
+      ...avatar,
+      stats: { ...preset.stats },
+      baseStats: { ...preset.stats },
+      currentDebuff: {
+        hp: 0,
+        intellect: 0,
+        dexterity: 0,
+        charm: 0,
+      },
+      debuffImmune: false,
+      statBoost: {},
+      supportEffects: [],
+      supportControlEffects: [],
+    };
+  });
+
+const isFreshBattleStart = (
+  room: RoomData,
+  actor: PlayerData,
+  target: PlayerData,
+): boolean =>
+  room.currentYear === 1 &&
+  room.turnIndex === 0 &&
+  !actor.lastSkillActionId &&
+  !actor.lastSupportActionId &&
+  !target.lastSkillActionId &&
+  !target.lastSupportActionId;
 
 const addDebuffs = (
   avatar: BattleAvatar,
@@ -280,53 +550,34 @@ const calculateSkillResult = (
   skill: Skill,
   actor: BattleAvatar,
   target: BattleAvatar,
+  turnOrdinal: number,
   selectedBoostStat?: StatKey,
 ) => {
-  const effective =
-    getEffectiveStats(actor);
-
-  const targetEffective =
-    getEffectiveStats(target);
+  const effective = getEffectiveStats(
+    actor,
+    turnOrdinal,
+  );
+  const targetEffective = getEffectiveStats(
+    target,
+    turnOrdinal,
+  );
 
   let gainedScore = 0;
-
-  const debuffs: Partial<
-    Record<StatKey, number>
-  > = {};
-
+  const debuffs: Partial<Record<StatKey, number>> = {};
   let nextActor = actor;
   let nextTarget = target;
 
-  if (
-    skill.rule ===
-    'primary_score'
-  ) {
-    const stat =
-      skill.primaryStat ?? 'hp';
-
-    gainedScore =
-      effective[stat] * 10;
-  } else if (
-    skill.rule ===
-    'product_score'
-  ) {
-    const first =
-      skill.primaryStat ?? 'hp';
-
-    const second =
-      skill.secondaryStat ??
-      'intellect';
-
+  if (skill.rule === 'primary_score') {
+    const stat = skill.primaryStat ?? 'hp';
+    gainedScore = effective[stat] * 10;
+  } else if (skill.rule === 'product_score') {
+    const first = skill.primaryStat ?? 'hp';
+    const second = skill.secondaryStat ?? 'intellect';
     gainedScore =
       effective[first] *
       effective[second];
-  } else if (
-    skill.rule ===
-    'difference_score'
-  ) {
-    const stat =
-      skill.primaryStat ?? 'hp';
-
+  } else if (skill.rule === 'difference_score') {
+    const stat = skill.primaryStat ?? 'hp';
     gainedScore =
       Math.max(
         0,
@@ -337,87 +588,61 @@ const calculateSkillResult = (
     skill.rule ===
     'combo_score_and_debuff'
   ) {
-    const first =
-      skill.secondaryStat ??
-      'intellect';
-
-    const second =
-      skill.tertiaryStat ??
-      'charm';
-
-    const targetStat =
-      skill.primaryStat ?? 'hp';
+    const first = skill.secondaryStat ?? 'intellect';
+    const second = skill.tertiaryStat ?? 'charm';
+    const targetStat = skill.primaryStat ?? 'hp';
 
     gainedScore =
-      (
-        effective[first] +
-        effective[second]
-      ) * 5;
+      (effective[first] +
+        effective[second]) *
+      5;
 
     debuffs[targetStat] =
       Math.ceil(
         targetEffective[targetStat] / 2,
       );
 
-    nextTarget =
-      addDebuffs(
-        target,
-        debuffs,
-      );
+    nextTarget = addDebuffs(
+      target,
+      debuffs,
+    );
   } else if (
     skill.rule ===
     'y_total_score'
   ) {
     gainedScore =
-      Object.values(
-        effective,
-      ).reduce(
-        (sum, value) =>
-          sum + value,
+      Object.values(effective).reduce(
+        (sum, value) => sum + value,
         0,
       ) * 5;
   } else if (
     skill.rule ===
     'y_response_score'
   ) {
-    const actorMin =
-      Math.min(
-        ...Object.values(
-          effective,
-        ),
+    if (!selectedBoostStat) {
+      throw new Error(
+        'A-1技②には対応ステータスが必要です。',
       );
-
-    const targetMin =
-      Math.min(
-        ...Object.values(
-          targetEffective,
-        ),
-      );
+    }
 
     gainedScore =
       Math.max(
         0,
-        actorMin - targetMin,
+        effective[selectedBoostStat] -
+          targetEffective[selectedBoostStat],
       ) * 20;
   } else if (
     skill.rule === 'y_burst'
   ) {
-    if (
-      !selectedBoostStat ||
-      !isStatKey(
-        selectedBoostStat,
-      )
-    ) {
+    if (!selectedBoostStat) {
       throw new Error(
-        'y_burstにはselectedBoostStatが必要です。',
+        'A-1技③には強化ステータスが必要です。',
       );
     }
 
     gainedScore = 100;
-
     nextActor = {
       ...actor,
-
       statBoost: {
         ...(actor.statBoost ?? {}),
         [selectedBoostStat]: 2,
@@ -426,6 +651,12 @@ const calculateSkillResult = (
   } else if (
     skill.rule === 'y_crash'
   ) {
+    gainedScore =
+      Object.values(effective).reduce(
+        (sum, value) => sum + value,
+        0,
+      ) * 2;
+
     for (const key of STAT_KEYS) {
       debuffs[key] =
         Math.ceil(
@@ -433,46 +664,672 @@ const calculateSkillResult = (
         );
     }
 
-    nextTarget =
-      addDebuffs(
-        target,
-        debuffs,
-      );
+    nextTarget = addDebuffs(
+      target,
+      debuffs,
+    );
   } else {
-    if (
-      skill.type === 'score'
-    ) {
-      gainedScore =
-        effective.hp * 10;
-    }
-
-    if (
-      skill.type ===
-      'draw_score'
-    ) {
-      gainedScore =
-        effective.intellect;
-    }
-
-    if (
-      skill.type ===
-      'debuff_attack'
-    ) {
-      debuffs.hp =
-        effective.charm;
-
-      nextTarget =
-        addDebuffs(
-          target,
-          debuffs,
-        );
-    }
+    throw new Error(
+      'Skill ruleが不正です。',
+    );
   }
 
   return {
-    gainedScore,
+    gainedScore: Math.max(0, gainedScore),
     nextActor,
     nextTarget,
+  };
+};
+
+const getSupportPresetFromCard = (
+  card: SupportCardState,
+): EmotionPreset | undefined => {
+  const presetId =
+    card.presetId ||
+    card.id.match(/emo_\d{2}$/)?.[0];
+
+  if (presetId) {
+    const preset = EMOTION_PRESETS.find(
+      (item) => item.id === presetId,
+    );
+    if (preset) return preset;
+  }
+
+  return EMOTION_PRESETS.find(
+    (item) =>
+      item.name === card.name,
+  );
+};
+
+const parseEmotionAmount = (
+  value?: string,
+) => {
+  const match = value?.match(
+    /[-+]?\d+(?:\.\d+)?/,
+  );
+  return match ? Number(match[0]) : 0;
+};
+
+const appendSupportAvatarEffect = (
+  avatar: BattleAvatar,
+  effect: SupportAvatarEffectState,
+  turnOrdinal: number,
+): BattleAvatar => ({
+  ...avatar,
+  supportEffects: [
+    ...(avatar.supportEffects ?? []).filter(
+      (item) =>
+        isSupportEffectActive(
+          item,
+          turnOrdinal,
+        ),
+    ),
+    effect,
+  ],
+});
+
+const appendSupportControlEffect = (
+  avatar: BattleAvatar,
+  effect: SupportControlEffectState,
+  turnOrdinal: number,
+): BattleAvatar => ({
+  ...avatar,
+  supportControlEffects: [
+    ...(avatar.supportControlEffects ?? []).filter(
+      (item) =>
+        isSupportEffectActive(
+          item,
+          turnOrdinal,
+        ),
+    ),
+    effect,
+  ],
+});
+
+const applySupportControlToAllAvatars = (
+  avatars: BattleAvatar[],
+  effect: SupportControlEffectState,
+  turnOrdinal: number,
+) =>
+  avatars.map((avatar) =>
+    appendSupportControlEffect(
+      avatar,
+      effect,
+      turnOrdinal,
+    ),
+  );
+
+const cloneSupportDeltaEffects = (
+  effects: SupportAvatarEffectState[] | undefined,
+  predicate: (delta: number) => boolean,
+  turnOrdinal: number,
+  actionId: string,
+): SupportAvatarEffectState[] =>
+  (effects ?? [])
+    .filter((effect) =>
+      isSupportEffectActive(
+        effect,
+        turnOrdinal,
+      ),
+    )
+    .map((effect, index): SupportAvatarEffectState | null => {
+      const filtered: Partial<Record<StatKey, number>> = {};
+
+      for (const stat of STAT_KEYS) {
+        const value = Number(
+          effect.statDelta?.[stat] ?? 0,
+        );
+        if (value !== 0 && predicate(value)) {
+          filtered[stat] = value;
+        }
+      }
+
+      if (!Object.keys(filtered).length) {
+        return null;
+      }
+
+      return {
+        ...effect,
+        id: `${actionId}_reflect_${index}_${effect.id}`,
+        statDelta: filtered,
+      };
+    })
+    .filter(
+      (effect): effect is SupportAvatarEffectState =>
+        effect !== null,
+    );
+
+const calculateSupportEffectResult = (
+  preset: EmotionPreset,
+  actorAvatars: BattleAvatar[],
+  targetAvatars: BattleAvatar[],
+  activeIndex: number,
+  turnOrdinal: number,
+  actionId: string,
+) => {
+  const actor = actorAvatars[activeIndex];
+  const target = targetAvatars[activeIndex];
+
+  if (!actor || !target) {
+    throw new Error(
+      '対象Avatarが存在しません。',
+    );
+  }
+
+  let nextActorAvatars: BattleAvatar[] = actorAvatars.map((avatar) => ({
+    ...avatar,
+    supportEffects: [...(avatar.supportEffects ?? [])],
+    supportControlEffects: [
+      ...(avatar.supportControlEffects ?? []),
+    ],
+  }));
+  let nextTargetAvatars: BattleAvatar[] = targetAvatars.map((avatar) => ({
+    ...avatar,
+    supportEffects: [...(avatar.supportEffects ?? [])],
+    supportControlEffects: [
+      ...(avatar.supportControlEffects ?? []),
+    ],
+  }));
+
+  const amount = parseEmotionAmount(
+    preset.effectAmount,
+  );
+
+  const statMap: Partial<
+    Record<EmotionPreset['effectCategory'], StatKey>
+  > = {
+    '体力': 'hp',
+    '知略': 'intellect',
+    '器用': 'dexterity',
+    '特技': 'charm',
+  };
+
+  let actorScoreDelta = 0;
+  let targetScoreDelta = 0;
+  let extraDraw = 0;
+
+  const appendToActor = (
+    effect: Omit<SupportAvatarEffectState, 'id'>,
+  ) => {
+    nextActorAvatars[activeIndex] =
+      appendSupportAvatarEffect(
+        nextActorAvatars[activeIndex],
+        {
+          ...effect,
+          id: `${actionId}_actor`,
+        },
+        turnOrdinal,
+      );
+  };
+
+  const appendToTarget = (
+    effect: Omit<SupportAvatarEffectState, 'id'>,
+  ) => {
+    nextTargetAvatars[activeIndex] =
+      appendSupportAvatarEffect(
+        nextTargetAvatars[activeIndex],
+        {
+          ...effect,
+          id: `${actionId}_target`,
+        },
+        turnOrdinal,
+      );
+  };
+
+  if (preset.effectCategory === '全ステータス') {
+    const delta = {
+      hp: amount,
+      intellect: amount,
+      dexterity: amount,
+      charm: amount,
+    };
+
+    if (preset.target === '自分') {
+      appendToActor({
+        sourcePresetId: preset.id,
+        statDelta: delta,
+        expiresAtTurnOrdinal:
+          getSupportEffectExpiration(
+            preset,
+            turnOrdinal,
+            false,
+          ),
+      });
+    }
+
+    if (preset.target === '相手') {
+      appendToTarget({
+        sourcePresetId: preset.id,
+        statDelta: delta,
+        expiresAtTurnOrdinal:
+          getSupportEffectExpiration(
+            preset,
+            turnOrdinal,
+            true,
+          ),
+      });
+    }
+  } else if (
+    statMap[preset.effectCategory]
+  ) {
+    const stat = statMap[
+      preset.effectCategory
+    ] as StatKey;
+
+    if (preset.target === '自分') {
+      appendToActor({
+        sourcePresetId: preset.id,
+        statDelta: { [stat]: amount },
+        expiresAtTurnOrdinal:
+          getSupportEffectExpiration(
+            preset,
+            turnOrdinal,
+            false,
+          ),
+      });
+    }
+
+    if (preset.target === '相手') {
+      appendToTarget({
+        sourcePresetId: preset.id,
+        statDelta: { [stat]: amount },
+        expiresAtTurnOrdinal:
+          getSupportEffectExpiration(
+            preset,
+            turnOrdinal,
+            true,
+          ),
+      });
+    }
+  } else if (
+    preset.effectCategory ===
+    'スコア'
+  ) {
+    if (preset.id === 'emo_21') {
+      actorScoreDelta = Math.abs(amount);
+    } else if (
+      preset.id === 'emo_22'
+    ) {
+      targetScoreDelta = -Math.abs(amount);
+    } else {
+      throw new Error(
+        '未定義のスコアサポートです。',
+      );
+    }
+  } else if (
+    preset.effectCategory ===
+    'サポートカード使用数'
+  ) {
+    const effect: SupportControlEffectState = {
+      id: actionId,
+      sourcePresetId: preset.id,
+      duration: preset.duration,
+      kind:
+        preset.statEffect.includes(
+          '制限されない',
+        )
+          ? 'free'
+          : 'limit',
+      maxUsesPerTurn:
+        preset.statEffect.includes(
+          '制限されない',
+        )
+          ? undefined
+          : Math.max(0, amount || 1),
+      expiresAtTurnOrdinal:
+        getSupportEffectExpiration(
+          preset,
+          turnOrdinal,
+          preset.target === '相手',
+        ),
+    };
+
+    if (preset.target === '自分') {
+      nextActorAvatars =
+        applySupportControlToAllAvatars(
+          nextActorAvatars,
+          effect,
+          turnOrdinal,
+        );
+    } else if (
+      preset.target === '相手'
+    ) {
+      nextTargetAvatars =
+        applySupportControlToAllAvatars(
+          nextTargetAvatars,
+          effect,
+          turnOrdinal,
+        );
+    }
+  } else if (
+    preset.effectCategory === 'ドロー'
+  ) {
+    extraDraw = Math.max(
+      0,
+      amount || 1,
+    );
+
+    if (preset.duration === '永続') {
+      const effect: SupportControlEffectState = {
+        id: actionId,
+        sourcePresetId: preset.id,
+        duration: preset.duration,
+        kind: 'extra_draw',
+        extraDrawPerTurn: extraDraw,
+        expiresAtTurnOrdinal: null,
+      };
+
+      nextActorAvatars =
+        applySupportControlToAllAvatars(
+          nextActorAvatars,
+          effect,
+          turnOrdinal,
+        );
+    }
+  } else if (
+    preset.effectCategory ===
+    'ステータスコピー・平均化'
+  ) {
+    const actorEffective =
+      getEffectiveStats(
+        actor,
+        turnOrdinal,
+      );
+    const targetEffective =
+      getEffectiveStats(
+        target,
+        turnOrdinal,
+      );
+
+    if (preset.id === 'emo_29') {
+      const highest = Math.max(
+        ...Object.values(targetEffective),
+      );
+      const key = STAT_KEYS.find(
+        (item) =>
+          targetEffective[item] === highest,
+      ) || 'hp';
+
+      appendToActor({
+        sourcePresetId: preset.id,
+        statOverride: { [key]: highest },
+        expiresAtTurnOrdinal:
+          getSupportEffectExpiration(
+            preset,
+            turnOrdinal,
+            false,
+          ),
+      });
+    } else if (
+      preset.id === 'emo_30'
+    ) {
+      const lowest = Math.min(
+        ...Object.values(actorEffective),
+      );
+      const key = STAT_KEYS.find(
+        (item) =>
+          actorEffective[item] === lowest,
+      ) || 'hp';
+
+      appendToTarget({
+        sourcePresetId: preset.id,
+        statOverride: { [key]: lowest },
+        expiresAtTurnOrdinal:
+          getSupportEffectExpiration(
+            preset,
+            turnOrdinal,
+            true,
+          ),
+      });
+    } else {
+      const average = Math.round(
+        Object.values(actorEffective).reduce(
+          (sum, value) =>
+            sum + value,
+          0,
+        ) / 4,
+      );
+      const override = {
+        hp: average,
+        intellect: average,
+        dexterity: average,
+        charm: average,
+      };
+
+      if (preset.id === 'emo_31') {
+        appendToActor({
+          sourcePresetId: preset.id,
+          statOverride: override,
+          expiresAtTurnOrdinal:
+            getSupportEffectExpiration(
+              preset,
+              turnOrdinal,
+              false,
+            ),
+        });
+      } else if (
+        preset.id === 'emo_32'
+      ) {
+        appendToTarget({
+          sourcePresetId: preset.id,
+          statOverride: override,
+          expiresAtTurnOrdinal:
+            getSupportEffectExpiration(
+              preset,
+              turnOrdinal,
+              true,
+            ),
+        });
+      }
+    }
+  } else if (
+    preset.effectCategory ===
+    '効果反射'
+  ) {
+    if (preset.id === 'emo_33') {
+      const sourceEffects =
+        cloneSupportDeltaEffects(
+          actor.supportEffects,
+          (delta) => delta < 0,
+          turnOrdinal,
+          actionId,
+        );
+      const sourceIds = new Set(
+        sourceEffects.map((effect) =>
+          effect.id.split('_reflect_')[0],
+        ),
+      );
+      nextActorAvatars[activeIndex] = {
+        ...nextActorAvatars[activeIndex],
+        supportEffects: (
+          nextActorAvatars[activeIndex].supportEffects ?? []
+        ).filter(
+          (effect) =>
+            !sourceIds.has(effect.id),
+        ),
+      };
+      for (const effect of sourceEffects) {
+        nextTargetAvatars[activeIndex] =
+          appendSupportAvatarEffect(
+            nextTargetAvatars[activeIndex],
+            effect,
+            turnOrdinal,
+          );
+      }
+    } else if (
+      preset.id === 'emo_34'
+    ) {
+      const sourceEffects =
+        cloneSupportDeltaEffects(
+          target.supportEffects,
+          (delta) => delta > 0,
+          turnOrdinal,
+          actionId,
+        );
+      const sourceIds = new Set(
+        sourceEffects.map((effect) =>
+          effect.id.split('_reflect_')[0],
+        ),
+      );
+      nextTargetAvatars[activeIndex] = {
+        ...nextTargetAvatars[activeIndex],
+        supportEffects: (
+          nextTargetAvatars[activeIndex].supportEffects ?? []
+        ).filter(
+          (effect) =>
+            !sourceIds.has(effect.id),
+        ),
+      };
+      for (const effect of sourceEffects) {
+        nextActorAvatars[activeIndex] =
+          appendSupportAvatarEffect(
+            nextActorAvatars[activeIndex],
+            effect,
+            turnOrdinal,
+          );
+      }
+    }
+  } else if (
+    preset.effectCategory === '技封印'
+  ) {
+    if (preset.id === 'emo_35') {
+      appendToTarget({
+        sourcePresetId: preset.id,
+        skillSealIndex: 3,
+        expiresAtTurnOrdinal:
+          getSupportEffectExpiration(
+            preset,
+            turnOrdinal,
+            true,
+          ),
+      });
+    }
+  } else {
+    throw new Error(
+      'Support effectCategoryが不正です。',
+    );
+  }
+
+  return {
+    actorAvatars: nextActorAvatars,
+    targetAvatars: nextTargetAvatars,
+    actorScoreDelta,
+    targetScoreDelta,
+    extraDraw,
+  };
+};
+
+const getSupportUsageLimitFromEffects = (
+  effects: SupportControlEffectState[] | undefined,
+  turnOrdinal: number,
+) => {
+  const active = (effects ?? []).filter(
+    (effect) =>
+      isSupportEffectActive(
+        effect,
+        turnOrdinal,
+      ),
+  );
+
+  if (
+    active.some(
+      (effect) =>
+        effect.duration === '一時' &&
+        effect.kind === 'free',
+    )
+  ) {
+    return Infinity;
+  }
+
+  const temporaryLimits = active
+    .filter(
+      (effect) =>
+        effect.duration === '一時' &&
+        effect.kind === 'limit' &&
+        typeof effect.maxUsesPerTurn === 'number',
+    )
+    .map(
+      (effect) =>
+        effect.maxUsesPerTurn as number,
+    );
+  if (temporaryLimits.length) {
+    return Math.min(
+      ...temporaryLimits,
+    );
+  }
+
+  if (
+    active.some(
+      (effect) =>
+        effect.duration === '永続' &&
+        effect.kind === 'free',
+    )
+  ) {
+    return Infinity;
+  }
+
+  const permanentLimits = active
+    .filter(
+      (effect) =>
+        effect.duration === '永続' &&
+        effect.kind === 'limit' &&
+        typeof effect.maxUsesPerTurn === 'number',
+    )
+    .map(
+      (effect) =>
+        effect.maxUsesPerTurn as number,
+    );
+  if (permanentLimits.length) {
+    return Math.min(
+      ...permanentLimits,
+    );
+  }
+
+  return Infinity;
+};
+
+const getSupportUseCountFromUsedSkills = (
+  usedSkills: Record<string, string[]> | undefined,
+  year: number,
+  turnIndex: number,
+) => {
+  const list =
+    usedSkills?.[String(year)] || [];
+  const marker = `__support_${turnIndex}:`;
+  const entry = list.find(
+    (value) =>
+      value.startsWith(marker),
+  );
+  if (!entry) return 0;
+  const count = Number(
+    entry.slice(marker.length),
+  );
+  return Number.isFinite(count)
+    ? count
+    : 0;
+};
+
+const setSupportUseCountInUsedSkills = (
+  usedSkills: Record<string, string[]>,
+  year: number,
+  turnIndex: number,
+  count: number,
+) => {
+  const key = String(year);
+  const marker = `__support_${turnIndex}:`;
+  const current =
+    usedSkills[key] || [];
+  const filtered = current.filter(
+    (value) =>
+      !value.startsWith(marker),
+  );
+
+  return {
+    ...usedSkills,
+    [key]: [
+      ...filtered,
+      `${marker}${count}`,
+    ],
   };
 };
 
@@ -645,18 +1502,16 @@ export async function POST(
     }
 
     if (
-      body.type !==
-      'USE_SKILL'
+      body.type !== 'USE_SKILL' &&
+      body.type !== 'PLAY_SUPPORT' &&
+      body.type !== 'DRAW_TURN'
     ) {
       return NextResponse.json(
         {
           ok: false,
-          error:
-            '現在のAPIはUSE_SKILLのみ対応しています。',
+          error: 'Action typeが不正です。',
         },
-        {
-          status: 400,
-        },
+        { status: 400 },
       );
     }
 
@@ -714,19 +1569,28 @@ export async function POST(
     }
 
     if (
-      typeof body.skillId !==
-        'string' ||
-      !body.skillId
+      body.type === 'PLAY_SUPPORT' &&
+      (typeof body.supportCardId !== 'string' || !body.supportCardId)
     ) {
       return NextResponse.json(
         {
           ok: false,
-          error:
-            'skillIdがありません。',
+          error: 'supportCardIdがありません。',
         },
+        { status: 400 },
+      );
+    }
+
+    if (
+      body.type === 'USE_SKILL' &&
+      (typeof body.skillId !== 'string' || !body.skillId)
+    ) {
+      return NextResponse.json(
         {
-          status: 400,
+          ok: false,
+          error: 'skillIdがありません。',
         },
+        { status: 400 },
       );
     }
 
@@ -766,6 +1630,9 @@ export async function POST(
 
     const requestedSkillId =
       body.skillId;
+
+    const requestedSupportCardId =
+      body.supportCardId;
 
     const requestedBoostStat =
       body.selectedBoostStat;
@@ -909,19 +1776,6 @@ export async function POST(
           const opponentData =
             opponentSnapshot.data() as PlayerData;
 
-
-          const actorBattleStateVersion =
-            Number(
-              actorData.battleStateVersion ?? 0,
-            );
-
-          const opponentBattleStateVersion =
-            Number(
-              opponentData.battleStateVersion ?? 0,
-            );
-
-
-
           if (
             actorData.uid &&
             actorData.uid !== authUid
@@ -939,6 +1793,663 @@ export async function POST(
               'Actor Playerのroleが一致しません。',
             );
           }
+
+          if (body.type === 'DRAW_TURN') {
+            if (
+              requestedAvatarIndex < 0 ||
+              requestedAvatarIndex > 2
+            ) {
+              throw new Error(
+                'avatarIndexが不正です。',
+              );
+            }
+
+            if (
+              requestedAvatarIndex !==
+              currentYear - 1
+            ) {
+              throw new Error(
+                '現在のクラスとAvatarが一致しません。',
+              );
+            }
+
+            const turnOrdinal =
+              getBattleTurnOrdinal(
+                currentYear,
+                turnIndex,
+              );
+
+            if (
+              actorData.lastDrawTurnOrdinal ===
+              turnOrdinal
+            ) {
+              const privatePlayerRef =
+                roomRef
+                  .collection('privatePlayers')
+                  .doc(actorRole);
+              const privateSnapshot =
+                await transaction.get(
+                  privatePlayerRef,
+                );
+              const privateData =
+                privateSnapshot.exists
+                  ? (privateSnapshot.data() as PrivatePlayerData)
+                  : {};
+
+              return {
+                actionId,
+                alreadyProcessed: true,
+                drawCount: 0,
+                hand: Array.isArray(privateData.hand)
+                  ? privateData.hand
+                  : [],
+                deck: Array.isArray(privateData.deck)
+                  ? privateData.deck
+                  : [],
+              };
+            }
+
+            let actorAvatars =
+              actorData.avatars
+                ? [...actorData.avatars]
+                : [];
+            const freshBattleStart =
+              isFreshBattleStart(
+                roomData,
+                actorData,
+                opponentData,
+              );
+
+            if (freshBattleStart) {
+              actorAvatars =
+                sanitizeFreshBattleAvatars(
+                  actorAvatars,
+                );
+            }
+
+            const activeAvatar =
+              actorAvatars[
+                requestedAvatarIndex
+              ];
+
+            if (!activeAvatar) {
+              throw new Error(
+                '対象Avatarが存在しません。',
+              );
+            }
+
+            const privatePlayerRef =
+              roomRef
+                .collection('privatePlayers')
+                .doc(actorRole);
+            const privateSnapshot =
+              await transaction.get(
+                privatePlayerRef,
+              );
+
+            if (!privateSnapshot.exists) {
+              throw new Error(
+                'Private Playerが存在しません。',
+              );
+            }
+
+            const privateData =
+              privateSnapshot.data() as PrivatePlayerData;
+            const hand = Array.isArray(privateData.hand)
+              ? [...privateData.hand]
+              : [];
+            const deck = Array.isArray(privateData.deck)
+              ? [...privateData.deck]
+              : [];
+
+            const drawCount = Math.min(
+              1 +
+                getAdditionalDrawFromEffects(
+                  activeAvatar.supportControlEffects,
+                  turnOrdinal,
+                ),
+              Math.max(0, 7 - hand.length),
+              deck.length,
+            );
+
+            const drawnCards = deck.slice(
+              0,
+              drawCount,
+            );
+            const nextHand = [
+              ...hand,
+              ...drawnCards,
+            ];
+            const nextDeck = deck.slice(
+              drawCount,
+            );
+
+            transaction.set(
+              privatePlayerRef,
+              {
+                uid: authUid,
+                hand: nextHand,
+                deck: nextDeck,
+              },
+              { merge: true },
+            );
+
+            transaction.update(
+              actorPlayerRef,
+              {
+                ...(freshBattleStart
+                  ? {
+                      avatars:
+                        actorAvatars,
+                      battleStateVersion:
+                        Number(
+                          actorData.battleStateVersion ??
+                            0,
+                        ),
+                    }
+                  : {}),
+                handCount:
+                  nextHand.length,
+                deckCount:
+                  nextDeck.length,
+                lastDrawTurnOrdinal:
+                  turnOrdinal,
+              },
+            );
+
+            return {
+              actionId,
+              alreadyProcessed: false,
+              drawCount,
+              hand: nextHand,
+              deck: nextDeck,
+            };
+          }
+
+          if (body.type === 'PLAY_SUPPORT') {
+            if (
+              actorData.lastSupportActionId ===
+              actionId
+            ) {
+              return {
+                actionId,
+                alreadyProcessed: true,
+              };
+            }
+
+            if (
+              requestedAvatarIndex < 0 ||
+              requestedAvatarIndex > 2
+            ) {
+              throw new Error(
+                'avatarIndexが不正です。',
+              );
+            }
+
+            if (
+              requestedAvatarIndex !==
+              currentYear - 1
+            ) {
+              throw new Error(
+                '現在のクラスとAvatarが一致しません。',
+              );
+            }
+
+            const privatePlayerRef =
+              roomRef
+                .collection('privatePlayers')
+                .doc(actorRole);
+
+            const privateSnapshot =
+              await transaction.get(
+                privatePlayerRef,
+              );
+
+            if (!privateSnapshot.exists) {
+              throw new Error(
+                'Private Playerが存在しません。',
+              );
+            }
+
+            const privateData =
+              privateSnapshot.data() as PrivatePlayerData;
+
+            const hand = Array.isArray(
+              privateData.hand,
+            )
+              ? [...privateData.hand]
+              : [];
+
+            if (
+              typeof requestedSupportCardId !==
+                'string'
+            ) {
+              throw new Error(
+                'supportCardIdが不正です。',
+              );
+            }
+
+            const supportIndex = hand.findIndex(
+              (card) =>
+                card?.id ===
+                requestedSupportCardId,
+            );
+
+            if (supportIndex < 0) {
+              throw new Error(
+                '指定されたサポートカードが手札に存在しません。',
+              );
+            }
+
+            const supportCard =
+              hand[supportIndex];
+
+            if (!supportCard) {
+              throw new Error(
+                'サポートカード情報を取得できません。',
+              );
+            }
+
+            const preset =
+              getSupportPresetFromCard(
+                supportCard,
+              );
+
+            if (!preset) {
+              throw new Error(
+                '公式エモーションを特定できないサポートカードです。',
+              );
+            }
+
+            let actorAvatars =
+              actorData.avatars
+                ? [...actorData.avatars]
+                : [];
+            let opponentAvatars =
+              opponentData.avatars
+                ? [...opponentData.avatars]
+                : [];
+
+            const freshBattleStart = isFreshBattleStart(
+              roomData,
+              actorData,
+              opponentData,
+            );
+
+            if (freshBattleStart) {
+              actorAvatars =
+                sanitizeFreshBattleAvatars(actorAvatars);
+              opponentAvatars =
+                sanitizeFreshBattleAvatars(opponentAvatars);
+            }
+
+            const activeAvatar =
+              actorAvatars[
+                requestedAvatarIndex
+              ];
+            const targetAvatar =
+              opponentAvatars[
+                requestedAvatarIndex
+              ];
+
+            if (
+              !activeAvatar ||
+              !targetAvatar
+            ) {
+              throw new Error(
+                '対象Avatarが存在しません。',
+              );
+            }
+
+            const turnOrdinal =
+              getBattleTurnOrdinal(
+                currentYear,
+                turnIndex,
+              );
+
+            const supportLimit =
+              getSupportUsageLimitFromEffects(
+                activeAvatar.supportControlEffects,
+                turnOrdinal,
+              );
+
+            const currentUsedSkills =
+              actorData.usedSkills &&
+              typeof actorData.usedSkills ===
+                'object'
+                ? actorData.usedSkills
+                : {};
+
+            const supportUseCount =
+              getSupportUseCountFromUsedSkills(
+                currentUsedSkills,
+                currentYear,
+                turnIndex,
+              );
+
+            const isFreeSupportCard =
+              preset.effectCategory === 'サポートカード使用数' &&
+              preset.statEffect.includes('制限されない');
+
+            if (
+              !isFreeSupportCard &&
+              Number.isFinite(supportLimit) &&
+              supportUseCount >= supportLimit
+            ) {
+              throw new Error(
+                'このターンはサポートカードをこれ以上使用できません。',
+              );
+            }
+
+            const calculated =
+              calculateSupportEffectResult(
+                preset,
+                actorAvatars,
+                opponentAvatars,
+                requestedAvatarIndex,
+                turnOrdinal,
+                actionId,
+              );
+
+            const nextHand = hand.filter(
+              (_card, index) =>
+                index !== supportIndex,
+            );
+
+            const currentDeck =
+              Array.isArray(privateData.deck)
+                ? [...privateData.deck]
+                : [];
+
+            const drawCount = Math.min(
+              calculated.extraDraw,
+              Math.max(
+                0,
+                7 - nextHand.length,
+              ),
+              currentDeck.length,
+            );
+
+            const drawnCards =
+              currentDeck.slice(
+                0,
+                drawCount,
+              );
+            const nextDeck =
+              currentDeck.slice(
+                drawCount,
+              );
+
+            nextHand.push(
+              ...drawnCards,
+            );
+
+            let actorClassScores =
+              Array.isArray(
+                roomData[
+                  actorRole === 'host'
+                    ? 'hostClassScores'
+                    : 'guestClassScores'
+                ],
+              )
+                ? [
+                    ...(roomData[
+                      actorRole === 'host'
+                        ? 'hostClassScores'
+                        : 'guestClassScores'
+                    ] ?? [0, 0, 0]),
+                  ]
+                : [0, 0, 0];
+
+            let targetClassScores =
+              Array.isArray(
+                roomData[
+                  opponentRole === 'host'
+                    ? 'hostClassScores'
+                    : 'guestClassScores'
+                ],
+              )
+                ? [
+                    ...(roomData[
+                      opponentRole === 'host'
+                        ? 'hostClassScores'
+                        : 'guestClassScores'
+                    ] ?? [0, 0, 0]),
+                  ]
+                : [0, 0, 0];
+
+            const oldActorClassScore = Number(
+              actorClassScores[
+                requestedAvatarIndex
+              ] ?? 0,
+            );
+            const oldTargetClassScore = Number(
+              targetClassScores[
+                requestedAvatarIndex
+              ] ?? 0,
+            );
+
+            const newActorClassScore =
+              Math.max(
+                0,
+                oldActorClassScore +
+                  calculated.actorScoreDelta,
+              );
+            const newTargetClassScore =
+              Math.max(
+                0,
+                oldTargetClassScore +
+                  calculated.targetScoreDelta,
+              );
+
+            actorClassScores[
+              requestedAvatarIndex
+            ] = newActorClassScore;
+            targetClassScores[
+              requestedAvatarIndex
+            ] = newTargetClassScore;
+
+            const actualActorScoreDelta =
+              newActorClassScore -
+              oldActorClassScore;
+            const actualTargetScoreDelta =
+              newTargetClassScore -
+              oldTargetClassScore;
+
+            const actorTotalField =
+              actorRole === 'host'
+                ? 'hostTotalScore'
+                : 'guestTotalScore';
+            const targetTotalField =
+              opponentRole === 'host'
+                ? 'hostTotalScore'
+                : 'guestTotalScore';
+
+            const actorTotal =
+              Math.max(
+                0,
+                Number(
+                  roomData[
+                    actorTotalField
+                  ] ?? 0,
+                ) +
+                  actualActorScoreDelta,
+              );
+            const targetTotal =
+              Math.max(
+                0,
+                Number(
+                  roomData[
+                    targetTotalField
+                  ] ?? 0,
+                ) +
+                  actualTargetScoreDelta,
+              );
+
+            const nextUsedSkills =
+              setSupportUseCountInUsedSkills(
+                currentUsedSkills,
+                currentYear,
+                turnIndex,
+                supportUseCount + 1,
+              );
+
+            const nextVersion =
+              Number(
+                actorData.battleStateVersion ??
+                  0,
+              ) + 1;
+            const nextOpponentVersion =
+              Number(
+                opponentData.battleStateVersion ??
+                  0,
+              ) + 1;
+
+            const processedAt =
+              Date.now();
+
+            const lastSupportAction = {
+              actionId,
+              player:
+                actorRole,
+              year:
+                currentYear,
+              turnIndex,
+              avatarIndex:
+                requestedAvatarIndex,
+              supportCardId:
+                requestedSupportCardId,
+              supportPresetId:
+                preset.id,
+              supportName:
+                preset.name,
+              actorScoreDelta:
+                actualActorScoreDelta,
+              targetScoreDelta:
+                actualTargetScoreDelta,
+              processedAt,
+            };
+
+            const nextPendingAction = {
+              actionId,
+              type: 'PLAY_SUPPORT' as const,
+              playerRole: actorRole,
+              uid: authUid,
+              year: currentYear,
+              turnIndex,
+              avatarIndex:
+                requestedAvatarIndex,
+              supportCardId:
+                requestedSupportCardId,
+              supportPresetId:
+                preset.id,
+              submittedAt:
+                processedAt,
+              supportCardConsumed: true,
+            };
+
+            transaction.set(
+              privatePlayerRef,
+              {
+                uid: authUid,
+                hand: nextHand,
+                deck: nextDeck,
+              },
+              { merge: true },
+            );
+
+            transaction.update(
+              roomRef,
+              {
+                ...(actorRole === 'host'
+                  ? {
+                      hostClassScores:
+                        actorClassScores,
+                      guestClassScores:
+                        targetClassScores,
+                      hostTotalScore:
+                        actorTotal,
+                      guestTotalScore:
+                        targetTotal,
+                    }
+                  : {
+                      guestClassScores:
+                        actorClassScores,
+                      hostClassScores:
+                        targetClassScores,
+                      guestTotalScore:
+                        actorTotal,
+                      hostTotalScore:
+                        targetTotal,
+                    }),
+              },
+            );
+
+            transaction.update(
+              actorPlayerRef,
+              {
+                avatars:
+                  calculated.actorAvatars,
+                handCount:
+                  nextHand.length,
+                deckCount:
+                  nextDeck.length,
+                usedSkills:
+                  nextUsedSkills,
+                battleStateVersion:
+                  nextVersion,
+                lastSupportActionId:
+                  actionId,
+                lastSupportAction,
+                pendingAction:
+                  nextPendingAction,
+              },
+            );
+
+            transaction.update(
+              opponentPlayerRef,
+              {
+                avatars:
+                  calculated.targetAvatars,
+                battleStateVersion:
+                  nextOpponentVersion,
+              },
+            );
+
+            return {
+              actionId,
+              alreadyProcessed: false,
+              supportPresetId:
+                preset.id,
+              supportName:
+                preset.name,
+              actorScoreDelta:
+                actualActorScoreDelta,
+              targetScoreDelta:
+                actualTargetScoreDelta,
+              extraDraw: drawCount,
+              actorRole,
+              nextYear: currentYear,
+              nextTurnIndex: turnIndex,
+              nextBattlePhase:
+                roomData.battlePhase ??
+                'battle',
+              actorAvatars:
+                calculated.actorAvatars,
+              opponentAvatars:
+                calculated.targetAvatars,
+            };
+          }
+
+          const actorBattleStateVersion =
+            Number(
+              actorData.battleStateVersion ?? 0,
+            );
+
+          const opponentBattleStateVersion =
+            Number(
+              opponentData.battleStateVersion ?? 0,
+            );
 
           if (
             actorData.lastSkillActionId ===
@@ -966,12 +2477,8 @@ export async function POST(
               opponentAvatars:
                 opponentData.avatars ??
                 [],
-
-
               actorBattleStateVersion,
               opponentBattleStateVersion,
-
-
             };
           }
 
@@ -1006,15 +2513,35 @@ export async function POST(
               ? [...opponentData.avatars]
               : [];
 
+          const freshBattleStart = isFreshBattleStart(
+            roomData,
+            actorData,
+            opponentData,
+          );
+
+          const sanitizedActorAvatars =
+            freshBattleStart
+              ? sanitizeFreshBattleAvatars(actorAvatars)
+              : actorAvatars;
+          const sanitizedOpponentAvatars =
+            freshBattleStart
+              ? sanitizeFreshBattleAvatars(opponentAvatars)
+              : opponentAvatars;
+
           const actorAvatar =
-            actorAvatars[
+            sanitizedActorAvatars[
               avatarIndex
             ];
 
           const opponentAvatar =
-            opponentAvatars[
+            sanitizedOpponentAvatars[
               avatarIndex
             ];
+
+          if (freshBattleStart) {
+            actorAvatars.splice(0, actorAvatars.length, ...sanitizedActorAvatars);
+            opponentAvatars.splice(0, opponentAvatars.length, ...sanitizedOpponentAvatars);
+          }
 
           if (
             !actorAvatar ||
@@ -1025,16 +2552,26 @@ export async function POST(
             );
           }
 
-          const skill =
-            actorAvatar.skills.find(
-              (item) =>
-                item.id ===
-                requestedSkillId,
-            );
+          if (typeof requestedSkillId !== 'string') {
+            throw new Error('skillIdが不正です。');
+          }
 
-          if (!skill) {
+          const skill = getCanonicalSkill(
+            actorAvatar,
+            requestedSkillId,
+          );
+
+          if (
+            (skill.rule ===
+              'y_response_score' ||
+              skill.rule === 'y_burst') &&
+            (!requestedBoostStat ||
+              !isStatKey(
+                requestedBoostStat,
+              ))
+          ) {
             throw new Error(
-              '指定されたSkillが存在しません。',
+              'このA-1技にはselectedBoostStatが必要です。',
             );
           }
 
@@ -1071,11 +2608,18 @@ export async function POST(
             );
           }
 
+          const turnOrdinal =
+            getBattleTurnOrdinal(
+              currentYear,
+              turnIndex,
+            );
+
           const calculated =
             calculateSkillResult(
               skill,
               actorAvatar,
               opponentAvatar,
+              turnOrdinal,
               requestedBoostStat,
             );
 
@@ -1238,7 +2782,6 @@ export async function POST(
 
               battleStateVersion:
                 opponentBattleStateVersion + 1,
-
             },
           );
 
@@ -1261,14 +2804,10 @@ export async function POST(
               next.battlePhase,
 
             actorAvatars,
-
             opponentAvatars,
-
 
             actorBattleStateVersion,
             opponentBattleStateVersion,
-
-
           };
         },
       );
