@@ -17,31 +17,24 @@ export type SkillPreResultEffectPayload = {
 export type SupportPreResultEffectPayload = {
   effectKey: BattlePreResultEffectKey;
   cardName: string;
+  imageUrl?: string;
+  targetPositions?: {
+    self?: { x: number; y: number };
+    opponent?: { x: number; y: number };
+  };
   dialogue?: string;
   colorHex?: string;
   target?: 'self' | 'opponent' | 'both';
 };
 
 type EffectItem =
-  | {
-      id: number;
-      kind: 'skill';
-      payload: SkillPreResultEffectPayload;
-    }
-  | {
-      id: number;
-      kind: 'support';
-      payload: SupportPreResultEffectPayload;
-    };
+  | { id: number; kind: 'skill'; payload: SkillPreResultEffectPayload }
+  | { id: number; kind: 'support'; payload: SupportPreResultEffectPayload };
 
 type EffectListener = (effect: EffectItem | null) => void;
 
 const listeners = new Set<EffectListener>();
-const queue: Array<{
-  effect: EffectItem;
-  resolve: () => void;
-}> = [];
-
+const queue: Array<{ effect: EffectItem; resolve: () => void }> = [];
 let currentEffect: EffectItem | null = null;
 let currentResolve: (() => void) | null = null;
 let nextEffectId = 0;
@@ -66,24 +59,12 @@ function enqueue(effect: EffectItem): Promise<void> {
   });
 }
 
-export function playSkillPreResultEffect(
-  payload: SkillPreResultEffectPayload,
-): Promise<void> {
-  return enqueue({
-    id: nextEffectId++,
-    kind: 'skill',
-    payload,
-  });
+export function playSkillPreResultEffect(payload: SkillPreResultEffectPayload): Promise<void> {
+  return enqueue({ id: nextEffectId++, kind: 'skill', payload });
 }
 
-export function playSupportPreResultEffect(
-  payload: SupportPreResultEffectPayload,
-): Promise<void> {
-  return enqueue({
-    id: nextEffectId++,
-    kind: 'support',
-    payload,
-  });
+export function playSupportPreResultEffect(payload: SupportPreResultEffectPayload): Promise<void> {
+  return enqueue({ id: nextEffectId++, kind: 'support', payload });
 }
 
 export function isBattlePreResultEffectPlaying(): boolean {
@@ -103,7 +84,7 @@ export default function BattleEffectLayer() {
   useEffect(() => {
     if (!effect) return;
 
-    const duration = effect.kind === 'skill' ? 900 : 950;
+    const duration = effect.kind === 'skill' ? 1600 : 1500;
     const timer = window.setTimeout(() => {
       const completedResolve = currentResolve;
       currentResolve = null;
@@ -134,6 +115,8 @@ export default function BattleEffectLayer() {
           visible
           effectKey={effect.payload.effectKey}
           cardName={effect.payload.cardName}
+          imageUrl={effect.payload.imageUrl}
+          targetPositions={effect.payload.targetPositions}
           dialogue={effect.payload.dialogue}
           colorHex={effect.payload.colorHex}
           target={effect.payload.target}

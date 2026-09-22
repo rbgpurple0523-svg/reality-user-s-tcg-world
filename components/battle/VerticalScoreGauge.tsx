@@ -18,7 +18,7 @@ interface VerticalScoreGaugeProps {
 
 function getAnimationDuration(from: number, to: number): number {
   const delta = Math.abs(to - from);
-  return Math.min(1200, Math.max(500, 500 + delta * 0.08));
+  return Math.min(850, Math.max(320, 320 + delta * 0.05));
 }
 
 export default function VerticalScoreGauge({
@@ -35,7 +35,6 @@ export default function VerticalScoreGauge({
   useEffect(() => {
     const from = displayScoreRef.current;
     const to = Number.isFinite(score) ? score : 0;
-
     if (from === to) return;
 
     const duration = getAnimationDuration(from, to);
@@ -58,7 +57,6 @@ export default function VerticalScoreGauge({
     };
 
     frameId = window.requestAnimationFrame(animate);
-
     return () => window.cancelAnimationFrame(frameId);
   }, [score]);
 
@@ -73,9 +71,7 @@ export default function VerticalScoreGauge({
       className={`flex flex-col items-center gap-1 ${compact ? 'w-9' : 'w-11'}`}
       style={{ minHeight: trackHeight + 52 }}
     >
-      <div className="text-[8px] font-black tracking-wide text-slate-500">
-        {label}
-      </div>
+      <div className="text-[8px] font-black tracking-wide text-slate-500">{label}</div>
 
       <div
         className="relative overflow-visible"
@@ -89,7 +85,7 @@ export default function VerticalScoreGauge({
           style={{
             height: heightRatio,
             minHeight: displayScore > 0 ? 2 : 0,
-            background: `linear-gradient(to top, ${accent}, ${side === 'self' ? '#A5B4FC' : '#CBD5E1'})`,
+            background: accent,
             boxShadow: overReference
               ? `0 0 18px ${accent}, 0 0 42px ${accent}99`
               : `0 0 10px ${accent}66`,
@@ -98,7 +94,7 @@ export default function VerticalScoreGauge({
         />
 
         <div
-          className="absolute left-1/2 z-20 h-px -translate-x-1/2 bg-white/80"
+          className="absolute left-1/2 z-20 h-px -translate-x-1/2 bg-white/85"
           style={{ bottom: '50%', width: compact ? 24 : 32 }}
         />
         <div
@@ -128,7 +124,7 @@ export default function VerticalScoreGauge({
               boxShadow: `0 0 14px ${accent}`,
             }}
           >
-            10000突破
+            5000突破
           </div>
         )}
 

@@ -7,7 +7,7 @@ import { normalizeBattleColorHex } from './battleEffectTypes';
 
 interface BattleCardRevealProps {
   revealed: boolean;
-  front: React.ReactNode;
+  children: React.ReactNode;
   colorHex?: string;
   width?: number | string;
   height?: number | string;
@@ -17,7 +17,7 @@ interface BattleCardRevealProps {
 
 export default function BattleCardReveal({
   revealed,
-  front,
+  children,
   colorHex,
   width = 180,
   height = 250,
@@ -48,7 +48,7 @@ export default function BattleCardReveal({
             boxShadow: revealed ? getColorGlow(accent) : undefined,
           }}
         >
-          {front}
+          {children}
         </div>
       </div>
     </div>

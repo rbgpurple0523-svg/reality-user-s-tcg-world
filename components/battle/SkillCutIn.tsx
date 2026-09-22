@@ -1,7 +1,6 @@
 'use client';
 
 import React from 'react';
-import { BATTLE_EFFECT_DEFINITIONS } from './battleEffectDefinitions';
 import { normalizeBattleColorHex } from './battleEffectTypes';
 import type { BattlePreResultEffectKey } from './battleEffectTypes';
 
@@ -17,7 +16,6 @@ interface SkillCutInProps {
 
 export default function SkillCutIn({
   visible,
-  effectKey,
   characterName,
   skillName,
   dialogue,
@@ -28,75 +26,53 @@ export default function SkillCutIn({
 
   const accent = normalizeBattleColorHex(colorHex);
   const isLeft = side === 'left';
-  const definition = effectKey ? BATTLE_EFFECT_DEFINITIONS[effectKey] : undefined;
 
   return (
     <div
-      className="pointer-events-none fixed inset-x-0 bottom-0 z-[80] overflow-hidden"
+      className="pointer-events-none fixed inset-0 z-[80] flex items-center justify-center overflow-hidden px-3 sm:px-6"
       role="status"
       aria-live="assertive"
     >
       <div
-        className={`skill-cutin-panel relative mx-auto max-w-5xl px-5 py-4 sm:px-8 sm:py-5 ${isLeft ? 'skill-cutin-left' : 'skill-cutin-right'}`}
+        className={`skill-cutin-panel relative w-full max-w-3xl overflow-hidden rounded-[2rem] border ${isLeft ? 'skill-cutin-left' : 'skill-cutin-right'}`}
         style={{
-          background: `linear-gradient(135deg, ${accent}f2, #0f172df5 55%, transparent)`,
-          borderTop: `2px solid ${accent}`,
-          boxShadow: `0 -1rem 3rem ${accent}33`,
+          borderColor: `${accent}bb`,
+          background: `linear-gradient(135deg, ${accent}ee 0%, #0f172df5 42%, #020617ee 100%)`,
+          boxShadow: `0 0 2.5rem ${accent}55, 0 1.5rem 4rem rgba(2,6,23,.45)`,
         }}
       >
-        <div className="relative z-10 max-w-3xl">
-          <div
-            className="text-[10px] font-black tracking-[0.28em] uppercase"
-            style={{ color: accent }}
-          >
-            SKILL ACTIVE
-          </div>
-          <div className="mt-1 text-xl font-black text-white sm:text-3xl">
-            {skillName}
-          </div>
-          <div className="mt-1 text-xs font-bold text-white/80 sm:text-sm">
-            {characterName}
-          </div>
-          {definition && (
-            <div className="mt-1 text-[10px] font-black" style={{ color: accent }}>
-              {definition.label}
-            </div>
-          )}
+        <div className="relative z-10 px-6 py-6 text-center sm:px-10 sm:py-8">
+          <div className="text-[9px] font-black tracking-[0.36em] text-white/55">SKILL ACTIVE</div>
+          <div className="mt-2 text-xs font-black text-white/70">{characterName}</div>
+          <div className="mt-2 text-3xl font-black text-white drop-shadow sm:text-5xl">{skillName}</div>
           {dialogue && (
-            <div className="mt-3 inline-block max-w-full rounded-2xl border border-white/20 bg-white/10 px-4 py-2 text-sm font-black text-white backdrop-blur-sm sm:text-base">
+            <div
+              className="mt-5 mx-auto max-w-2xl rounded-2xl border border-white/20 bg-white/10 px-5 py-4 text-xl font-black leading-relaxed text-white shadow-lg backdrop-blur-sm sm:text-2xl"
+              style={{ textShadow: `0 0 14px ${accent}88` }}
+            >
               {dialogue}
             </div>
           )}
         </div>
 
         <div
-          className="pointer-events-none absolute inset-y-0 w-[42%] skew-x-[-18deg] opacity-70"
+          className="pointer-events-none absolute inset-y-0 w-1/2 skew-x-[-18deg] opacity-45"
           style={{
             [isLeft ? 'left' : 'right']: '-8%',
-            background: `linear-gradient(90deg, transparent, ${accent}44, transparent)`,
+            background: `linear-gradient(90deg, transparent, ${accent}55, transparent)`,
           }}
         />
       </div>
 
       <style jsx>{`
         .skill-cutin-panel {
-          animation: skill-cutin-in 480ms cubic-bezier(.18,.8,.24,1) both;
+          animation: skill-cutin-in 520ms cubic-bezier(.18,.8,.24,1) both;
         }
-        .skill-cutin-left {
-          clip-path: polygon(0 18%, 100% 0, 94% 100%, 0 100%);
-        }
-        .skill-cutin-right {
-          clip-path: polygon(6% 0, 100% 18%, 100% 100%, 0 100%);
-        }
+        .skill-cutin-left { transform-origin: left center; }
+        .skill-cutin-right { transform-origin: right center; }
         @keyframes skill-cutin-in {
-          from {
-            opacity: 0;
-            transform: translateY(55px) scale(1.03);
-          }
-          to {
-            opacity: 1;
-            transform: translateY(0) scale(1);
-          }
+          from { opacity: 0; transform: scale(.88) translateY(10px); }
+          to { opacity: 1; transform: scale(1) translateY(0); }
         }
       `}</style>
     </div>

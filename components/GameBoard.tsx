@@ -29,6 +29,7 @@ import BattleEffectLayer, {
   playSupportPreResultEffect,
 } from './battle/BattleEffectLayer';
 import VerticalScoreGauge from './battle/VerticalScoreGauge';
+import BattleCardReveal from './battle/BattleCardReveal';
 import {
   getCharacterSkillBattleEffect,
   getSupportBattleEffect,
@@ -529,6 +530,8 @@ void ensureAnonymousAuth()
   const [readyHost, setReadyHost] = useState(false);
   const [readyGuest, setReadyGuest] = useState(false);
 
+  const [activeCardsRevealed, setActiveCardsRevealed] = useState(false);
+
   // 相手の手札・山札枚数。オンラインではFirebaseから同期し、CPU戦ではCPUのローカル状態を表示する。
   const [opponentHandCount, setOpponentHandCount] = useState(0);
   const [opponentDeckCount, setOpponentDeckCount] = useState(0);
@@ -559,6 +562,8 @@ const currentUserUidRef =
 const roomCloseRedirectRef =
   useRef<number | null>(null);
 const supportSubmitInProgressRef = useRef(false);
+const myActiveCardAnchorRef = useRef<HTMLDivElement | null>(null);
+const opponentActiveCardAnchorRef = useRef<HTMLDivElement | null>(null);
 
   const addLog = (message: string) => setLog((prev) => [...prev, message]);
 
@@ -645,7 +650,7 @@ const getSupportBattleTarget = (
       localStorage.setItem('reality_active_deck_id', chosen.id);
       setActiveDeckId(chosen.id);
 
-      const cards: Array< AvatarCard & { colorHex?: string; colorType?: string; } > = [...CHARACTER_SAMPLE_CARDS];
+      const cards: Array<AvatarCard & { colorHex?: string; colorType?: string }> = [...CHARACTER_SAMPLE_CARDS];
       for (const entry of entries.filter((e) => e.cardType === 'coordinate')) {
         const archetype = (entry.archetype as Archetype) || 'マッスル型';
         const fallback = cards.find((c) => c.id === entry.id);
@@ -2021,6 +2026,45 @@ return () => {
 
   const currentMyClassScore = myClassScores[activeIndex] || 0;
   const currentOppClassScore = oppClassScores[activeIndex] || 0;
+
+  useEffect(() => {
+    if (battlePhase !== 'battle') {
+      setActiveCardsRevealed(true);
+      return;
+    }
+
+    setActiveCardsRevealed(false);
+    const timer = window.setTimeout(() => {
+      setActiveCardsRevealed(true);
+    }, 70);
+
+    return () => window.clearTimeout(timer);
+  }, [battlePhase, currentYear, activeIndex]);
+
+  const getSupportTargetPositions = () => {
+    const positions: {
+      self?: { x: number; y: number };
+      opponent?: { x: number; y: number };
+    } = {};
+
+    const selfRect = myActiveCardAnchorRef.current?.getBoundingClientRect();
+    if (selfRect) {
+      positions.self = {
+        x: selfRect.left + selfRect.width / 2,
+        y: selfRect.top + selfRect.height * 0.55,
+      };
+    }
+
+    const opponentRect = opponentActiveCardAnchorRef.current?.getBoundingClientRect();
+    if (opponentRect) {
+      positions.opponent = {
+        x: opponentRect.left + opponentRect.width / 2,
+        y: opponentRect.top + opponentRect.height * 0.55,
+      };
+    }
+
+    return positions;
+  };
   // 画面上は常に「自分＝左」「相手＝右」。
   // 表示上の累計値はクラス別スコアの合計を正とする。CPU戦でも常に即時反映される。
   const myTotalScore = myClassScores.reduce((sum, score) => sum + score, 0);
@@ -3401,6 +3445,8 @@ const handleIncomingActionRef =
           opponentPreset,
         ),
         cardName: opponentSupportCard.name,
+        imageUrl: getSupportImage(opponentSupportCard),
+        targetPositions: getSupportTargetPositions(),
         dialogue: opponentPreset?.description,
         colorHex: undefined,
         target: getSupportBattleTarget(
@@ -4297,6 +4343,8 @@ if (
     return { currentYear: 3, turnIndex: 7, nextPhase: 'finished' as const };
   };
 
+  const getSkillCutInDialogue = (skill: Skill) => `「${skill.name}！」`;
+
   // ===== 技の発動・スコア集計・相手への干渉 =====
   // コーデ25種のプリセットに定義された技効果を、そのままゲーム処理へ反映します。
   const handleUseSkill = async (skill: Skill) => {
@@ -4413,20 +4461,19 @@ if (
       (item) => item.id === skill.id,
     );
 
-    await playSkillPreResultEffect({
-      effectKey: getCharacterSkillBattleEffect(
-        skillPreset,
-        skillIndex,
-      ),
-      characterName: myActiveAvatar.card.userName,
-      skillName: skill.name,
-      dialogue: skill.description,
-      colorHex: getBattleVisualColorHex(myActiveAvatar.card),
-      side: 'left',
-    });
-
     // ===== CPU対戦：Firebaseを使わずローカル状態だけを更新 =====
     if (!isOnline) {
+      await playSkillPreResultEffect({
+        effectKey: getCharacterSkillBattleEffect(
+          skillPreset,
+          skillIndex,
+        ),
+        characterName: myActiveAvatar.card.userName,
+        skillName: skill.name,
+        dialogue: getSkillCutInDialogue(skill),
+        colorHex: getBattleVisualColorHex(myActiveAvatar.card),
+        side: 'left',
+      });
       const nextScores = [...myClassScores];
       nextScores[activeIndex] = (nextScores[activeIndex] || 0) + gainedScore;
       setMyClassScores(nextScores);
@@ -4482,6 +4529,18 @@ if (
 skillSubmitInProgressRef.current =
   true;
 
+const skillEffectPromise = playSkillPreResultEffect({
+  effectKey: getCharacterSkillBattleEffect(
+    skillPreset,
+    skillIndex,
+  ),
+  characterName: myActiveAvatar.card.userName,
+  skillName: skill.name,
+  dialogue: getSkillCutInDialogue(skill),
+  colorHex: getBattleVisualColorHex(myActiveAvatar.card),
+  side: 'left',
+});
+
 const actionId =
   `${Date.now()}-${Math.random()
     .toString(36)
@@ -4525,6 +4584,8 @@ if (!actionSubmitted) {
 
   return;
 }
+
+    await skillEffectPromise;
 
     setMyAvatars(nextMyAvatars);
     setOppAvatars(nextOppAvatars);
@@ -4797,6 +4858,8 @@ if (!actionSubmitted) {
         await playSupportPreResultEffect({
           effectKey: getSupportBattleEffect(supportPreset),
           cardName: supportChoice.card.name,
+          imageUrl: getSupportImage(supportChoice.card),
+          targetPositions: getSupportTargetPositions(),
           dialogue: supportPreset?.description,
           colorHex: undefined,
           target: getSupportBattleTarget(supportPreset, false),
@@ -5070,6 +5133,8 @@ const handleUseSupportCard = async (
           supportPreset,
         ),
         cardName: card.name,
+        imageUrl: getSupportImage(card),
+        targetPositions: getSupportTargetPositions(),
         dialogue: supportPreset?.description,
         colorHex: undefined,
         target: getSupportBattleTarget(
@@ -6552,11 +6617,21 @@ const field =
                   <div className="mt-2 flex flex-col items-center gap-3 sm:flex-row sm:items-start">
                     <div className="min-w-0 flex-1">
                       <div className="flex items-start justify-center gap-2">
-                        <img
-                          src={mySideActiveAvatar.card.imageDataUrl}
-                          alt=""
-                          className="mx-auto h-52 w-full max-w-[180px] rounded-2xl bg-white object-contain p-2 shadow-md sm:h-56"
-                        />
+                        <div ref={myActiveCardAnchorRef} className="shrink-0">
+                          <BattleCardReveal
+                            revealed={activeCardsRevealed}
+                            width={180}
+                            height={224}
+                            className="mx-auto w-full max-w-[180px] sm:h-56"
+                            colorHex={getBattleVisualColorHex(mySideActiveAvatar.card)}
+                          >
+                            <img
+                              src={mySideActiveAvatar.card.imageDataUrl}
+                              alt=""
+                              className="h-full w-full rounded-2xl bg-white object-contain p-2 shadow-md"
+                            />
+                          </BattleCardReveal>
+                        </div>
                         <VerticalScoreGauge
                           label="このクラス"
                           score={mySideActiveClassScore}
@@ -6596,11 +6671,21 @@ const field =
                   <div className="mt-2 flex flex-col items-center gap-3 sm:flex-row sm:items-start">
                     <div className="min-w-0 flex-1">
                       <div className="flex items-start justify-center gap-2">
-                        <img
-                          src={opponentSideActiveAvatar.card.imageDataUrl}
-                          alt=""
-                          className="mx-auto h-52 w-full max-w-[180px] rounded-2xl bg-white object-contain p-2 shadow-md sm:h-56"
-                        />
+                        <div ref={opponentActiveCardAnchorRef} className="shrink-0">
+                          <BattleCardReveal
+                            revealed={activeCardsRevealed}
+                            width={180}
+                            height={224}
+                            className="mx-auto w-full max-w-[180px] sm:h-56"
+                            colorHex={getBattleVisualColorHex(opponentSideActiveAvatar.card)}
+                          >
+                            <img
+                              src={opponentSideActiveAvatar.card.imageDataUrl}
+                              alt=""
+                              className="h-full w-full rounded-2xl bg-white object-contain p-2 shadow-md"
+                            />
+                          </BattleCardReveal>
+                        </div>
                         <VerticalScoreGauge
                           label="このクラス"
                           score={opponentSideActiveClassScore}
