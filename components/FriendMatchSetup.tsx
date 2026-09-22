@@ -173,7 +173,7 @@ const isStageStale = (
     guestLastSeenAt: 0,
   });
 
-  const deleteClosedStageData = async (
+  const takeOverStaleStage = async (
     roomRef: ReturnType<typeof doc>,
     hostPlayerRef: ReturnType<typeof doc>,
     guestPlayerRef: ReturnType<typeof doc>,
@@ -181,6 +181,8 @@ const isStageStale = (
     guestPrivatePlayerRef: ReturnType<typeof doc>,
     hostPresenceRef: ReturnType<typeof doc>,
     guestPresenceRef: ReturnType<typeof doc>,
+    uid: string,
+    now: number,
   ) => {
     await runTransaction(
       db,
@@ -189,46 +191,83 @@ const isStageStale = (
           await transaction.get(roomRef);
 
         if (!roomSnap.exists()) {
-          return;
+          throw new Error('ROOM_NOT_FOUND');
         }
 
         const roomData =
           roomSnap.data() as RoomRecord;
 
+if (roomData.roomClosed !== true) {
+  throw new Error('ROOM_CLOSED');
+}
+
+        const hostPresenceSnap =
+          await transaction.get(
+            hostPresenceRef,
+          );
+
+        const guestPresenceSnap =
+          await transaction.get(
+            guestPresenceRef,
+          );
+
+        const hostPresenceData =
+          hostPresenceSnap.exists()
+            ? (
+                hostPresenceSnap.data() as PresenceRecord
+              )
+            : null;
+
+        const guestPresenceData =
+          guestPresenceSnap.exists()
+            ? (
+                guestPresenceSnap.data() as PresenceRecord
+              )
+            : null;
+
         if (
-          roomData.roomClosed !== true
+          !isStageStale(
+            roomData,
+            hostPresenceData,
+            guestPresenceData,
+          )
         ) {
           throw new Error(
-            'ROOM_IS_NOT_CLOSED',
+            'ROOM_ALREADY_IN_USE',
           );
         }
+
+        transaction.set(
+          roomRef,
+          buildNewRoomData(
+            uid,
+            now,
+          ),
+        );
 
         transaction.delete(
           hostPlayerRef,
         );
-
         transaction.delete(
           guestPlayerRef,
         );
-
         transaction.delete(
           hostPrivatePlayerRef,
         );
-
         transaction.delete(
           guestPrivatePlayerRef,
         );
-
-        transaction.delete(
-          hostPresenceRef,
-        );
-
         transaction.delete(
           guestPresenceRef,
         );
 
-        transaction.delete(
-          roomRef,
+        transaction.set(
+          hostPresenceRef,
+          {
+            uid,
+            role: 'host',
+            lastSeenAt: now,
+          },
         );
       },
     );
@@ -490,11 +529,7 @@ if (
         stageResult.mode === 'staleClosed' ||
         stageResult.mode === 'closedStale'
       ) {
-        // -----------------------------------------------------
-        // ① 閉鎖済みRoomを物理削除
-        // -----------------------------------------------------
-
-        await deleteClosedStageData(
+        await takeOverStaleStage(
           roomRef,
           hostPlayerRef,
           guestPlayerRef,
@@ -502,50 +537,8 @@ if (
           guestPrivatePlayerRef,
           hostPresenceRef,
           guestPresenceRef,
-        );
-
-        // -----------------------------------------------------
-        // ② 削除完了後に新しいRoomを作成
-        // -----------------------------------------------------
-
-        await runTransaction(
-          db,
-          async (transaction) => {
-            const roomSnap =
-              await transaction.get(
-                roomRef,
-              );
-
-            if (
-              roomSnap.exists()
-            ) {
-              throw new Error(
-                'ROOM_ALREADY_IN_USE',
-              );
-            }
-
-            transaction.set(
-              roomRef,
-              buildNewRoomData(
-                currentUser.uid,
-                now,
-              ),
-            );
-
-            transaction.set(
-              hostPresenceRef,
-              {
-                uid:
-                  currentUser.uid,
-
-                role:
-                  'host',
-
-                lastSeenAt:
-                  now,
-              },
-            );
-          },
+          currentUser.uid,
+          now,
         );
 
         result = {
@@ -1086,7 +1079,7 @@ return {
     <div className="max-w-md mx-auto p-6 bg-white rounded-2xl shadow-md border border-gray-100 space-y-6">
       <div className="flex justify-between items-center border-b pb-3">
         <h2 className="text-lg font-bold text-gray-800">
-          🎮 友達と対戦する (Firebase版)
+          🎮 友達と対戦する
         </h2>
 
         <button

@@ -103,7 +103,7 @@ function buildPresetSkills(
 ): Skill[] {
   const names = customNames?.length ? customNames : preset.defaultSkills;
 
-  if (preset.code === 'y') {
+  if (preset.code === 'a1') {
     return [
       { id: 'skill_1', name: names[0] || preset.defaultSkills[0], description: preset.skillDescriptions[0], maxUsesPerClass: 0, type: 'score', rule: 'y_total_score' },
       { id: 'skill_2', name: names[1] || preset.defaultSkills[1], description: preset.skillDescriptions[1], maxUsesPerClass: 0, type: 'score', rule: 'y_response_score' },
@@ -132,6 +132,26 @@ function buildSkills(names: string[] | undefined, preset?: (typeof COORDINATE_PR
 }
 
 // ===== Firebaseへ保存する戦闘キャラクター =====
+type SupportAvatarEffectState = {
+  id: string;
+  sourcePresetId: string;
+  statDelta?: Partial<Record<StatKey, number>>;
+  statOverride?: Partial<Record<StatKey, number>>;
+  skillSealIndex?: number;
+  expiresAtTurnOrdinal: number | null;
+};
+
+type SupportControlEffectState = {
+  id: string;
+  sourcePresetId: string;
+  duration: '一時' | '永続';
+  kind: 'limit' | 'free' | 'extra_draw' | 'score';
+  maxUsesPerTurn?: number;
+  extraDrawPerTurn?: number;
+  scoreDeltaPerTurn?: number;
+  expiresAtTurnOrdinal: number | null;
+};
+
 type BattleAvatar = {
   card: AvatarCard;
   roleName: RoleName;
@@ -143,7 +163,139 @@ type BattleAvatar = {
   seasonAbilityText: string;
   skills: Skill[];
   statBoost?: Partial<Record<StatKey, number>>;
+  supportEffects?: SupportAvatarEffectState[];
+  supportControlEffects?: SupportControlEffectState[];
 };
+
+const getBattleTurnOrdinal = (year: number, turnIndex: number) =>
+  Math.max(0, (year - 1) * 8 + turnIndex);
+
+const isSupportEffectActive = (
+  effect: { expiresAtTurnOrdinal: number | null },
+  turnOrdinal: number,
+) =>
+  effect.expiresAtTurnOrdinal === null ||
+  turnOrdinal < effect.expiresAtTurnOrdinal;
+
+const getSupportEffectExpiration = (
+  preset: EmotionPreset,
+  turnOrdinal: number,
+  appliesToOpponent: boolean,
+) => {
+  if (preset.duration === '一時') {
+    return turnOrdinal + (appliesToOpponent ? 2 : 1);
+  }
+
+  if (preset.note?.includes('最大4ターン')) {
+    return turnOrdinal + (appliesToOpponent ? 5 : 4);
+  }
+
+  return null;
+};
+
+const getSupportUsageLimitFromEffects = (
+  effects: SupportControlEffectState[] | undefined,
+  turnOrdinal: number,
+) => {
+  const active = (effects || []).filter((effect) =>
+    isSupportEffectActive(effect, turnOrdinal),
+  );
+
+  if (active.some((effect) => effect.duration === '一時' && effect.kind === 'free')) {
+    return Infinity;
+  }
+
+  const temporaryLimits = active
+    .filter(
+      (effect) =>
+        effect.duration === '一時' &&
+        effect.kind === 'limit' &&
+        typeof effect.maxUsesPerTurn === 'number',
+    )
+    .map((effect) => effect.maxUsesPerTurn as number);
+  if (temporaryLimits.length) return Math.min(...temporaryLimits);
+
+  if (active.some((effect) => effect.duration === '永続' && effect.kind === 'free')) {
+    return Infinity;
+  }
+
+  const permanentLimits = active
+    .filter(
+      (effect) =>
+        effect.duration === '永続' &&
+        effect.kind === 'limit' &&
+        typeof effect.maxUsesPerTurn === 'number',
+    )
+    .map((effect) => effect.maxUsesPerTurn as number);
+  if (permanentLimits.length) return Math.min(...permanentLimits);
+
+  return Infinity;
+};
+
+const getAdditionalDrawFromEffects = (
+  effects: SupportControlEffectState[] | undefined,
+  turnOrdinal: number,
+) =>
+  (effects || [])
+    .filter((effect) =>
+      isSupportEffectActive(effect, turnOrdinal) &&
+      effect.kind === 'extra_draw',
+    )
+    .reduce((sum, effect) => sum + Number(effect.extraDrawPerTurn || 0), 0);
+
+const getSupportScoreModifierFromEffects = (
+  effects: SupportControlEffectState[] | undefined,
+  turnOrdinal: number,
+) =>
+  (effects || [])
+    .filter((effect) =>
+      isSupportEffectActive(effect, turnOrdinal) &&
+      effect.kind === 'score',
+    )
+    .reduce((sum, effect) => sum + Number(effect.scoreDeltaPerTurn || 0), 0);
+
+const hasSkillSeal = (
+  avatar: BattleAvatar,
+  skillIndex: number,
+  turnOrdinal: number,
+) =>
+  (avatar.supportEffects || []).some(
+    (effect) =>
+      effect.skillSealIndex === skillIndex &&
+      isSupportEffectActive(effect, turnOrdinal),
+  );
+
+const getSupportUseCountFromUsedSkills = (
+  usedSkills: Record<string, string[]> | undefined,
+  year: number,
+  turnIndex: number,
+) => {
+  const list = usedSkills?.[String(year)] || [];
+  const marker = `__support_${turnIndex}:`;
+  const entry = list.find((value) => value.startsWith(marker));
+  if (!entry) return 0;
+  const count = Number(entry.slice(marker.length));
+  return Number.isFinite(count) ? count : 0;
+};
+
+const setSupportUseCountInUsedSkills = (
+  usedSkills: Record<string, string[]>,
+  year: number,
+  turnIndex: number,
+  count: number,
+) => {
+  const key = String(year);
+  const marker = `__support_${turnIndex}:`;
+  const current = usedSkills[key] || [];
+  const filtered = current.filter((value) => !value.startsWith(marker));
+  return {
+    ...usedSkills,
+    [key]: [...filtered, `${marker}${count}`],
+  };
+};
+
+const createSupportEffectId = (presetId: string) =>
+  `${presetId}_${Date.now()}_${Math.random().toString(36).slice(2)}`;
 
 // CardGeneratorが現在保存している追加情報も読み込めるようにする。
 type EntryRecordWithSkills = {
@@ -217,7 +369,7 @@ const createDefaultAvatar = (
     baseStats: { ...stats },
     currentDebuff: { hp: 0, intellect: 0, dexterity: 0, charm: 0 },
     debuffImmune: false,
-    seasonAbilityText: `${archetype}（${role}）`,
+    seasonAbilityText: `${role}戦`,
     skills: buildSkills(['ボディビル', 'やる気元気', '計画性', 'タックル&寝技']),
     statBoost: {},
   };
@@ -248,19 +400,20 @@ function RadarChart({
   const size = 250;
   const center = size / 2;
   const r = 86;
-  const max = 100;
+  const observedMax = Math.max(100, ...Object.values(baseStats), ...Object.values(currentStats));
+  const max = Math.ceil(observedMax / 20) * 20;
 
   const values = [
-    Math.min(Math.max(baseStats.hp, 0), max),
-    Math.min(Math.max(baseStats.intellect, 0), max),
-    Math.min(Math.max(baseStats.dexterity, 0), max),
-    Math.min(Math.max(baseStats.charm, 0), max),
+    Math.max(baseStats.hp, 0),
+    Math.max(baseStats.intellect, 0),
+    Math.max(baseStats.dexterity, 0),
+    Math.max(baseStats.charm, 0),
   ];
   const currentValues = [
-    Math.min(Math.max(currentStats.hp, 0), max),
-    Math.min(Math.max(currentStats.intellect, 0), max),
-    Math.min(Math.max(currentStats.dexterity, 0), max),
-    Math.min(Math.max(currentStats.charm, 0), max),
+    Math.max(currentStats.hp, 0),
+    Math.max(currentStats.intellect, 0),
+    Math.max(currentStats.dexterity, 0),
+    Math.max(currentStats.charm, 0),
   ];
 
   const angles = [-Math.PI / 2, 0, Math.PI / 2, Math.PI];
@@ -610,9 +763,11 @@ const getSupportBattleTarget = (
         baseStats: { ...stats },
         currentDebuff: { hp: 0, intellect: 0, dexterity: 0, charm: 0 },
         debuffImmune: false,
-        seasonAbilityText: `${battleCard.archetype}（${battleCard.favoredSeason}が得意）`,
+        seasonAbilityText: `${battleCard.favoredSeason}が得意`,
         skills: buildSkills(sample.customSkills, preset),
         statBoost: {},
+        supportEffects: [],
+        supportControlEffects: [],
       } as BattleAvatar;
     });
 
@@ -706,9 +861,11 @@ const getSupportBattleTarget = (
           baseStats: { ...stats },
           currentDebuff: { hp: 0, intellect: 0, dexterity: 0, charm: 0 },
           debuffImmune: false,
-          seasonAbilityText: `${battleCard.archetype}（${battleCard.favoredSeason}が得意）`,
+          seasonAbilityText: `${battleCard.favoredSeason}が得意`,
           skills: buildSkills(names, preset),
           statBoost: {},
+          supportEffects: [],
+          supportControlEffects: [],
         } as BattleAvatar;
       };
 
@@ -1237,7 +1394,7 @@ const opponentPresenceRef =
 
     const opponentLabel =
       opponentRole === 'host'
-        ? 'ホスト'
+        ? 'ルーム作成者'
         : 'ゲスト';
 
     setOpponentDisconnectMessage(
@@ -1337,6 +1494,10 @@ const opponentPresenceRef =
                 },
               statBoost:
                 avatar.statBoost || {},
+              supportEffects:
+                avatar.supportEffects || [],
+              supportControlEffects:
+                avatar.supportControlEffects || [],
             })),
           );
         }
@@ -1741,7 +1902,7 @@ if (data.roomClosed === true) {
             setBattlePhase('waiting');
 
             setWaitingMessage(
-              `現在対戦相手がいません。あなたとして待機中です。合言葉は「${roomId}」です。`,
+              `現在対戦相手がいません。${playerRole === 'host' ? 'ルーム作成者' : 'ゲスト'}として待機中です。合言葉は「${roomId}」です。`,
             );
           }
         }
@@ -2090,12 +2251,47 @@ return () => {
   const opponentSideActiveClassScore = currentOppClassScore;
 
   // ===== 実効ステータス =====
-  const getEffectiveStats = (avatar: BattleAvatar) => ({
-    hp: Math.max(0, avatar.stats.hp * (avatar.statBoost?.hp || 1) - avatar.currentDebuff.hp),
-    intellect: Math.max(0, avatar.stats.intellect * (avatar.statBoost?.intellect || 1) - avatar.currentDebuff.intellect),
-    dexterity: Math.max(0, avatar.stats.dexterity * (avatar.statBoost?.dexterity || 1) - avatar.currentDebuff.dexterity),
-    charm: Math.max(0, avatar.stats.charm * (avatar.statBoost?.charm || 1) - avatar.currentDebuff.charm),
-  });
+  const getEffectiveStats = (
+    avatar: BattleAvatar,
+    turnOrdinal = getBattleTurnOrdinal(currentYear, turnIndex),
+  ) => {
+    const activeSupportEffects = (avatar.supportEffects || []).filter((effect) =>
+      isSupportEffectActive(effect, turnOrdinal),
+    );
+
+    const supportStats = {
+      hp: Math.max(0, avatar.stats.hp),
+      intellect: Math.max(0, avatar.stats.intellect),
+      dexterity: Math.max(0, avatar.stats.dexterity),
+      charm: Math.max(0, avatar.stats.charm),
+    };
+
+    for (const effect of activeSupportEffects) {
+      if (effect.statDelta) {
+        for (const stat of STAT_KEYS) {
+          supportStats[stat] = Math.max(
+            0,
+            supportStats[stat] + Number(effect.statDelta[stat] || 0),
+          );
+        }
+      }
+
+      if (effect.statOverride) {
+        for (const stat of STAT_KEYS) {
+          if (typeof effect.statOverride[stat] === 'number') {
+            supportStats[stat] = Math.max(0, Number(effect.statOverride[stat]));
+          }
+        }
+      }
+    }
+
+    return {
+      hp: Math.max(0, supportStats.hp * (avatar.statBoost?.hp || 1) - avatar.currentDebuff.hp),
+      intellect: Math.max(0, supportStats.intellect * (avatar.statBoost?.intellect || 1) - avatar.currentDebuff.intellect),
+      dexterity: Math.max(0, supportStats.dexterity * (avatar.statBoost?.dexterity || 1) - avatar.currentDebuff.dexterity),
+      charm: Math.max(0, supportStats.charm * (avatar.statBoost?.charm || 1) - avatar.currentDebuff.charm),
+    };
+  };
 
 // ===== ターン開始時の自動ドロー =====
 const previousTurnRef = useRef<string>('');
@@ -2112,22 +2308,11 @@ useEffect(() => {
   const key =
     `${currentYear}-${turnIndex}-${playerRole}`;
 
-  // -------------------------------------------------------
-  // このターンのドローがすでに完了している
-  // -------------------------------------------------------
-
   if (
     previousTurnRef.current === key
   ) {
     return;
   }
-
-  // -------------------------------------------------------
-  // このターンのドローが現在進行中
-  //
-  // myHand / myDeck の更新によってEffectが
-  // 再実行されても、二重ドローしない。
-  // -------------------------------------------------------
 
   if (
     drawInProgressRef.current === key
@@ -2135,154 +2320,64 @@ useEffect(() => {
     return;
   }
 
-  // -------------------------------------------------------
-  // 手札上限 / 山札切れ
-  // -------------------------------------------------------
+  const turnOrdinal = getBattleTurnOrdinal(currentYear, turnIndex);
+  const drawCount = Math.min(
+    1 + getAdditionalDrawFromEffects(
+      myActiveAvatar.supportControlEffects,
+      turnOrdinal,
+    ),
+    Math.max(0, MAX_HAND - myHand.length),
+    myDeck.length,
+  );
 
-  if (
-    myHand.length >= MAX_HAND ||
-    myDeck.length === 0
-  ) {
+  if (drawCount <= 0) {
+    previousTurnRef.current = key;
     return;
   }
 
-  // -------------------------------------------------------
-  // このターンのドロー処理を開始済みにする
-  // -------------------------------------------------------
-  //
-  // Firestore保存より前に設定することが重要。
-  // これによってEffectが途中で再実行されても
-  // 同じターンの二重ドローを防止する。
-  //
-
   drawInProgressRef.current = key;
 
-  const drawnCard =
-    myDeck[0];
-
-  const nextHand = [
-    ...myHand,
-    drawnCard,
-  ];
-
-  const nextDeck =
-    myDeck.slice(1);
+  const drawnCards = myDeck.slice(0, drawCount);
+  const nextHand = [...myHand, ...drawnCards];
+  const nextDeck = myDeck.slice(drawCount);
 
   let cancelled = false;
 
   const drawCard = async () => {
-    // =====================================================
-    // オンライン
-    // =====================================================
-
-    if (
-      isOnline &&
-      myPlayerRef &&
-      myPrivatePlayerRef
-    ) {
+    if (isOnline && myPlayerRef && myPrivatePlayerRef) {
       try {
-        // -------------------------------------------------
-        // ① 非公開Playerへ手札・山札を保存
-        // -------------------------------------------------
-
         await setDoc(
           myPrivatePlayerRef,
-          {
-            hand:
-              nextHand,
-
-            deck:
-              nextDeck,
-          },
-          {
-            merge: true,
-          },
+          { hand: nextHand, deck: nextDeck },
+          { merge: true },
         );
 
-        // -------------------------------------------------
-        // ② 公開Playerへ枚数だけ保存
-        // -------------------------------------------------
+        await updateDoc(myPlayerRef, {
+          handCount: nextHand.length,
+          deckCount: nextDeck.length,
+        });
 
-        await updateDoc(
-          myPlayerRef,
-          {
-            handCount:
-              nextHand.length,
+        if (cancelled) return;
 
-            deckCount:
-              nextDeck.length,
-          
-          },
-        );
-
-        if (cancelled) {
-          return;
-        }
-
-        // -------------------------------------------------
-        // ③ Firestore保存成功後に画面へ反映
-        // -------------------------------------------------
-
-        setMyHand(
-          nextHand,
-        );
-
-        setMyDeck(
-          nextDeck,
-        );
-
-        // -------------------------------------------------
-        // ④ このターンのドロー完了
-        // -------------------------------------------------
-
-        previousTurnRef.current =
-          key;
-
-        drawInProgressRef.current =
-          '';
-
-        addLog(
-          'サポートカードを1枚ドローしました。',
-        );
+        setMyHand(nextHand);
+        setMyDeck(nextDeck);
+        previousTurnRef.current = key;
+        drawInProgressRef.current = '';
+        addLog(`サポートカードを${drawCount}枚ドローしました。`);
       } catch (error) {
-        // 保存失敗時は再試行可能な状態へ戻す
-        drawInProgressRef.current =
-          '';
-
-        console.error(
-          'ターン開始ドロー保存エラー:',
-          error,
-        );
+        drawInProgressRef.current = '';
+        console.error('ターン開始ドロー保存エラー:', error);
       }
-
       return;
     }
 
-    // =====================================================
-    // CPU
-    // =====================================================
+    if (cancelled) return;
 
-    if (cancelled) {
-      return;
-    }
-
-    setMyHand(
-      nextHand,
-    );
-
-    setMyDeck(
-      nextDeck,
-    );
-
-    previousTurnRef.current =
-      key;
-
-    drawInProgressRef.current =
-      '';
-
-    addLog(
-      'サポートカードを1枚ドローしました。',
-    );
+    setMyHand(nextHand);
+    setMyDeck(nextDeck);
+    previousTurnRef.current = key;
+    drawInProgressRef.current = '';
+    addLog(`サポートカードを${drawCount}枚ドローしました。`);
   };
 
   void drawCard();
@@ -2301,6 +2396,7 @@ useEffect(() => {
   isOnline,
   myPlayerRef,
   myPrivatePlayerRef,
+  myActiveAvatar.supportControlEffects,
 ]);
 
   // ===== オンライン対戦：手札・山札枚数をPlayerへ公開 =====
@@ -2331,6 +2427,7 @@ useEffect(() => {
 
 // =========================================================
 // ===== Battle Action送信
+
 // =========================================================
 //
 // オンライン対戦では、クライアントは「結果」ではなく
@@ -2399,7 +2496,9 @@ const submitBattleAction = async (
   action: BattleActionPayload,
   options?: {
     avatars?: BattleAvatar[];
+    hand?: SupportCard[];
     deck?: SupportCard[];
+    usedSkills?: Record<string, string[]>;
   },
 ) => {
   if (
@@ -2599,6 +2698,39 @@ const submitBattleAction = async (
                 ]
               : [];
 
+          const actionTurnOrdinal = getBattleTurnOrdinal(
+            action.year,
+            action.turnIndex,
+          );
+
+          const activePlayerAvatar =
+            Array.isArray(playerData.avatars)
+              ? (playerData.avatars[action.avatarIndex] as BattleAvatar | undefined)
+              : undefined;
+
+          const supportUsageLimit = getSupportUsageLimitFromEffects(
+            activePlayerAvatar?.supportControlEffects,
+            actionTurnOrdinal,
+          );
+
+          const currentUsedSkills =
+            playerData.usedSkills && typeof playerData.usedSkills === 'object'
+              ? (playerData.usedSkills as Record<string, string[]>)
+              : {};
+
+          const supportUseCountBefore = getSupportUseCountFromUsedSkills(
+            currentUsedSkills,
+            action.year,
+            action.turnIndex,
+          );
+
+          if (
+            Number.isFinite(supportUsageLimit) &&
+            supportUseCountBefore >= supportUsageLimit
+          ) {
+            throw new Error('SUPPORT_USE_LIMIT');
+          }
+
           // =================================================
           // ③-⑤ 使用前の所持確認
           // =================================================
@@ -2634,24 +2766,26 @@ const submitBattleAction = async (
           // ③-⑥ 1枚だけ消費
           // =================================================
 
-          const nextHand =
-            currentHand.filter(
-              (
-                _handCard,
-                index,
-              ) =>
-                index !==
-                supportCardIndex,
-            );
+          const nextHand = options?.hand
+            ? [...options.hand]
+            : currentHand.filter(
+                (_handCard, index) => index !== supportCardIndex,
+              );
 
           const supportCardCountAfter =
             nextHand.filter(
-              (
-                handCard: SupportCard,
-              ) =>
-                handCard.id ===
-                action.supportCardId,
+              (handCard: SupportCard) =>
+                handCard.id === action.supportCardId,
             ).length;
+
+          if (
+            options?.hand &&
+            nextHand.length !== currentHand.length - 1
+          ) {
+            throw new Error(
+              'サポートカード消費後の手札枚数が不正です。',
+            );
+          }
 
           if (
             supportCardCountAfter !==
@@ -2715,6 +2849,13 @@ const submitBattleAction = async (
                       options.avatars,
                   }
                 : {}),
+
+              usedSkills: setSupportUseCountInUsedSkills(
+                options?.usedSkills ?? currentUsedSkills,
+                action.year,
+                action.turnIndex,
+                supportUseCountBefore + 1,
+              ),
 
               lastSupportActionId:
                 actionId,
@@ -3481,7 +3622,7 @@ const handleIncomingActionRef =
       // 相手（カード使用者）側
       // -----------------------------------------------------
 
-      const nextOppAvatars =
+      let nextOppAvatars =
         oppAvatars.map(
           (avatar, index) =>
             index === avatarIndex
@@ -3493,13 +3634,33 @@ const handleIncomingActionRef =
       // 自分（カード効果対象側）
       // -----------------------------------------------------
 
-      const nextMyAvatars =
+      let nextMyAvatars =
         myAvatars.map(
           (avatar, index) =>
             index === avatarIndex
               ? applied.target
               : avatar,
         );
+
+      const incomingSupportTurnOrdinal = getBattleTurnOrdinal(
+        action.year,
+        action.turnIndex,
+      );
+
+      if (applied.actorSupportControlEffect) {
+        nextOppAvatars = applySupportControlToAllAvatars(
+          nextOppAvatars,
+          applied.actorSupportControlEffect,
+          incomingSupportTurnOrdinal,
+        );
+      }
+      if (applied.targetSupportControlEffect) {
+        nextMyAvatars = applySupportControlToAllAvatars(
+          nextMyAvatars,
+          applied.targetSupportControlEffect,
+          incomingSupportTurnOrdinal,
+        );
+      }
 
       const gainedScore =
         applied.scoreDelta;
@@ -4018,11 +4179,33 @@ const handleIncomingActionRef =
           );
       }
 
+const opponentSupportScoreModifier = getSupportScoreModifierFromEffects(
+  opponentAvatar.supportControlEffects,
+  getBattleTurnOrdinal(action.year, action.turnIndex),
+);
+gainedScore = Math.max(0, gainedScore + opponentSupportScoreModifier);
+
 // 相手の技使用演出
 const opponentSkillPreset = getPresetForCard(opponentAvatar.card);
 const opponentSkillIndex = opponentAvatar.skills.findIndex(
   (item) => item.id === skill.id,
 );
+
+if (
+  opponentSkillIndex >= 0 &&
+  hasSkillSeal(
+    opponentAvatar,
+    opponentSkillIndex,
+    getBattleTurnOrdinal(action.year, action.turnIndex),
+  )
+) {
+  console.warn('封印中の相手技Actionを無視しました。', {
+    skillId: skill.id,
+    year: action.year,
+    turnIndex: action.turnIndex,
+  });
+  return;
+}
 
 await playSkillPreResultEffect({
   effectKey: getCharacterSkillBattleEffect(
@@ -4127,9 +4310,9 @@ useEffect(() => {
       setFirstPlayer(result);
       setStartSeasonIdx(0);
       setPreparationMessage(
-        `コイントス結果：${result === 'host' ? 'あなた' : 'CPU'}が先手です。\n春から${ROLE_NAMES[currentYear - 1]}戦を開始します。`,
+        `コイントス結果：${result === 'host' ? '自分' : 'CPU'}が先手です。\n春から${ROLE_NAMES[currentYear - 1]}戦を開始します。`,
       );
-      addLog(`🪙 コイントス結果：${result === 'host' ? 'あなた' : 'CPU'}が先手です。`);
+      addLog(`🪙 コイントス結果：${result === 'host' ? '自分' : 'CPU'}が先手です。`);
       setBattlePhase('battle');
       setTurnIndex(0);
       setIsCoinTossing(false);
@@ -4143,8 +4326,8 @@ useEffect(() => {
         turnIndex: 0,
         battlePhase: 'battle',
       });
-      setPreparationMessage(`🪙 コイントス結果：${result === playerRole ? 'あなた' : '相手'}が先手です。春から${ROLE_NAMES[currentYear - 1]}戦を開始します。`);
-      addLog(`🪙 コイントス結果：${result === playerRole ? 'あなた' : '相手'}が先手です。`);
+      setPreparationMessage(`🪙 コイントス結果：${result === playerRole ? '自分' : '相手'}が先手です。春から${ROLE_NAMES[currentYear - 1]}戦を開始します。`);
+      addLog(`🪙 コイントス結果：${result === playerRole ? '自分' : '相手'}が先手です。`);
     } catch (error) {
       console.error('コイントス結果の同期エラー:', error);
       addLog('⚠️ 先手決定に失敗しました。');
@@ -4172,7 +4355,7 @@ useEffect(() => {
       [field]: true,
       [playerRole === 'host' ? 'hostDeckId' : 'guestDeckId']: activeDeckId,
     });
-    setPreparationMessage('このデッキでの準備が完了しました。両者のデッキ確定後、ホストがコイントスを行います。');
+    setPreparationMessage('このデッキでの準備が完了しました。両者のデッキ確定後、ルーム作成者がコイントスを行います。');
   };
 
   // 両者の準備完了後、ホストがbattleへ移行
@@ -4373,6 +4556,21 @@ if (
       return;
     }
 
+    const skillIndexForSealCheck = myActiveAvatar.skills.findIndex(
+      (item) => item.id === skill.id,
+    );
+    if (
+      skillIndexForSealCheck >= 0 &&
+      hasSkillSeal(
+        myActiveAvatar,
+        skillIndexForSealCheck,
+        getBattleTurnOrdinal(currentYear, turnIndex),
+      )
+    ) {
+      addLog('このターンは技④が封印されています。');
+      return;
+    }
+
     const effective = getEffectiveStats(myActiveAvatar);
     const opponentEffective = getEffectiveStats(oppActiveAvatar);
     let gainedScore = 0;
@@ -4460,6 +4658,12 @@ if (
         debuffs.hp = debuffAmount;
       }
     }
+
+    const supportScoreModifier = getSupportScoreModifierFromEffects(
+      myActiveAvatar.supportControlEffects,
+      getBattleTurnOrdinal(currentYear, turnIndex),
+    );
+    gainedScore = Math.max(0, gainedScore + supportScoreModifier);
 
     const nextUsed = {
       ...usedSkillsByClass,
@@ -4719,23 +4923,84 @@ if (!actionSubmitted) {
     return match ? Number(match[0]) : 0;
   };
 
-  const applyEmotionStatDelta = (avatar: BattleAvatar, delta: Partial<Record<StatKey, number>>): BattleAvatar => ({
+  const appendSupportAvatarEffect = (
+    avatar: BattleAvatar,
+    effect: SupportAvatarEffectState,
+    turnOrdinal: number,
+  ): BattleAvatar => ({
     ...avatar,
-    stats: {
-      hp: Math.max(0, avatar.stats.hp + Number(delta.hp || 0)),
-      intellect: Math.max(0, avatar.stats.intellect + Number(delta.intellect || 0)),
-      dexterity: Math.max(0, avatar.stats.dexterity + Number(delta.dexterity || 0)),
-      charm: Math.max(0, avatar.stats.charm + Number(delta.charm || 0)),
-    },
+    supportEffects: [
+      ...(avatar.supportEffects || []).filter((item) =>
+        isSupportEffectActive(item, turnOrdinal),
+      ),
+      effect,
+    ],
   });
+
+  const appendSupportControlEffect = (
+    avatar: BattleAvatar,
+    effect: SupportControlEffectState,
+    turnOrdinal: number,
+  ): BattleAvatar => ({
+    ...avatar,
+    supportControlEffects: [
+      ...(avatar.supportControlEffects || []).filter((item) =>
+        isSupportEffectActive(item, turnOrdinal),
+      ),
+      effect,
+    ],
+  });
+
+  const applySupportControlToAllAvatars = (
+    avatars: BattleAvatar[],
+    effect: SupportControlEffectState,
+    turnOrdinal: number,
+  ) =>
+    avatars.map((avatar) =>
+      appendSupportControlEffect(avatar, effect, turnOrdinal),
+    );
+
+  const cloneSupportDeltaEffects = (
+    effects: SupportAvatarEffectState[] | undefined,
+    predicate: (delta: number) => boolean,
+    turnOrdinal: number,
+  ): SupportAvatarEffectState[] =>
+    (effects || [])
+      .filter((effect) => isSupportEffectActive(effect, turnOrdinal))
+      .map((effect): SupportAvatarEffectState | null => {
+        const filtered: Partial<Record<StatKey, number>> = {};
+        for (const stat of STAT_KEYS) {
+          const value = Number(effect.statDelta?.[stat] || 0);
+          if (value !== 0 && predicate(value)) {
+            filtered[stat] = value;
+          }
+        }
+        if (!Object.keys(filtered).length) return null;
+        return {
+          ...effect,
+          id: `${effect.id}_reflect_${Math.random().toString(36).slice(2)}`,
+          statDelta: filtered,
+        };
+      })
+      .filter((effect): effect is SupportAvatarEffectState => effect !== null);
 
   const applyEmotionToPair = (
     card: SupportCard,
     actor: BattleAvatar,
     target: BattleAvatar,
+    turnOrdinal = getBattleTurnOrdinal(currentYear, turnIndex),
   ) => {
     const preset = getEmotionPresetForCard(card);
-    if (!preset) return { actor, target, scoreDelta: 0, extraDraw: 0 };
+    if (!preset) {
+      return {
+        actor,
+        target,
+        scoreDelta: 0,
+        extraDraw: 0,
+        actorSupportControlEffect: undefined as SupportControlEffectState | undefined,
+        targetSupportControlEffect: undefined as SupportControlEffectState | undefined,
+      };
+    }
 
     const amount = parseEmotionAmount(preset.effectAmount);
     const statMap: Partial<Record<EmotionPreset['effectCategory'], StatKey>> = {
@@ -4744,50 +5009,228 @@ if (!actionSubmitted) {
       '器用': 'dexterity',
       '特技': 'charm',
     };
-    let nextActor = actor;
-    let nextTarget = target;
+
+    let nextActor: BattleAvatar = {
+      ...actor,
+      supportEffects: [...(actor.supportEffects || [])],
+    };
+    let nextTarget: BattleAvatar = {
+      ...target,
+      supportEffects: [...(target.supportEffects || [])],
+    };
     let scoreDelta = 0;
     let extraDraw = 0;
+    let actorSupportControlEffect: SupportControlEffectState | undefined;
+    let targetSupportControlEffect: SupportControlEffectState | undefined;
+
+    const addActorAvatarEffect = (
+      effect: Omit<SupportAvatarEffectState, 'id'>,
+    ) => {
+      nextActor = appendSupportAvatarEffect(
+        nextActor,
+        { ...effect, id: createSupportEffectId(preset.id) },
+        turnOrdinal,
+      );
+    };
+
+    const addTargetAvatarEffect = (
+      effect: Omit<SupportAvatarEffectState, 'id'>,
+    ) => {
+      nextTarget = appendSupportAvatarEffect(
+        nextTarget,
+        { ...effect, id: createSupportEffectId(preset.id) },
+        turnOrdinal,
+      );
+    };
+
+    const makeControlEffect = (
+      kind: SupportControlEffectState['kind'],
+      appliesToOpponent: boolean,
+    ): SupportControlEffectState => ({
+      id: createSupportEffectId(preset.id),
+      sourcePresetId: preset.id,
+      duration: preset.duration,
+      kind,
+      maxUsesPerTurn:
+        kind === 'limit'
+          ? Math.max(0, amount || 1)
+          : undefined,
+      extraDrawPerTurn:
+        kind === 'extra_draw'
+          ? Math.max(0, amount || 1)
+          : undefined,
+      scoreDeltaPerTurn:
+        kind === 'score'
+          ? amount
+          : undefined,
+      expiresAtTurnOrdinal: getSupportEffectExpiration(
+        preset,
+        turnOrdinal,
+        appliesToOpponent,
+      ),
+    });
 
     if (preset.effectCategory === '全ステータス') {
-      const delta = amount;
-      const all = { hp: delta, intellect: delta, dexterity: delta, charm: delta };
-      if (preset.target === '自分') nextActor = applyEmotionStatDelta(nextActor, all);
-      if (preset.target === '相手') nextTarget = applyEmotionStatDelta(nextTarget, all);
+      const all = {
+        hp: amount,
+        intellect: amount,
+        dexterity: amount,
+        charm: amount,
+      };
+      if (preset.target === '自分') {
+        addActorAvatarEffect({
+          sourcePresetId: preset.id,
+          statDelta: all,
+          expiresAtTurnOrdinal: getSupportEffectExpiration(preset, turnOrdinal, false),
+        });
+      }
+      if (preset.target === '相手') {
+        addTargetAvatarEffect({
+          sourcePresetId: preset.id,
+          statDelta: all,
+          expiresAtTurnOrdinal: getSupportEffectExpiration(preset, turnOrdinal, true),
+        });
+      }
     } else if (statMap[preset.effectCategory]) {
-      const stat = statMap[preset.effectCategory]!;
-      const delta = { [stat]: amount } as Partial<Record<StatKey, number>>;
-      if (preset.target === '自分') nextActor = applyEmotionStatDelta(nextActor, delta);
-      if (preset.target === '相手') nextTarget = applyEmotionStatDelta(nextTarget, delta);
+      const stat = statMap[preset.effectCategory] as StatKey;
+      if (preset.target === '自分') {
+        addActorAvatarEffect({
+          sourcePresetId: preset.id,
+          statDelta: { [stat]: amount },
+          expiresAtTurnOrdinal: getSupportEffectExpiration(preset, turnOrdinal, false),
+        });
+      }
+      if (preset.target === '相手') {
+        addTargetAvatarEffect({
+          sourcePresetId: preset.id,
+          statDelta: { [stat]: amount },
+          expiresAtTurnOrdinal: getSupportEffectExpiration(preset, turnOrdinal, true),
+        });
+      }
     } else if (preset.effectCategory === 'スコア') {
-      scoreDelta = preset.target === '相手' ? -Math.abs(amount) : Math.abs(amount);
+      if (preset.target === '自分') {
+        actorSupportControlEffect = makeControlEffect('score', false);
+        if (actorSupportControlEffect) {
+          actorSupportControlEffect.scoreDeltaPerTurn = Math.abs(amount);
+        }
+      } else if (preset.target === '相手') {
+        targetSupportControlEffect = makeControlEffect('score', true);
+        if (targetSupportControlEffect) {
+          targetSupportControlEffect.scoreDeltaPerTurn = -Math.abs(amount);
+        }
+      }
+    } else if (preset.effectCategory === 'サポートカード使用数') {
+      if (preset.statEffect.includes('制限されない')) {
+        if (preset.target === '自分') {
+          actorSupportControlEffect = makeControlEffect('free', false);
+        }
+      } else if (preset.target === '相手') {
+        targetSupportControlEffect = makeControlEffect('limit', true);
+      }
     } else if (preset.effectCategory === 'ドロー') {
-      extraDraw = amount || 1;
+      extraDraw = Math.max(0, amount || 1);
+      if (preset.duration === '永続') {
+        actorSupportControlEffect = makeControlEffect('extra_draw', false);
+      }
     } else if (preset.effectCategory === 'ステータスコピー・平均化') {
+      const actorEffective = getEffectiveStats(actor, turnOrdinal);
+      const targetEffective = getEffectiveStats(target, turnOrdinal);
       if (preset.name === '手鏡') {
-        const highest = Math.max(...Object.values(target.stats));
-        const key = (Object.keys(target.stats) as StatKey[]).find((k) => target.stats[k] === highest) || 'hp';
-        nextActor = applyEmotionStatDelta(nextActor, { [key]: highest - nextActor.stats[key] });
+        const highest = Math.max(...Object.values(targetEffective));
+        const key = STAT_KEYS.find((item) => targetEffective[item] === highest) || 'hp';
+        addActorAvatarEffect({
+          sourcePresetId: preset.id,
+          statOverride: { [key]: highest },
+          expiresAtTurnOrdinal: getSupportEffectExpiration(preset, turnOrdinal, false),
+        });
       } else if (preset.name === '押し売り') {
-        const lowest = Math.min(...Object.values(actor.stats));
-        const key = (Object.keys(actor.stats) as StatKey[]).find((k) => actor.stats[k] === lowest) || 'hp';
-        nextTarget = applyEmotionStatDelta(nextTarget, { [key]: lowest - nextTarget.stats[key] });
-      } else if (preset.name === '平穏な空気') {
-        const average = Math.round(Object.values(actor.stats).reduce((sum, value) => sum + value, 0) / 4);
+        const lowest = Math.min(...Object.values(actorEffective));
+        const key = STAT_KEYS.find((item) => actorEffective[item] === lowest) || 'hp';
+        addTargetAvatarEffect({
+          sourcePresetId: preset.id,
+          statOverride: { [key]: lowest },
+          expiresAtTurnOrdinal: getSupportEffectExpiration(preset, turnOrdinal, true),
+        });
+      } else {
+        const average = Math.round(
+          Object.values(actorEffective).reduce((sum, value) => sum + value, 0) / 4,
+        );
+        const averageEffect = {
+          hp: average,
+          intellect: average,
+          dexterity: average,
+          charm: average,
+        };
+        if (preset.name === '平穏な空気') {
+          addActorAvatarEffect({
+            sourcePresetId: preset.id,
+            statOverride: averageEffect,
+            expiresAtTurnOrdinal: getSupportEffectExpiration(preset, turnOrdinal, false),
+          });
+        } else if (preset.name === 'トンボがけ') {
+          addTargetAvatarEffect({
+            sourcePresetId: preset.id,
+            statOverride: averageEffect,
+            expiresAtTurnOrdinal: getSupportEffectExpiration(preset, turnOrdinal, true),
+          });
+        }
+      }
+    } else if (preset.effectCategory === '効果反射') {
+      if (preset.id === 'emo_33') {
+        const sourceEffects = cloneSupportDeltaEffects(
+          nextActor.supportEffects,
+          (delta) => delta < 0,
+          turnOrdinal,
+        );
+        const reflectedSourceIds = new Set(
+          sourceEffects.map((effect) => effect.id.split('_reflect_')[0]),
+        );
         nextActor = {
           ...nextActor,
-          stats: { hp: average, intellect: average, dexterity: average, charm: average },
+          supportEffects: (nextActor.supportEffects || []).filter(
+            (effect) => !reflectedSourceIds.has(effect.id),
+          ),
         };
-      } else if (preset.name === 'トンボがけ') {
-        const average = Math.round(Object.values(actor.stats).reduce((sum, value) => sum + value, 0) / 4);
+        for (const effect of sourceEffects) {
+          nextTarget = appendSupportAvatarEffect(nextTarget, effect, turnOrdinal);
+        }
+      } else if (preset.id === 'emo_34') {
+        const sourceEffects = cloneSupportDeltaEffects(
+          nextTarget.supportEffects,
+          (delta) => delta > 0,
+          turnOrdinal,
+        );
+        const reflectedSourceIds = new Set(
+          sourceEffects.map((effect) => effect.id.split('_reflect_')[0]),
+        );
         nextTarget = {
           ...nextTarget,
-          stats: { hp: average, intellect: average, dexterity: average, charm: average },
+          supportEffects: (nextTarget.supportEffects || []).filter(
+            (effect) => !reflectedSourceIds.has(effect.id),
+          ),
         };
+        for (const effect of sourceEffects) {
+          nextActor = appendSupportAvatarEffect(nextActor, effect, turnOrdinal);
+        }
+      }
+    } else if (preset.effectCategory === '技封印') {
+      if (preset.target === '相手') {
+        addTargetAvatarEffect({
+          sourcePresetId: preset.id,
+          skillSealIndex: 3,
+          expiresAtTurnOrdinal: getSupportEffectExpiration(preset, turnOrdinal, true),
+        });
       }
     }
 
-    return { actor: nextActor, target: nextTarget, scoreDelta, extraDraw };
+    return {
+      actor: nextActor,
+      target: nextTarget,
+      scoreDelta,
+      extraDraw,
+      actorSupportControlEffect,
+      targetSupportControlEffect,
+    };
   };
 
   // ===== CPUサポートカード選択 =====
@@ -4798,6 +5241,17 @@ if (!actionSubmitted) {
   // 4) 候補がなければ、手札からランダムに1枚を選択。
   const chooseCpuSupport = (hand: SupportCard[], cpuAvatar: BattleAvatar, playerAvatar: BattleAvatar) => {
     if (!hand.length) return null;
+    const cpuTurnOrdinal = getBattleTurnOrdinal(currentYear, turnIndex);
+    const supportLimit = getSupportUsageLimitFromEffects(
+      cpuAvatar.supportControlEffects,
+      cpuTurnOrdinal,
+    );
+    const supportUseCount = getSupportUseCountFromUsedSkills(
+      cpuUsedSkillsByClass,
+      currentYear,
+      turnIndex,
+    );
+    if (Number.isFinite(supportLimit) && supportUseCount >= supportLimit) return null;
     const scored = hand.map((card, index) => {
       const presetId = card.id.startsWith(VIRTUAL_SUPPORT_PREFIX)
         ? card.id.slice(VIRTUAL_SUPPORT_PREFIX.length)
@@ -4824,13 +5278,23 @@ if (!actionSubmitted) {
     return scored[0];
   };
 
-  const applyCpuSupport = (card: SupportCard, cpuAvatar: BattleAvatar, playerAvatar: BattleAvatar) => {
-    const applied = applyEmotionToPair(card, cpuAvatar, playerAvatar);
+  const applyCpuSupport = (
+    card: SupportCard,
+    cpuAvatar: BattleAvatar,
+    playerAvatar: BattleAvatar,
+  ) => {
+    const applied = applyEmotionToPair(
+      card,
+      cpuAvatar,
+      playerAvatar,
+    );
     return {
       cpuAvatar: applied.actor,
       playerAvatar: applied.target,
       extraDraw: applied.extraDraw,
       scoreDelta: applied.scoreDelta,
+      actorSupportControlEffect: applied.actorSupportControlEffect,
+      targetSupportControlEffect: applied.targetSupportControlEffect,
     };
   };
 
@@ -4848,21 +5312,36 @@ if (!actionSubmitted) {
     const timer = window.setTimeout(() => {
       void (async () => {
         // CPUの手番は「ドロー → サポート使用 → 技」の順。
-      // プレイヤー側と同じく、手札上限7枚を守りながら山札から1枚引きます。
-      if (cpuHand.length < MAX_HAND && cpuDeck.length > 0) {
-        const drawnCard = cpuDeck[0];
-        setCpuHand((prev) => [...prev, drawnCard].slice(0, MAX_HAND));
-        setCpuDeck((prev) => prev.slice(1));
-        addLog('CPUがサポートカードを1枚ドローしました。');
+      const cpuTurnOrdinal = getBattleTurnOrdinal(currentYear, turnIndex);
+      let workingCpuHand = [...cpuHand];
+      let workingCpuDeck = [...cpuDeck];
+
+      const cpuDrawCount = Math.min(
+        1 + getAdditionalDrawFromEffects(
+          oppActiveAvatar.supportControlEffects,
+          cpuTurnOrdinal,
+        ),
+        Math.max(0, MAX_HAND - workingCpuHand.length),
+        workingCpuDeck.length,
+      );
+      if (cpuDrawCount > 0) {
+        const drawnCards = workingCpuDeck.slice(0, cpuDrawCount);
+        workingCpuHand = [...workingCpuHand, ...drawnCards];
+        workingCpuDeck = workingCpuDeck.slice(cpuDrawCount);
+        setCpuHand(workingCpuHand);
+        setCpuDeck(workingCpuDeck);
+        addLog(`CPUがサポートカードを${cpuDrawCount}枚ドローしました。`);
       }
 
-      // ドロー直後の手札を判断材料にするため、現在の手札＋ドローしたカードを渡します。
-      const cpuHandForDecision = cpuHand.length < MAX_HAND && cpuDeck.length > 0
-        ? [...cpuHand, cpuDeck[0]]
-        : cpuHand;
+      const cpuHandForDecision = workingCpuHand;
       let workingCpu = oppActiveAvatar;
       let workingPlayer = myActiveAvatar;
       let cpuSupportScoreDelta = 0;
+      const cpuSupportUseCount = getSupportUseCountFromUsedSkills(
+        cpuUsedSkillsByClass,
+        currentYear,
+        turnIndex,
+      );
       const supportChoice = chooseCpuSupport(cpuHandForDecision, workingCpu, workingPlayer);
       if (supportChoice) {
         const applied = applyCpuSupport(supportChoice.card, workingCpu, workingPlayer);
@@ -4880,22 +5359,49 @@ if (!actionSubmitted) {
           target: getSupportBattleTarget(supportPreset, false),
         });
 
-        setCpuHand((prev) => prev.filter((_, index) => index !== supportChoice.index));
+        workingCpuHand = workingCpuHand.filter((_, index) => index !== supportChoice.index);
         addLog(`CPUがサポート「${supportChoice.card.name}」を使用しました。`);
-        setOppAvatars((prev) => prev.map((avatar, index) => index === activeIndex ? workingCpu : avatar));
-        setMyAvatars((prev) => prev.map((avatar, index) => index === activeIndex ? workingPlayer : avatar));
+        const cpuAvatarsAfterSupport =
+          applied.actorSupportControlEffect
+            ? applySupportControlToAllAvatars(
+                oppAvatars,
+                applied.actorSupportControlEffect,
+                cpuTurnOrdinal,
+              ).map((avatar, index) => index === activeIndex ? workingCpu : avatar)
+            : oppAvatars.map((avatar, index) => index === activeIndex ? workingCpu : avatar);
+        const playerAvatarsAfterSupport =
+          applied.targetSupportControlEffect
+            ? applySupportControlToAllAvatars(
+                myAvatars,
+                applied.targetSupportControlEffect,
+                cpuTurnOrdinal,
+              ).map((avatar, index) => index === activeIndex ? workingPlayer : avatar)
+            : myAvatars.map((avatar, index) => index === activeIndex ? workingPlayer : avatar);
+        setOppAvatars(cpuAvatarsAfterSupport);
+        setMyAvatars(playerAvatarsAfterSupport);
+        workingCpu = cpuAvatarsAfterSupport[activeIndex] || workingCpu;
+        workingPlayer = playerAvatarsAfterSupport[activeIndex] || workingPlayer;
+        setCpuUsedSkillsByClass(
+          setSupportUseCountInUsedSkills(
+            cpuUsedSkillsByClass,
+            currentYear,
+            turnIndex,
+            cpuSupportUseCount + 1,
+          ),
+        );
         if (applied.extraDraw > 0) {
-          setCpuHand((prev) => {
-            const next = [...prev];
-            let deckIndex = 0;
-            while (deckIndex < applied.extraDraw && cpuDeck.length > 0 && next.length < MAX_HAND) {
-              next.push(cpuDeck[deckIndex]);
-              deckIndex += 1;
-            }
-            return next;
-          });
-          setCpuDeck((prev) => prev.slice(applied.extraDraw));
+          const drawCount = Math.min(
+            applied.extraDraw,
+            Math.max(0, MAX_HAND - workingCpuHand.length),
+            workingCpuDeck.length,
+          );
+          const drawnSupportCards = workingCpuDeck.slice(0, drawCount);
+          workingCpuHand = [...workingCpuHand, ...drawnSupportCards];
+          workingCpuDeck = workingCpuDeck.slice(drawCount);
         }
+
+        setCpuHand(workingCpuHand);
+        setCpuDeck(workingCpuDeck);
         cpuSupportScoreDelta = applied.scoreDelta;
         if (applied.scoreDelta !== 0) {
           setOppClassScores((prev) => {
@@ -4949,6 +5455,15 @@ if (!actionSubmitted) {
       } else {
         gainedScore = effective.hp * 10;
       }
+
+      gainedScore = Math.max(
+        0,
+        gainedScore +
+          getSupportScoreModifierFromEffects(
+            workingCpu.supportControlEffects,
+            cpuTurnOrdinal,
+          ),
+      );
 
       const cpuSkillPreset = getPresetForCard(workingCpu.card);
       const cpuSkillIndex = workingCpu.skills.findIndex(
@@ -5070,6 +5585,24 @@ const handleUseSupportCard = async (
   if (supportSubmitInProgressRef.current) return;
   if (!myHand[index]) return;
 
+  const supportTurnOrdinal = getBattleTurnOrdinal(currentYear, turnIndex);
+  const supportUseLimit = getSupportUsageLimitFromEffects(
+    myActiveAvatar.supportControlEffects,
+    supportTurnOrdinal,
+  );
+  const supportUseCount = getSupportUseCountFromUsedSkills(
+    usedSkillsByClass,
+    currentYear,
+    turnIndex,
+  );
+  if (
+    Number.isFinite(supportUseLimit) &&
+    supportUseCount >= supportUseLimit
+  ) {
+    addLog('このターンはサポートカードをこれ以上使用できません。');
+    return;
+  }
+
   supportSubmitInProgressRef.current = true;
 
   try {
@@ -5080,7 +5613,7 @@ const handleUseSupportCard = async (
         oppActiveAvatar,
       );
 
-    const nextMyAvatars =
+    let nextMyAvatars =
       myAvatars.map(
         (avatar, avatarIndex) =>
           avatarIndex === activeIndex
@@ -5088,13 +5621,35 @@ const handleUseSupportCard = async (
             : avatar,
       );
 
-    const nextOppAvatars =
+    let nextOppAvatars =
       oppAvatars.map(
         (avatar, avatarIndex) =>
           avatarIndex === activeIndex
             ? applied.target
             : avatar,
       );
+
+    if (applied.actorSupportControlEffect) {
+      nextMyAvatars = applySupportControlToAllAvatars(
+        nextMyAvatars,
+        applied.actorSupportControlEffect,
+        supportTurnOrdinal,
+      );
+    }
+    if (applied.targetSupportControlEffect) {
+      nextOppAvatars = applySupportControlToAllAvatars(
+        nextOppAvatars,
+        applied.targetSupportControlEffect,
+        supportTurnOrdinal,
+      );
+    }
+
+    const nextUsedSkills = setSupportUseCountInUsedSkills(
+      usedSkillsByClass,
+      currentYear,
+      turnIndex,
+      supportUseCount + 1,
+    );
 
     let nextHand =
       myHand.filter(
@@ -5242,8 +5797,12 @@ const handleUseSupportCard = async (
         {
           avatars:
             nextMyAvatars,
+          hand:
+            nextHand,
           deck:
             nextDeck,
+          usedSkills:
+            nextUsedSkills,
         },
       );
 
@@ -5253,6 +5812,8 @@ const handleUseSupportCard = async (
       );
       return;
     }
+
+    setUsedSkillsByClass(nextUsedSkills);
 
     await playSupportPreResultEffect({
       effectKey: getSupportBattleEffect(
@@ -6315,7 +6876,7 @@ const field =
 
             <div className="flex items-center gap-2 rounded-xl bg-slate-950/85 px-3 py-2 text-white shadow sm:px-4">
               <div className="text-center">
-                <div className="text-[10px] opacity-60">あなた</div>
+                <div className="text-[10px] opacity-60">自分</div>
                 <div className="text-2xl font-black">
                   {myTotalScore}<span className="text-xs">スコア</span>
                 </div>
@@ -6330,16 +6891,13 @@ const field =
             </div>
 
             <div className="flex items-center gap-2">
-              <span className="rounded-full bg-white/80 px-3 py-1 text-xs font-black">
-                あなた
-              </span>
-              {battlePhase === 'battle' && (
+                            {battlePhase === 'battle' && (
                 <span
                   className={`rounded-full px-3 py-1 text-xs font-black ${
                     myTurn ? 'bg-amber-300' : 'bg-slate-900 text-white'
                   }`}
                 >
-                  {myTurn ? 'あなたのターン' : '相手のターン'}
+                  {myTurn ? '自分のターン' : '相手のターン'}
                 </span>
               )}
             </div>
@@ -6353,7 +6911,7 @@ const field =
             <h2 className="mt-1 text-2xl font-black">{ROLE_NAMES[classResult.completedYear - 1]}戦 終了</h2>
             <div className="mt-5 grid grid-cols-2 gap-3">
               <div className="rounded-2xl border border-indigo-200 bg-indigo-50 p-4">
-                <div className="text-sm font-black text-indigo-700">あなた</div>
+                <div className="text-sm font-black text-indigo-700">自分</div>
                 <div className="mt-1 text-3xl font-black">{classResult.myScore}<span className="text-sm">スコア</span></div>
               </div>
               <div className="rounded-2xl border border-rose-200 bg-rose-50 p-4">
@@ -6362,7 +6920,7 @@ const field =
               </div>
             </div>
             <div className="mt-4 text-xl font-black">
-              {classResult.myScore > classResult.opponentScore ? 'このクラスはあなたの勝利！' : classResult.myScore < classResult.opponentScore ? 'このクラスは相手の勝利。' : 'このクラスは引き分け。'}
+              {classResult.myScore > classResult.opponentScore ? 'このクラスは自分の勝利！' : classResult.myScore < classResult.opponentScore ? 'このクラスは相手の勝利。' : 'このクラスは引き分け。'}
             </div>
             <div className="mt-2 text-sm font-bold opacity-60">
               累計　{classResult.myTotal}スコア　VS　{classResult.opponentTotal}スコア
@@ -6431,9 +6989,6 @@ const field =
                                 <div className="min-w-0">
                                   <div className="truncate text-[11px] font-black">
                                     {avatar.card.userName}
-                                  </div>
-                                  <div className="truncate text-[9px] font-bold opacity-60">
-                                    {avatar.card.archetype}
                                   </div>
                                   <div className="mt-0.5 text-[8px] font-bold opacity-55">
                                     体{avatar.baseStats.hp} 知{avatar.baseStats.intellect} 器{avatar.baseStats.dexterity} 特{avatar.baseStats.charm}
@@ -6513,7 +7068,7 @@ const field =
                 )
               ) : (
                 <div className="mt-4 rounded-xl bg-white/10 p-3 text-lg font-black text-amber-300">
-                  {firstPlayer === playerRole ? 'あなた' : '相手'} が先手
+                  {firstPlayer === playerRole ? '自分' : '相手'} が先手
                 </div>
               )}
             </div>
@@ -6546,7 +7101,7 @@ const field =
             {/* ===== ① 待機キャラ6枚：現在対戦中キャラの上 ===== */}
             <div className="rounded-3xl border border-white/60 bg-white/35 p-3 shadow-xl backdrop-blur-md">
               <div className="mb-3 grid grid-cols-2 gap-3 text-center text-xs font-black">
-                <div className="rounded-full bg-slate-950/80 px-3 py-1.5 text-white">あなた</div>
+                <div className="rounded-full bg-indigo-700 px-3 py-1.5 text-white">自分</div>
                 <div className="rounded-full bg-slate-950/80 px-3 py-1.5 text-white">相手</div>
               </div>
 
@@ -6626,7 +7181,7 @@ const field =
             <div className="rounded-3xl border border-white/60 bg-white/35 p-3 shadow-xl backdrop-blur-md">
               <div className="grid grid-cols-1 gap-3 lg:grid-cols-2">
                 {/* 自分：常に左 */}
-                <div className="rounded-3xl border border-indigo-300/70 bg-white/85 p-3 shadow-lg">
+                <div className="rounded-3xl border-2 border-indigo-400/80 bg-white/90 p-3 shadow-lg ring-1 ring-indigo-200/70">
                   <div className="text-center text-xs font-black text-indigo-700">
                     自分　{mySideActiveAvatar.roleName}
                   </div>
@@ -6661,9 +7216,6 @@ const field =
                       <h3 className="mt-2 text-center text-xl font-black">
                         {mySideActiveAvatar.card.userName}
                       </h3>
-                      <div className="mt-1 text-center text-sm font-bold opacity-70">
-                        {mySideActiveAvatar.card.archetype}
-                      </div>
                       <div className="mt-3 rounded-xl bg-indigo-50 p-2 text-center">
                         <div className="text-[10px] font-black opacity-50">このクラスの得点</div>
                         <div className="text-xl font-black text-indigo-700">
@@ -6680,7 +7232,7 @@ const field =
                 </div>
 
                 {/* 相手：常に右 */}
-                <div className="rounded-3xl border border-rose-300/60 bg-white/80 p-3 shadow-lg">
+                <div className="rounded-3xl border-2 border-rose-400/80 bg-white/90 p-3 shadow-lg ring-1 ring-rose-200/70">
                   <div className="text-center text-xs font-black text-rose-700">
                     相手　{opponentSideActiveAvatar.roleName}
                   </div>
@@ -6715,9 +7267,6 @@ const field =
                       <h3 className="mt-2 text-center text-xl font-black">
                         {opponentSideActiveAvatar.card.userName}
                       </h3>
-                      <div className="mt-1 text-center text-sm font-bold opacity-70">
-                        {opponentSideActiveAvatar.card.archetype}
-                      </div>
                       <div className="mt-3 rounded-xl bg-rose-50 p-2 text-center">
                         <div className="text-[10px] font-black opacity-50">このクラスの得点</div>
                         <div className="text-xl font-black text-rose-700">
@@ -6748,28 +7297,52 @@ const field =
                 {turnIndex % 2 === 0 ? '先手' : '後手'}
               </div>
               <div className={`mt-1 text-lg font-black ${myTurn ? 'text-emerald-50' : 'text-white'}`}>
-                {myTurn ? 'あなたの手番です' : '相手の手番'}
+                {myTurn ? '自分のターン' : '相手のターン'}
+              </div>
+            </div>
+
+            <div className="lg:hidden sticky top-1 z-30 rounded-xl border border-indigo-200 bg-white/95 p-2 shadow-md backdrop-blur">
+              <div className="grid grid-cols-2 gap-2">
+                <div className="flex items-center gap-2 rounded-lg bg-indigo-50 px-2 py-1.5">
+                  <img src={myActiveAvatar.card.imageDataUrl} alt="" className="h-10 w-8 rounded-md bg-white object-contain" />
+                  <div className="min-w-0">
+                    <div className="truncate text-[10px] font-black text-indigo-800">自分</div>
+                    <div className="truncate text-[10px] font-bold text-slate-700">{myActiveAvatar.card.userName}</div>
+                    <div className="text-sm font-black text-indigo-700">{mySideActiveClassScore}スコア</div>
+                  </div>
+                </div>
+                <div className="flex items-center gap-2 rounded-lg bg-rose-50 px-2 py-1.5">
+                  <img src={oppActiveAvatar.card.imageDataUrl} alt="" className="h-10 w-8 rounded-md bg-white object-contain" />
+                  <div className="min-w-0">
+                    <div className="truncate text-[10px] font-black text-rose-700">相手</div>
+                    <div className="truncate text-[10px] font-bold text-slate-700">{oppActiveAvatar.card.userName}</div>
+                    <div className="text-sm font-black text-rose-700">{opponentSideActiveClassScore}スコア</div>
+                  </div>
+                </div>
               </div>
             </div>
 
             {/* ===== ④ サポートカード ===== */}
-            <section className="rounded-2xl border border-white/60 bg-white/75 p-3 shadow-lg backdrop-blur-md">
-              <div className="flex items-start justify-between gap-2">
+            <section className="relative rounded-2xl border border-white/60 bg-white/75 p-3 shadow-lg backdrop-blur-md">
+              <div className="flex items-start gap-2 pr-28 sm:pr-32">
                 <div className="text-sm font-black">🃏 サポートカード</div>
-                <div className="flex shrink-0 flex-col items-end gap-1">
-                  <div className="text-right text-[10px] font-bold leading-relaxed opacity-60 sm:text-xs">
-                    <div>あなた：手札 {myHand.length}/{MAX_HAND}</div>
-                    <div>相手：手札 {isOnline ? opponentHandCount : cpuHand.length}/{MAX_HAND}</div>
-                  </div>
-                  <BattleDeckPile
-                    label="山札"
-                    count={myDeck.length}
-                    animationKey={battleDealAnimationKey}
-                    dealCount={battlePhase === 'battle' && battleDealAnimationActive ? INITIAL_HAND_SIZE : 0}
-                    side="self"
-                    compact
-                  />
+                <div className="mt-0.5 text-[10px] font-bold opacity-55">
+                  使用 {getSupportUseCountFromUsedSkills(usedSkillsByClass, currentYear, turnIndex)} / {Number.isFinite(getSupportUsageLimitFromEffects(myActiveAvatar.supportControlEffects, getBattleTurnOrdinal(currentYear, turnIndex))) ? getSupportUsageLimitFromEffects(myActiveAvatar.supportControlEffects, getBattleTurnOrdinal(currentYear, turnIndex)) : '∞'}
                 </div>
+              </div>
+              <div className="absolute right-3 top-3 z-10 flex shrink-0 flex-col items-end gap-1">
+                <div className="text-right text-[10px] font-bold leading-relaxed opacity-60 sm:text-xs">
+                  <div>自分：手札 {myHand.length}/{MAX_HAND}</div>
+                  <div>相手：手札 {isOnline ? opponentHandCount : cpuHand.length}/{MAX_HAND}</div>
+                </div>
+                <BattleDeckPile
+                  label="山札"
+                  count={myDeck.length}
+                  animationKey={battleDealAnimationKey}
+                  dealCount={battlePhase === 'battle' && battleDealAnimationActive ? INITIAL_HAND_SIZE : 0}
+                  side="self"
+                  compact
+                />
               </div>
 
               <div className="mt-2 grid grid-cols-1 gap-2 min-[420px]:grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 pb-1">
@@ -6817,7 +7390,12 @@ const field =
                 {myActiveAvatar.skills.map((skill, index) => {
                   const disabled =
                     !myTurn ||
-                    (skill.maxUsesPerClass > 0 && usedThisClass.includes(skill.id));
+                    (skill.maxUsesPerClass > 0 && usedThisClass.includes(skill.id)) ||
+                    hasSkillSeal(
+                      myActiveAvatar,
+                      index,
+                      getBattleTurnOrdinal(currentYear, turnIndex),
+                    );
                   const skillNumber = ['①', '②', '③', '④'][index] || `${index + 1}.`;
 
                   return (
@@ -6988,7 +7566,6 @@ const field =
               </div>
               <div className="mt-4 space-y-1 text-xs font-bold opacity-70">
                 <div>カラー：{modalAvatar.card.color}</div>
-                <div>タイプ：{modalAvatar.card.archetype}</div>
                 <div>得意季節：{modalAvatar.card.favoredSeason}</div>
               </div>
             </div>

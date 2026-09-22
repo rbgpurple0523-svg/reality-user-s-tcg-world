@@ -1,5 +1,4 @@
 import type { BattlePreResultEffectKey } from './battle/battleEffectTypes';
-
 export type CardColor = '赤' | '青' | '黄';
 export type Archetype =
   | 'マッスル型'
@@ -136,10 +135,7 @@ const STATS_BY_CODE: Record<
   a1: [40, 40, 40, 40],
 };
 
-const ARCHETYPE_BY_PRIMARY: Record<
-  StatKey,
-  Archetype
-> = {
+const ARCHETYPE_BY_PRIMARY: Record<StatKey, Archetype> = {
   hp: 'マッスル型',
   intellect: '頭脳型',
   dexterity: '職人型',
@@ -238,16 +234,12 @@ export const COORDINATE_PRESETS: CoordinatePreset[] =
     const [hp, intellect, dexterity, charm] =
       STATS_BY_CODE[code];
 
-    const primary =
-      STAT_RANKS[code][0];
-
     return {
       id: `coord_${code}`,
       code,
       name: `コーデ ${code === 'a1' ? 'A-1' : code[0].toUpperCase() + '-' + code.slice(1)}`,
       color: '赤',
-      archetype:
-        ARCHETYPE_BY_PRIMARY[primary],
+      archetype: ARCHETYPE_BY_PRIMARY[STAT_RANKS[code][0]],
       season: '春',
       stats: {
         hp,

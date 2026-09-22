@@ -51,14 +51,10 @@ export interface Deck {
   updatedAt: string;
 }
 
-// ==========================================
-// 1. 設定データ (Configs)
-// ==========================================
-
 export const ARCHETYPE_CONFIG: Record<Archetype, { season: FavoredSeason; stats: CardStats }> = {
   'マッスル型': { season: '春', stats: { hp: 80, intellect: 20, dexterity: 20, charm: 20 } },
-  '頭脳型':     { season: '秋', stats: { hp: 20, intellect: 80, dexterity: 20, charm: 20 } },
-  '職人型':     { season: '冬', stats: { hp: 20, intellect: 20, dexterity: 80, charm: 20 } },
+  '頭脳型': { season: '秋', stats: { hp: 20, intellect: 80, dexterity: 20, charm: 20 } },
+  '職人型': { season: '冬', stats: { hp: 20, intellect: 20, dexterity: 80, charm: 20 } },
   'ディーバ型': { season: '夏', stats: { hp: 20, intellect: 20, dexterity: 20, charm: 80 } },
-  'バランス型': { season: '春', stats: { hp: 40, intellect: 40, dexterity: 40, charm: 40 } }
+  'バランス型': { season: '春', stats: { hp: 40, intellect: 40, dexterity: 40, charm: 40 } },
 };
