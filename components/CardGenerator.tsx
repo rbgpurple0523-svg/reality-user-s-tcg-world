@@ -3,7 +3,6 @@
 import React, { ChangeEvent, FormEvent, useEffect, useMemo, useState } from 'react';
 import { CoordinatePreset, COORDINATE_PRESETS, EntryRecord } from './EntryHub';
 import { EMOTION_PRESETS } from './emotionPresets';
-import CoordinateRadialMap from './CoordinateRadialMap';
 import {
   COLOR_PALETTE,
   getColorTypeFromHex,
@@ -14,6 +13,7 @@ import {
 interface CardGeneratorProps {
   selectedCoordinate?: CoordinatePreset | null;
   onBackToHub?: () => void;
+  onChangeCoordinate?: () => void;
 }
 
 const ENTRIES_KEY = 'reality_world_entries';
@@ -112,7 +112,46 @@ function getMaxEntryLimit(entries: EntryRecord[]): number {
       : 1;
 }
 
-export default function CardGenerator({ selectedCoordinate, onBackToHub }: CardGeneratorProps) {
+function MiniRadarChart({ stats }: { stats: CoordinatePreset['stats'] }) {
+  const size = 96;
+  const center = size / 2;
+  const radius = 34;
+  const values = [stats.hp, stats.intellect, stats.dexterity, stats.charm].map((value) => Math.min(100, Math.max(0, value)));
+  const points = [
+    `${center},${center - (values[0] / 100) * radius}`,
+    `${center + (values[1] / 100) * radius},${center}`,
+    `${center},${center + (values[2] / 100) * radius}`,
+    `${center - (values[3] / 100) * radius},${center}`,
+  ].join(' ');
+  const outerPoints = [
+    `${center},${center - radius}`,
+    `${center + radius},${center}`,
+    `${center},${center + radius}`,
+    `${center - radius},${center}`,
+  ].join(' ');
+  const middleRadius = radius * 0.5;
+  const middlePoints = [
+    `${center},${center - middleRadius}`,
+    `${center + middleRadius},${center}`,
+    `${center},${center + middleRadius}`,
+    `${center - middleRadius},${center}`,
+  ].join(' ');
+  return (
+    <svg width={size} height={size} viewBox={`0 0 ${size} ${size}`} aria-label="ステータスレーダー">
+      <polygon points={outerPoints} fill="none" stroke="currentColor" strokeOpacity="0.18" />
+      <polygon points={middlePoints} fill="none" stroke="currentColor" strokeOpacity="0.12" />
+      <line x1={center} y1={center - radius} x2={center} y2={center + radius} stroke="currentColor" strokeOpacity="0.12" />
+      <line x1={center - radius} y1={center} x2={center + radius} y2={center} stroke="currentColor" strokeOpacity="0.12" />
+      <polygon points={points} fill="currentColor" fillOpacity="0.15" stroke="currentColor" strokeWidth="2" />
+    </svg>
+  );
+}
+
+export default function CardGenerator({
+  selectedCoordinate,
+  onBackToHub,
+  onChangeCoordinate,
+}: CardGeneratorProps) {
   // ---------------------------------------------------------
   // コーデ選択
   // 未選択状態を許容。EntryHubから来た場合だけ初期選択される。
@@ -121,6 +160,8 @@ export default function CardGenerator({ selectedCoordinate, onBackToHub }: CardG
 
   useEffect(() => {
     setCurrentCoordinate(selectedCoordinate ?? null);
+    setRegistrationStep(2);
+    setActiveEditor(null);
     if (selectedCoordinate) {
       setCustomSkills([
         selectedCoordinate.defaultSkills[0],
@@ -129,6 +170,7 @@ export default function CardGenerator({ selectedCoordinate, onBackToHub }: CardG
         selectedCoordinate.defaultSkills[3],
       ]);
       setFlavorText('');
+      setIsColorTouched(false);
     }
   }, [selectedCoordinate]);
 
@@ -160,6 +202,9 @@ export default function CardGenerator({ selectedCoordinate, onBackToHub }: CardG
   const [isModerating, setIsModerating] = useState(false);
 
   const [activeEditor, setActiveEditor] = useState<'basic' | 'skills' | 'color' | 'flavor' | 'saved' | null>(null);
+  const [showHelp, setShowHelp] = useState(false);
+  const [isColorTouched, setIsColorTouched] = useState(false);
+  const [registrationStep, setRegistrationStep] = useState<2 | 3>(2);
 
   const maxEntryLimit = useMemo(
     () => getMaxEntryLimit(entries),
@@ -244,6 +289,7 @@ export default function CardGenerator({ selectedCoordinate, onBackToHub }: CardG
           ? draft.colorHex.toUpperCase()
           : getLegacyColorHex(undefined),
       );
+      setIsColorTouched(Boolean(draft.colorHex && /^#[0-9a-fA-F]{6}$/.test(draft.colorHex)));
       setDraftAvailable(false);
       setSuccessMessage('前回の続きから復元しました。');
       setTimeout(() => setSuccessMessage(''), 2000);
@@ -285,6 +331,7 @@ export default function CardGenerator({ selectedCoordinate, onBackToHub }: CardG
     const normalized = hex.toUpperCase();
     if (!/^#[0-9A-F]{6}$/.test(normalized)) return;
     setSelectedColorHex(normalized);
+    setIsColorTouched(true);
     setErrorMessage('');
   };
 
@@ -309,26 +356,46 @@ export default function CardGenerator({ selectedCoordinate, onBackToHub }: CardG
       return;
     }
 
-    const currentCoordinateCount = entries.filter(
+    const currentEntries = getStoredEntries();
+    const currentMaxEntryLimit = getMaxEntryLimit(currentEntries);
+    const currentCoordinateCount = currentEntries.filter(
       (entry) => entry.presetId === currentCoordinate.id,
     ).length;
     const editingKeepsCurrentCoordinate = Boolean(
       editingId &&
-        entries.some(
+        currentEntries.some(
           (entry) => entry.id === editingId && entry.presetId === currentCoordinate.id,
         ),
     );
 
-    if (currentCoordinateCount >= maxEntryLimit && !editingKeepsCurrentCoordinate) {
+    if (
+      currentCoordinateCount >= currentMaxEntryLimit &&
+      !editingKeepsCurrentCoordinate
+    ) {
       setErrorMessage('このコーデは現在エントリー上限に達しています。別のコーデを選択してください。');
+      if (registrationStep === 3) setRegistrationStep(2);
       return;
     }
+
     if (!profileUrl.includes('reality.app/user/')) {
       setErrorMessage('有効なREALITYプロフURLを入力してください。');
+      setActiveEditor('basic');
       return;
     }
     if (!userName.trim() || !imageDataUrl || !password.trim() || customSkills.some((skill) => !skill.trim())) {
-      setErrorMessage('必須項目をすべて入力してください。');
+      setErrorMessage('基本情報と4つのスキルをすべて入力してください。');
+      if (!userName.trim() || !profileUrl.includes('reality.app/user/') || !imageDataUrl || !password.trim()) {
+        setActiveEditor('basic');
+      } else {
+        setActiveEditor('skills');
+      }
+      return;
+    }
+
+    if (registrationStep === 2) {
+      setRegistrationStep(3);
+      setActiveEditor(null);
+      setSuccessMessage('登録内容を確認してください。');
       return;
     }
 
@@ -365,10 +432,8 @@ export default function CardGenerator({ selectedCoordinate, onBackToHub }: CardG
 
     setIsModerating(false);
 
-    const currentEntries = getStoredEntries();
     const editingEntry = editingId ? currentEntries.find((entry) => entry.id === editingId) : null;
 
-    // 新規作成時だけcreator tokenを発行。編集時は既存tokenを維持。
     let creatorToken = editingEntry ? creatorTokens[editingEntry.id] : undefined;
     if (!creatorToken) creatorToken = makeCreatorToken();
 
@@ -380,7 +445,6 @@ export default function CardGenerator({ selectedCoordinate, onBackToHub }: CardG
       customSkills[3].trim(),
     ];
 
-
     const newEntry: EntryRecord = {
       id: editingId || `entry_${Date.now()}`,
       presetId: currentCoordinate.id,
@@ -388,7 +452,6 @@ export default function CardGenerator({ selectedCoordinate, onBackToHub }: CardG
       profileUrl: profileUrl.trim(),
       userName: userName.trim(),
       imageDataUrl,
-      // 既存データ形式との互換性を優先し、現時点では入力された合言葉を保持。
       passwordHash: password,
       firstUser: editingEntry?.firstUser || userName.trim(),
       customSkills: normalizedCustomSkills,
@@ -417,12 +480,13 @@ export default function CardGenerator({ selectedCoordinate, onBackToHub }: CardG
     setAuthorizedIds((prev) => ({ ...prev, [newEntry.id]: true }));
     setEditingId(null);
     setSuccessMessage(editingEntry ? '✨ キャラカードを更新しました！' : '✨ キャラカードを登録しました！');
+    setRegistrationStep(3);
+    setActiveEditor(null);
 
     try {
       localStorage.removeItem(DRAFT_KEY);
     } catch {}
     setDraftAvailable(false);
-    setTimeout(() => setSuccessMessage(''), 2500);
   };
 
   // ---------------------------------------------------------
@@ -468,6 +532,8 @@ export default function CardGenerator({ selectedCoordinate, onBackToHub }: CardG
         ? entry.colorHex.toUpperCase()
         : getLegacyColorHex(entry.color),
     );
+    setIsColorTouched(true);
+    setRegistrationStep(2);
     setEditingId(entry.id);
     setErrorMessage('');
     setActiveEditor('basic');
@@ -495,6 +561,18 @@ export default function CardGenerator({ selectedCoordinate, onBackToHub }: CardG
     if (editingId === entry.id) setEditingId(null);
   };
 
+  const basicInfoComplete = Boolean(
+    userName.trim() &&
+      profileUrl.includes('reality.app/user/') &&
+      imageDataUrl &&
+      password.trim(),
+  );
+  const skillsComplete = customSkills.every((skill) => skill.trim().length > 0);
+  const currentEntriesIsFull = Boolean(
+    currentCoordinate &&
+      entries.filter((entry) => entry.presetId === currentCoordinate.id).length >= maxEntryLimit,
+  );
+
   return (
     <div className="mx-auto flex h-full min-h-0 w-full max-w-5xl flex-col text-gray-900">
       <div className="shrink-0 border-b border-gray-200 px-3 py-2 sm:px-5">
@@ -503,19 +581,21 @@ export default function CardGenerator({ selectedCoordinate, onBackToHub }: CardG
             <div className="text-[9px] font-black tracking-[0.22em] text-pink-500">CHARACTER CARD</div>
             <h2 className="truncate text-lg font-black">キャラカードを作る</h2>
           </div>
-          {onBackToHub && (
-            <button type="button" onClick={onBackToHub} className="shrink-0 rounded-xl bg-gray-100 px-3 py-2 text-[10px] font-black text-gray-700">
-              ← 戻る
-            </button>
-          )}
+          <div className="flex shrink-0 items-center gap-1.5">
+            <button type="button" onClick={() => setShowHelp(true)} className="rounded-xl border border-gray-200 bg-white px-2.5 py-2 text-[10px] font-black text-gray-700">説明</button>
+            {onBackToHub && (
+              <button type="button" onClick={onBackToHub} className="rounded-xl bg-gray-100 px-3 py-2 text-[10px] font-black text-gray-700">← 戻る</button>
+            )}
+          </div>
         </div>
 
-        <div className="mt-2 grid grid-cols-[auto_1fr_auto] items-center gap-2 text-[9px] font-black">
-          <span className="rounded-full bg-pink-100 px-2.5 py-1 text-pink-800">① コーデ</span>
+        <div className="mt-2 grid grid-cols-[1fr_auto_1fr_auto_1fr] items-center gap-1.5 text-[9px] font-black">
+          <span className={`rounded-full px-2 py-1 text-center ${registrationStep === 2 ? 'bg-pink-600 text-white' : 'bg-pink-100 text-pink-800'}`}>① コーデ</span>
           <span className="h-px bg-pink-200" />
-          <span className="rounded-full bg-pink-600 px-2.5 py-1 text-white">② カード編集</span>
+          <span className={`rounded-full px-2 py-1 text-center ${registrationStep === 2 ? 'bg-pink-600 text-white' : 'bg-pink-100 text-pink-800'}`}>② カード編集</span>
+          <span className="h-px bg-pink-200" />
+          <span className={`rounded-full px-2 py-1 text-center ${registrationStep === 3 ? 'bg-pink-600 text-white' : 'bg-gray-100 text-gray-400'}`}>③ 登録</span>
         </div>
-        <div className="mt-1 text-right text-[9px] font-bold text-gray-400">③ 登録で完成</div>
       </div>
 
       {draftAvailable && !editingId && (
@@ -537,85 +617,134 @@ export default function CardGenerator({ selectedCoordinate, onBackToHub }: CardG
       )}
 
       <form onSubmit={handleSubmit} className="flex min-h-0 flex-1 flex-col">
-        <div className="grid min-h-0 flex-1 grid-cols-[minmax(0,1fr)_minmax(120px,180px)] gap-3 px-3 py-3 sm:grid-cols-[minmax(0,1fr)_220px] sm:gap-4 sm:px-5">
-          <div className="min-h-0 rounded-2xl border border-gray-200 bg-gray-50 p-3 sm:p-4">
-            {!currentCoordinate ? (
-              <div className="flex h-full min-h-[260px] flex-col items-center justify-center text-center text-xs text-gray-400">
-                <div className="text-4xl">👗</div>
-                <div className="mt-2 font-black">コーデ未選択</div>
-                <div className="mt-1">前の画面でコーデを選んでください。</div>
-              </div>
-            ) : (
-              <div className="flex h-full min-h-0 flex-col">
-                <div className="flex items-start justify-between gap-3">
-                  <div className="min-w-0">
-                    <div className="flex items-center gap-2">
-                      <span className="rounded-md bg-pink-600 px-2 py-1 text-[9px] font-black text-white">{currentCoordinate.code.toUpperCase()}</span>
-                      <span className="truncate text-sm font-black">{currentCoordinate.name}</span>
+        <div className="min-h-0 flex-1 overflow-hidden px-3 py-3 sm:px-5">
+          {registrationStep === 2 ? (
+            <div className="flex h-full min-h-0 flex-col gap-3">
+              <div className="shrink-0 rounded-2xl border border-indigo-100 bg-indigo-50/60 p-3">
+                <div className="flex items-center gap-3">
+                  <div className="min-w-0 flex-1">
+                    <div className="text-[9px] font-black tracking-[0.16em] text-indigo-500">SELECTED COORDINATE</div>
+                    <div className="mt-1 flex items-center gap-2">
+                      <span className="rounded-md bg-indigo-600 px-2 py-1 text-[9px] font-black text-white">{currentCoordinate?.code.toUpperCase()}</span>
+                      <span className="truncate text-sm font-black text-indigo-950">{currentCoordinate?.name || '未選択'}</span>
                     </div>
-                    <div className="mt-1 text-[9px] font-bold text-gray-500">{currentCoordinate.tendency}</div>
+                    <p className="mt-1 text-[9px] font-bold leading-4 text-indigo-800">コーデは、4つのステータスの得意・不得意を決めるキャラの性能タイプです。</p>
                   </div>
-                  <button type="button" onClick={() => setActiveEditor('saved')} className="shrink-0 rounded-lg border border-gray-200 bg-white px-2 py-1.5 text-[9px] font-black text-gray-600">自分のカード</button>
-                </div>
-
-                <div className="mt-3 min-h-0 flex-1 overflow-hidden rounded-2xl border-4 border-pink-400 bg-white shadow-sm">
-                  <div className="flex h-full min-h-0 flex-col p-2.5">
-                    <div className="flex items-center justify-between gap-2 text-[9px] font-black">
-                      <span className="rounded bg-pink-600 px-2 py-1 text-white">{currentCoordinate.code.toUpperCase()}</span>
-                      <span className="text-gray-600">{currentCoordinate.archetype}</span>
+                  {currentCoordinate && (
+                    <div className="shrink-0 rounded-xl border border-indigo-100 bg-white p-1">
+                      <MiniRadarChart stats={currentCoordinate.stats} />
                     </div>
-                    <div className="mt-2 text-center">
-                      <div className="truncate text-base font-black">{userName || 'ユーザー名'}</div>
-                      <div className="mt-0.5 truncate text-[9px] font-bold text-pink-600">{currentCoordinate.name}</div>
-                    </div>
-                    <div className="mt-2 min-h-0 flex-1 overflow-hidden rounded-xl bg-gray-100">
-                      {imageDataUrl ? <img src={imageDataUrl} alt="Avatar" className="h-full w-full object-cover" /> : <div className="flex h-full items-center justify-center text-[9px] font-bold text-gray-400">画像を設定してください</div>}
-                    </div>
-                    <div className="mt-2 grid grid-cols-2 gap-1 text-[8px] font-black text-gray-700">
-                      <div className="rounded bg-gray-50 px-1.5 py-1">体力 {currentCoordinate.stats.hp}</div>
-                      <div className="rounded bg-gray-50 px-1.5 py-1">知略 {currentCoordinate.stats.intellect}</div>
-                      <div className="rounded bg-gray-50 px-1.5 py-1">器用 {currentCoordinate.stats.dexterity}</div>
-                      <div className="rounded bg-gray-50 px-1.5 py-1">特技 {currentCoordinate.stats.charm}</div>
-                    </div>
-                    <div className="mt-2 rounded-lg bg-pink-50 px-2 py-1.5 text-[8px] leading-4 text-gray-700">
-                      <div className="font-black text-pink-800">所持スキル</div>
-                      {customSkills.map((skill, index) => <div key={index} className="truncate">{index + 1}. {skill || currentCoordinate.defaultSkills[index]}</div>)}
-                    </div>
-                    <div className="mt-2 rounded-lg bg-amber-50 px-2 py-1.5 text-[8px] leading-4 text-amber-950">
-                      <div className="font-black text-amber-700">カードの一言</div>
-                      <div className="truncate">{flavorText || 'このキャラらしい一言'}</div>
-                    </div>
-                  </div>
-                </div>
-
-                <div className="mt-3 grid grid-cols-2 gap-2 sm:grid-cols-4">
-                  <button type="button" onClick={() => setActiveEditor('basic')} className="rounded-xl border border-gray-200 bg-white px-2 py-2 text-[9px] font-black">基本情報</button>
-                  <button type="button" onClick={() => setActiveEditor('skills')} className="rounded-xl border border-gray-200 bg-white px-2 py-2 text-[9px] font-black">スキルを編集</button>
-                  <button type="button" onClick={() => setActiveEditor('color')} className="rounded-xl border border-gray-200 bg-white px-2 py-2 text-[9px] font-black">カラー</button>
-                  <button type="button" onClick={() => setActiveEditor('flavor')} className="rounded-xl border border-gray-200 bg-white px-2 py-2 text-[9px] font-black">一言</button>
+                  )}
                 </div>
               </div>
-            )}
-          </div>
 
-          <div className="min-h-0 rounded-2xl border border-gray-200 bg-white p-2.5 sm:p-3">
-            <div className="text-[8px] font-black tracking-wider text-gray-400">PREVIEW</div>
-            <div className="mt-2 aspect-[3/4] w-full overflow-hidden rounded-xl border border-gray-200 bg-gray-50">
-              {imageDataUrl ? <img src={imageDataUrl} alt="" className="h-full w-full object-cover" /> : <div className="flex h-full items-center justify-center px-2 text-center text-[8px] font-bold text-gray-400">アバター画像</div>}
+              {currentCoordinate && currentEntriesIsFull && !editingId && (
+                <div className="shrink-0 rounded-xl border border-red-200 bg-red-50 px-3 py-2">
+                  <div className="text-[10px] font-black text-red-700">このコーデは現在満員です。</div>
+                  <div className="mt-0.5 text-[9px] font-bold leading-4 text-red-600">別のコーデを選んでからカード編集を続けてください。</div>
+                  {onChangeCoordinate && <button type="button" onClick={onChangeCoordinate} className="mt-2 rounded-lg bg-red-600 px-3 py-1.5 text-[9px] font-black text-white">コーデを選び直す</button>}
+                </div>
+              )}
+
+              <div className="min-h-0 flex-1 rounded-2xl border border-gray-200 bg-white p-3">
+                <div className="flex items-end justify-between gap-2">
+                  <div>
+                    <div className="text-[9px] font-black tracking-[0.16em] text-gray-400">EDIT</div>
+                    <h3 className="mt-0.5 text-sm font-black">カードの設定</h3>
+                  </div>
+                  <div className="text-[8px] font-bold text-gray-400">未設定の項目を開いて編集</div>
+                </div>
+
+                <div className="mt-3 grid grid-cols-2 gap-2">
+                  <button type="button" onClick={() => setActiveEditor('basic')} className="rounded-2xl border-2 border-indigo-100 bg-indigo-50/60 p-3 text-left">
+                    <div className="flex items-center justify-between gap-2"><span className="text-[10px] font-black text-indigo-900">基本情報</span><span className={`rounded-full px-1.5 py-0.5 text-[8px] font-black ${basicInfoComplete ? 'bg-emerald-100 text-emerald-700' : 'bg-white text-indigo-600'}`}>{basicInfoComplete ? '入力済み' : '必須・未設定'}</span></div>
+                    <div className="mt-1 text-[8px] font-bold text-indigo-700">反映：名前・画像・プロフィール</div>
+                  </button>
+
+                  <button type="button" onClick={() => setActiveEditor('skills')} className="rounded-2xl border-2 border-pink-100 bg-pink-50/60 p-3 text-left">
+                    <div className="flex items-center justify-between gap-2"><span className="text-[10px] font-black text-pink-900">スキル</span><span className={`rounded-full px-1.5 py-0.5 text-[8px] font-black ${skillsComplete ? 'bg-emerald-100 text-emerald-700' : 'bg-white text-pink-600'}`}>{skillsComplete ? '4つ入力済み' : '必須・未設定'}</span></div>
+                    <div className="mt-1 text-[8px] font-bold text-pink-700">反映：カードのスキル欄</div>
+                  </button>
+
+                  <button type="button" onClick={() => setActiveEditor('color')} style={!isColorTouched ? undefined : { borderColor: selectedColorHex, backgroundColor: `${selectedColorHex}14` }} className="rounded-2xl border-2 border-cyan-100 bg-cyan-50/60 p-3 text-left">
+                    <div className="flex items-center justify-between gap-2"><span className="text-[10px] font-black text-cyan-950">カラー</span><span className={`rounded-full px-1.5 py-0.5 text-[8px] font-black ${isColorTouched ? 'bg-emerald-100 text-emerald-700' : 'bg-white text-cyan-700'}`}>{isColorTouched ? '設定済み' : '未設定'}</span></div>
+                    <div className="mt-1 flex items-center gap-1.5 text-[8px] font-bold text-cyan-800"><span className="h-2.5 w-2.5 rounded-full border border-white shadow-sm" style={{ backgroundColor: selectedColorHex }} />反映：カードの枠・色</div>
+                  </button>
+
+                  <button type="button" onClick={() => setActiveEditor('flavor')} className="rounded-2xl border-2 border-amber-100 bg-amber-50/60 p-3 text-left">
+                    <div className="flex items-center justify-between gap-2"><span className="text-[10px] font-black text-amber-950">一言</span><span className={`rounded-full px-1.5 py-0.5 text-[8px] font-black ${flavorText.trim() ? 'bg-emerald-100 text-emerald-700' : 'bg-white text-amber-700'}`}>{flavorText.trim() ? '入力済み' : '未設定'}</span></div>
+                    <div className="mt-1 text-[8px] font-bold text-amber-800">反映：カードの一言</div>
+                  </button>
+                </div>
+
+                <div className="mt-3 rounded-xl border border-dashed border-gray-200 bg-gray-50 px-3 py-2 text-[9px] font-bold leading-4 text-gray-500">
+                  <span className="font-black text-gray-700">スキルの名前について：</span>各スキルの「できること」を見ながら、あなたらしい名前をつけられます。
+                </div>
+              </div>
             </div>
-            <div className="mt-2 truncate text-center text-[10px] font-black">{userName || 'ユーザー名'}</div>
-            <div className="mt-1 truncate text-center text-[8px] font-bold text-pink-600">{currentCoordinate?.name || 'コーデ未選択'}</div>
-            <div className="mt-2 h-2 rounded-full" style={{ backgroundColor: selectedColorHex }} />
-            <div className="mt-1 text-center text-[8px] font-bold text-gray-500">{getColorTypeLabel(selectedColorType)}</div>
-          </div>
+          ) : (
+            <div className="flex h-full min-h-0 flex-col gap-3">
+              <div className="shrink-0 rounded-2xl border border-pink-100 bg-pink-50/60 p-3">
+                <div className="text-[9px] font-black tracking-[0.16em] text-pink-500">STEP 3</div>
+                <h3 className="mt-1 text-base font-black text-pink-950">登録内容を確認</h3>
+                <p className="mt-1 text-[9px] font-bold leading-4 text-pink-800">内容を確認してから「このカードで参加する」を押してください。</p>
+              </div>
+
+              <div className="min-h-0 flex-1 rounded-2xl border border-gray-200 bg-white p-3">
+                <div className="grid grid-cols-2 gap-2 text-[9px] font-bold">
+                  <div className="rounded-xl border border-indigo-100 bg-indigo-50 p-2.5"><div className="font-black text-indigo-800">基本情報</div><div className="mt-1 truncate">{userName || '未設定'}</div><div className="mt-0.5 text-gray-500">{profileUrl || 'REALITYプロフィール未設定'}</div></div>
+                  <div className="rounded-xl border border-pink-100 bg-pink-50 p-2.5"><div className="font-black text-pink-800">スキル</div><div className="mt-1">4つ設定済み</div></div>
+                  <div className="rounded-xl border-2 p-2.5" style={{ borderColor: selectedColorHex, backgroundColor: `${selectedColorHex}10` }}><div className="font-black">カラー</div><div className="mt-1 flex items-center gap-1.5"><span className="h-3 w-3 rounded-full border border-white shadow-sm" style={{ backgroundColor: selectedColorHex }} />{selectedColorHex}</div></div>
+                  <div className="rounded-xl border border-amber-100 bg-amber-50 p-2.5"><div className="font-black text-amber-800">一言</div><div className="mt-1 truncate">{flavorText || '未設定'}</div></div>
+                </div>
+                {currentCoordinate && (
+                  <div className="mt-3 rounded-xl border border-gray-200 bg-gray-50 p-2.5 text-[9px] font-bold">
+                    <div className="flex items-center gap-2"><span className="rounded-md bg-gray-900 px-1.5 py-1 text-white">{currentCoordinate.code.toUpperCase()}</span><span className="font-black">{currentCoordinate.name}</span></div>
+                    <div className="mt-1 text-gray-600">このコーデの性能タイプで登録します。</div>
+                  </div>
+                )}
+              </div>
+
+              <button type="button" onClick={() => { setRegistrationStep(2); setErrorMessage(''); setSuccessMessage(''); }} className="shrink-0 rounded-xl border border-gray-200 bg-white py-2.5 text-xs font-black text-gray-700">② 編集に戻る</button>
+            </div>
+          )}
         </div>
 
         <div className="shrink-0 border-t border-gray-200 bg-white px-3 py-2.5 sm:px-5">
-          <button type="submit" disabled={isModerating || !currentCoordinate} className="w-full rounded-2xl bg-pink-600 px-4 py-3 text-sm font-black text-white shadow disabled:cursor-wait disabled:bg-pink-300">
-            {isModerating ? '安全確認中…' : editingId ? 'このカードを更新する' : 'このカードで参加する'}
+          <button type="submit" disabled={isModerating || !currentCoordinate || (registrationStep === 2 && currentEntriesIsFull && !editingId)} className="w-full rounded-2xl bg-pink-600 px-4 py-3 text-sm font-black text-white shadow disabled:cursor-not-allowed disabled:bg-pink-300">
+            {isModerating ? '安全確認中…' : registrationStep === 2 ? '③ 登録内容を確認' : editingId ? 'このカードを更新する' : 'このカードで参加する'}
           </button>
         </div>
       </form>
+
+      {showHelp && (
+        <div className="fixed inset-0 z-[80] flex items-center justify-center bg-slate-950/60 p-3 backdrop-blur-sm">
+          <div className="flex max-h-[84dvh] w-full max-w-md flex-col overflow-hidden rounded-3xl bg-white shadow-2xl">
+            <div className="flex shrink-0 items-center justify-between border-b border-gray-200 px-4 py-3">
+              <div className="text-sm font-black">キャラカード作成について</div>
+              <button type="button" onClick={() => setShowHelp(false)} className="rounded-lg bg-gray-100 px-2.5 py-1.5 text-xs font-black">✕</button>
+            </div>
+            <div className="min-h-0 overflow-y-auto p-4 text-[10px] leading-5 text-gray-700">
+              <section>
+                <div className="font-black text-indigo-800">コーデって？</div>
+                <p className="mt-1">25種類のコーデは、キャラカードの4つのステータスの得意・不得意を決める「性能タイプ」です。マップの1区画が1つのタイプです。</p>
+              </section>
+              <section className="mt-4">
+                <div className="font-black text-indigo-800">REALITYプロフィールURL</div>
+                <p className="mt-1">登録したカードに、あなたのREALITYプロフィールを紐づけるために使います。取得手順は案内を準備中です。</p>
+              </section>
+              <section className="mt-4">
+                <div className="font-black text-pink-800">スキル名</div>
+                <p className="mt-1">スキルの「できること」を見ながら、自分らしい名前をつけられます。効果そのものはコーデごとに決まっています。</p>
+              </section>
+              <section className="mt-4">
+                <div className="font-black text-amber-800">登録まで</div>
+                <p className="mt-1">① コーデを選ぶ → ② カードを編集 → ③ 内容を確認して登録、の3段階です。</p>
+              </section>
+            </div>
+          </div>
+        </div>
+      )}
 
       {activeEditor && (
         <div className="fixed inset-0 z-[70] flex items-center justify-center bg-slate-950/60 p-3 backdrop-blur-sm">
@@ -643,12 +772,12 @@ export default function CardGenerator({ selectedCoordinate, onBackToHub }: CardG
 
               {activeEditor === 'skills' && currentCoordinate && (
                 <div className="space-y-3 text-xs">
-                  <p className="text-[10px] font-bold text-gray-500">コーデごとの効果説明は固定。スキル名だけ自分らしく変更できます。</p>
+                  <p className="text-[10px] font-bold leading-4 text-gray-500">各スキルの「できること」を見ながら、名前をつけてください。効果はコーデごとに固定です。</p>
                   {[0, 1, 2, 3].map((index) => (
                     <div key={index} className="rounded-2xl border border-pink-100 bg-pink-50/50 p-3">
                       <div className="font-black text-pink-700">スキル{index + 1}</div>
                       <input type="text" value={customSkills[index]} onChange={(e) => handleSkillChange(index, e.target.value)} maxLength={40} className="mt-2 w-full rounded-xl border px-3 py-2.5" />
-                      <div className="mt-2 rounded-xl bg-white px-3 py-2 text-[10px] leading-5 text-gray-600">{currentCoordinate.skillDescriptions[index]}</div>
+                      <div className="mt-2 rounded-xl bg-white px-3 py-2 text-[10px] leading-5 text-gray-600"><span className="font-black text-gray-800">できること：</span>{currentCoordinate.skillDescriptions[index]}</div>
                     </div>
                   ))}
                 </div>

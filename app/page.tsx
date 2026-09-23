@@ -417,7 +417,7 @@ export default function Home() {
             <div className="shrink-0 text-center">
               <div className="text-[9px] font-black tracking-[0.22em] text-indigo-500">CHARACTER CARD</div>
               <h2 className="mt-1 text-xl font-black text-gray-950">コーデを選ぶ</h2>
-              <p className="mt-1 text-[10px] font-bold text-gray-500">25種類から選んだコーデが、キャラカードの公式性能になります。</p>
+              <p className="mx-auto mt-1 max-w-md text-[10px] font-bold leading-5 text-gray-600">コーデは、キャラカードの4つのステータスの得意・不得意を決める「性能タイプ」です。</p>
             </div>
 
             <div className="mt-2 min-h-0 flex-1 overflow-hidden rounded-3xl border border-gray-200 bg-gray-50 shadow-sm">
@@ -480,6 +480,10 @@ export default function Home() {
           <CardGenerator
             selectedCoordinate={selectedCoordinate}
             onBackToHub={() => setCurrentView('cardRegisterSelect')}
+            onChangeCoordinate={() => {
+              setSelectedCoordinate(null);
+              setCurrentView('coordinateSelect');
+            }}
           />
         )}
 

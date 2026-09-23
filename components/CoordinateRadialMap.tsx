@@ -141,8 +141,15 @@ function getPrimaryStat(coordinate: CoordinatePreset): StatKey {
   return getStatsRank(coordinate)[0];
 }
 
-function RadarChart({ stats }: { stats: CoordinatePreset['stats'] }) {
-  const size = 220;
+function RadarChart({
+  stats,
+  size = 220,
+  showLabels = true,
+}: {
+  stats: CoordinatePreset['stats'];
+  size?: number;
+  showLabels?: boolean;
+}) {
   const center = size / 2;
   const radius = 72;
   const max = 100;
@@ -191,18 +198,24 @@ function RadarChart({ stats }: { stats: CoordinatePreset['stats'] }) {
         <polygon points={points} fill="currentColor" fillOpacity="0.18" stroke="currentColor" strokeWidth="2" />
         <circle cx={center} cy={center} r="2.5" fill="currentColor" opacity="0.5" />
 
-        <text x={center} y="12" textAnchor="middle" fontSize="10" fontWeight="800" fill="currentColor">体力</text>
-        <text x="208" y={center + 4} textAnchor="end" fontSize="10" fontWeight="800" fill="currentColor">知略</text>
-        <text x={center} y="214" textAnchor="middle" fontSize="10" fontWeight="800" fill="currentColor">器用</text>
-        <text x="12" y={center + 4} textAnchor="start" fontSize="10" fontWeight="800" fill="currentColor">特技</text>
+        {showLabels && (
+          <>
+            <text x={center} y="12" textAnchor="middle" fontSize="10" fontWeight="800" fill="currentColor">体力</text>
+            <text x={size - 12} y={center + 4} textAnchor="end" fontSize="10" fontWeight="800" fill="currentColor">知略</text>
+            <text x={center} y={size - 6} textAnchor="middle" fontSize="10" fontWeight="800" fill="currentColor">器用</text>
+            <text x="12" y={center + 4} textAnchor="start" fontSize="10" fontWeight="800" fill="currentColor">特技</text>
+          </>
+        )}
       </svg>
 
-      <div className="mt-1 grid grid-cols-2 gap-x-6 gap-y-1 text-xs font-bold text-gray-700">
-        <span>体力 {stats.hp}</span>
-        <span>知略 {stats.intellect}</span>
-        <span>器用 {stats.dexterity}</span>
-        <span>特技 {stats.charm}</span>
-      </div>
+      {showLabels && (
+        <div className="mt-1 grid grid-cols-2 gap-x-6 gap-y-1 text-xs font-bold text-gray-700">
+          <span>体力 {stats.hp}</span>
+          <span>知略 {stats.intellect}</span>
+          <span>器用 {stats.dexterity}</span>
+          <span>特技 {stats.charm}</span>
+        </div>
+      )}
     </div>
   );
 }
@@ -288,10 +301,10 @@ export default function CoordinateRadialMap({
 
   const isEntryMode = mode === 'entry';
   const isPickerMode = mode === 'picker';
-  const displaySvgSize = isEntryMode ? 520 : SVG_SIZE;
-  const displayOuterRadius = isEntryMode ? 205 : OUTER_RADIUS;
-  const displayInnerRadius = isEntryMode ? 105 : INNER_RADIUS;
-  const displayCenterCircleRadius = isEntryMode ? 54 : CENTER_CIRCLE_RADIUS;
+  const displaySvgSize = isEntryMode ? 440 : 340;
+  const displayOuterRadius = isEntryMode ? 175 : 132;
+  const displayInnerRadius = isEntryMode ? 88 : 58;
+  const displayCenterCircleRadius = isEntryMode ? 46 : 34;
   const center = displaySvgSize / 2;
 
   return (
@@ -300,24 +313,27 @@ export default function CoordinateRadialMap({
         <div className="p-5 sm:p-6 bg-gradient-to-b from-gray-50 to-white border-b border-gray-200">
           <div className="flex flex-col sm:flex-row sm:items-end sm:justify-between gap-3">
             <div>
-              <div className="text-xs font-black tracking-[0.2em] text-indigo-500">COORDINATE MAP</div>
-              <h3 className="mt-1 text-2xl font-black text-gray-900">25種類のコーデ配置図</h3>
-              <p className="mt-2 text-xs text-gray-500 leading-relaxed">
-                {isEntryMode
-                  ? 'コーデ枠に登録されたアバターをアイコンで表示しています。枠を選ぶと、そのコーデの詳細が下に表示されます。'
-                  : '中央の「A-1」を中心に、4ステータスの順位による24種類を15°ずつ配置しています。'}
+              <div className="text-[9px] font-black tracking-[0.18em] text-indigo-500">COORDINATE MAP</div>
+              <h3 className="mt-1 text-base font-black text-gray-900">コーデの性能マップ</h3>
+              <p className="mt-1 text-[10px] font-bold leading-5 text-gray-600">
+                コーデは、キャラカードの4つのステータスの得意・不得意を決める「性能タイプ」です。
               </p>
+              {!isEntryMode && (
+                <p className="mt-0.5 text-[10px] font-bold leading-5 text-indigo-700">
+                  輪の1区画が1つの性能タイプ。気になる区画をタップして、能力バランスを確認できます。
+                </p>
+              )}
             </div>
-            <div className="text-[10px] text-gray-500 leading-relaxed sm:text-right">
-              {isEntryMode
-                ? 'アイコン付きの枠 = 登録あり　／　数字 = 登録人数'
-                : '4本の境界線では、隣り合う2ステータスの順位が入れ替わります'}
-            </div>
+            {isEntryMode && (
+              <div className="text-[9px] font-bold leading-4 text-gray-500 sm:text-right">
+                アイコン付きの枠 = 登録あり ／ 数字 = 登録人数
+              </div>
+            )}
           </div>
         </div>
 
         <div className="p-2 sm:p-4 bg-gray-50">
-          <div className="overflow-x-auto rounded-2xl border border-gray-200 bg-white">
+          <div className="overflow-hidden rounded-2xl border border-gray-200 bg-white">
             <div className="flex justify-center py-3">
               <div className="relative w-full" style={{ maxWidth: displaySvgSize }}>
               <svg
@@ -331,14 +347,10 @@ export default function CoordinateRadialMap({
                 <circle cx={center} cy={center} r={displayOuterRadius} fill="none" stroke="#e5e7eb" strokeWidth="1" />
                 <circle cx={center} cy={center} r={displayInnerRadius} fill="white" stroke="#c7d2fe" strokeWidth="2" />
 
-                <text x={center} y={isEntryMode ? 24 : 16} textAnchor="middle" fontSize="16" fontWeight="900" fill="#111827">体力</text>
-                <text x={center} y={isEntryMode ? 39 : 30} textAnchor="middle" fontSize="12" fontWeight="800" fill="#9ca3af">（Powerful）</text>
-                <text x={displaySvgSize - 10} y={center - 4} textAnchor="end" fontSize="16" fontWeight="900" fill="#111827">知略</text>
-                <text x={displaySvgSize - 10} y={center + 12} textAnchor="end" fontSize="12" fontWeight="800" fill="#9ca3af">（Wisdom）</text>
-                <text x={center} y={displaySvgSize - (isEntryMode ? 36 : 20)} textAnchor="middle" fontSize="16" fontWeight="900" fill="#111827">器用</text>
-                <text x={center} y={displaySvgSize - (isEntryMode ? 20 : 6)} textAnchor="middle" fontSize="12" fontWeight="800" fill="#9ca3af">（Technical）</text>
-                <text x={10} y={center - 4} textAnchor="start" fontSize="16" fontWeight="900" fill="#111827">特技</text>
-                <text x={10} y={center + 12} textAnchor="start" fontSize="12" fontWeight="800" fill="#9ca3af">（Special）</text>
+                <text x={center} y="14" textAnchor="middle" fontSize="14" fontWeight="900" fill="#111827">体力</text>
+                <text x={displaySvgSize - 8} y={center - 2} textAnchor="end" fontSize="14" fontWeight="900" fill="#111827">知略</text>
+                <text x={center} y={displaySvgSize - 8} textAnchor="middle" fontSize="14" fontWeight="900" fill="#111827">器用</text>
+                <text x={8} y={center - 2} textAnchor="start" fontSize="14" fontWeight="900" fill="#111827">特技</text>
 
                 {RADIAL_CODES.map((code, index) => {
                   const coordinate = coordinateMap.get(code);
@@ -565,16 +577,19 @@ export default function CoordinateRadialMap({
 
       {selectedCoordinate && (
         isPickerMode ? (
-          <section className="px-3 py-2">
-            <div className="flex items-center justify-between gap-2">
-              <div className="min-w-0">
-                <div className="text-[9px] font-black tracking-[0.14em] text-indigo-500">SELECTED</div>
-                <div className="mt-0.5 flex items-center gap-2">
-                  <span className="shrink-0 rounded-md bg-indigo-100 px-2 py-1 text-[10px] font-black text-indigo-800">{getCoordinateDisplayCode(selectedCoordinate)}</span>
-                  <h4 className="truncate text-sm font-black text-indigo-950">{selectedCoordinate.name}</h4>
+          <section className="px-2 py-1.5">
+            <div className="flex items-center gap-2">
+              <div className="shrink-0 rounded-xl border border-indigo-100 bg-white p-0.5">
+                <RadarChart stats={selectedCoordinate.stats} size={84} showLabels={false} />
+              </div>
+              <div className="min-w-0 flex-1">
+                <div className="text-[8px] font-black tracking-[0.14em] text-indigo-500">SELECTED</div>
+                <div className="mt-0.5 flex items-center gap-1.5">
+                  <span className="shrink-0 rounded-md bg-indigo-100 px-1.5 py-1 text-[9px] font-black text-indigo-800">{getCoordinateDisplayCode(selectedCoordinate)}</span>
+                  <h4 className="truncate text-[12px] font-black text-indigo-950">{selectedCoordinate.name}</h4>
                 </div>
-                <div className="mt-1 truncate text-[9px] font-black text-indigo-800">{getRankText(selectedCoordinate)}</div>
-                <div className="mt-1 text-[9px] font-bold text-gray-500">エントリー {selectedCount} / {maxEntryLimit}人{selectedIsLocked ? ' ・ 満員' : ''}</div>
+                <div className="mt-0.5 truncate text-[8px] font-black text-indigo-800">{getRankText(selectedCoordinate)}</div>
+                <div className="mt-0.5 text-[8px] font-bold text-gray-500">エントリー {selectedCount} / {maxEntryLimit}人{selectedIsLocked ? ' ・ 満員' : ''}</div>
               </div>
               <button
                 type="button"
