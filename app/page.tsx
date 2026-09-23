@@ -108,9 +108,11 @@ function getEmotionMapPosition(emotion: EmotionPreset): { x: number; y: number }
 
 function EmotionMiniMap({
   selectedEmotionId,
+  registeredEmotionIds,
   onSelect,
 }: {
   selectedEmotionId: string | null;
+  registeredEmotionIds: Set<string>;
   onSelect: (emotion: EmotionPreset) => void;
 }) {
   const [hoveredEmotionId, setHoveredEmotionId] = useState<string | null>(null);
@@ -118,7 +120,7 @@ function EmotionMiniMap({
   return (
     <div className="w-full rounded-2xl border border-purple-100 bg-white p-2.5 shadow-sm">
       <div className="mb-2 flex items-center justify-between gap-2">
-        <div className="text-[9px] font-black tracking-wide text-purple-700">想いのマップ</div>
+        <div className="text-[10px] font-black tracking-wide text-purple-700">想いのマップ</div>
         <div className="text-[9px] font-bold text-gray-400">35種</div>
       </div>
       <div className="relative aspect-square overflow-hidden rounded-xl border border-purple-100 bg-[radial-gradient(circle_at_center,rgba(168,85,247,0.14),transparent_48%),linear-gradient(135deg,rgba(99,102,241,0.04),rgba(236,72,153,0.08))]">
@@ -145,8 +147,8 @@ function EmotionMiniMap({
           const vertex = EMOTION_AXIS_CONFIG[axis];
           return (
             <div key={axis} className="absolute -translate-x-1/2 -translate-y-1/2 whitespace-nowrap text-center" style={{ left: `${vertex.x}%`, top: `${vertex.y}%` }}>
-              <div className="text-[12px] leading-none">{vertex.icon}</div>
-              <div className="mt-0.5 text-[8px] font-black text-purple-950">{vertex.label}</div>
+              <div className="text-[16px] leading-none">{vertex.icon}</div>
+              <div className="mt-0.5 text-[10px] font-black text-purple-950">{vertex.label}</div>
             </div>
           );
         })}
@@ -154,6 +156,7 @@ function EmotionMiniMap({
         {EMOTION_PRESETS.map((emotion) => {
           const position = getEmotionMapPosition(emotion);
           const selected = emotion.id === selectedEmotionId;
+          const registered = registeredEmotionIds.has(emotion.id);
           return (
             <button
               key={emotion.id}
@@ -163,9 +166,15 @@ function EmotionMiniMap({
               onFocus={() => setHoveredEmotionId(emotion.id)}
               onMouseLeave={() => setHoveredEmotionId(null)}
               onBlur={() => setHoveredEmotionId(null)}
-              aria-label={`${emotion.emotionPhrase}｜${emotion.name}`}
-              title={`${emotion.emotionPhrase}｜${emotion.name}`}
-              className={`absolute h-3.5 w-3.5 -translate-x-1/2 -translate-y-1/2 rounded-full border-2 transition ${selected ? 'z-30 scale-150 border-white bg-purple-700 shadow-[0_0_0_4px_rgba(124,58,237,0.20),0_0_18px_rgba(124,58,237,0.75)]' : 'z-10 border-purple-100 bg-purple-500 shadow-[0_0_10px_rgba(124,58,237,0.45)] hover:scale-150 hover:bg-fuchsia-500'}`}
+              aria-label={`${emotion.emotionPhrase}｜${emotion.name}${registered ? '｜登録済み' : ''}`}
+              title={`${emotion.emotionPhrase}｜${emotion.name}${registered ? '｜登録済み' : ''}`}
+              className={`absolute h-3.5 w-3.5 -translate-x-1/2 -translate-y-1/2 rounded-full border-2 transition ${
+                selected
+                  ? 'z-30 scale-150 border-white bg-purple-700 shadow-[0_0_0_4px_rgba(124,58,237,0.20),0_0_18px_rgba(124,58,237,0.75)]'
+                  : registered
+                    ? 'z-10 border-gray-300 bg-gray-400 shadow-sm hover:scale-150 hover:bg-gray-500'
+                    : 'z-10 border-purple-100 bg-purple-500 shadow-[0_0_10px_rgba(124,58,237,0.45)] hover:scale-150 hover:bg-fuchsia-500'
+              }`}
               style={{ left: `${position.x}%`, top: `${position.y}%` }}
             />
           );
@@ -175,21 +184,33 @@ function EmotionMiniMap({
           const emotion = EMOTION_PRESETS.find((item) => item.id === hoveredEmotionId);
           if (!emotion) return null;
           const position = getEmotionMapPosition(emotion);
+          const registered = registeredEmotionIds.has(emotion.id);
           return (
             <div className="pointer-events-none absolute z-40 max-w-[220px] -translate-x-1/2 -translate-y-full rounded-2xl border border-purple-200 bg-white/95 px-3 py-2.5 text-center shadow-xl backdrop-blur-sm" style={{ left: `${position.x}%`, top: `${Math.max(8, position.y - 3)}%` }}>
               <div className="text-[9px] font-black text-purple-500">{emotion.name}</div>
               <div className="mt-0.5 font-serif text-[11px] font-black leading-relaxed text-purple-950">{emotion.emotionPhrase}</div>
               <div className="mt-1 text-[8px] font-bold text-gray-500">{emotion.statEffect}{emotion.effectAmount ? ` ${emotion.effectAmount}` : ''} / {emotion.duration}</div>
+              {registered && <div className="mt-1 text-[8px] font-black text-gray-400">登録済み</div>}
             </div>
           );
         })()}
       </div>
-      <p className="mt-2 text-[9px] font-bold leading-relaxed text-gray-500">ドットをタップして、そのエモーションを選択できます。</p>
+      <p className="mt-2 text-[9px] font-bold leading-relaxed text-gray-500">ドットをタップすると、下に内容を確認できます。灰色のドットは登録済みです。</p>
     </div>
   );
 }
 
-function EmotionPicker({ onSelect }: { onSelect: (emotion: EmotionPreset) => void }) {
+function EmotionPicker({
+  selectedEmotion,
+  registeredEmotionIds,
+  onSelect,
+  onConfirm,
+}: {
+  selectedEmotion: EmotionPreset | null;
+  registeredEmotionIds: Set<string>;
+  onSelect: (emotion: EmotionPreset) => void;
+  onConfirm: () => void;
+}) {
   const [mode, setMode] = useState<EmotionPickerMode>('feeling');
   const [search, setSearch] = useState('');
   const [target, setTarget] = useState('ALL');
@@ -219,10 +240,7 @@ function EmotionPicker({ onSelect }: { onSelect: (emotion: EmotionPreset) => voi
   return (
     <div className="flex min-h-0 flex-1 flex-col overflow-hidden rounded-3xl border border-gray-200 bg-white shadow-sm">
       <div className="shrink-0 border-b border-gray-100 px-4 py-3">
-        <div className="text-[9px] font-black tracking-[0.16em] text-purple-500">EMOTION PICKER</div>
-        <div className="mt-0.5 text-base font-black">エモーションを選ぶ</div>
-        <div className="mt-1 text-[9px] font-bold leading-4 text-gray-500">「想い」からでも、「性能」からでも選べます。</div>
-        <div className="mt-3 grid grid-cols-2 rounded-2xl border border-purple-100 bg-purple-50 p-1" role="group" aria-label="エモーション選択モード">
+        <div className="grid grid-cols-2 rounded-2xl border border-purple-100 bg-purple-50 p-1" role="group" aria-label="エモーション選択モード">
           <button type="button" onClick={() => setMode('feeling')} className={`rounded-xl px-3 py-2 text-[10px] font-black transition ${mode === 'feeling' ? 'bg-purple-700 text-white shadow' : 'text-gray-500 hover:text-purple-700'}`}>想いから選択</button>
           <button type="button" onClick={() => setMode('performance')} className={`rounded-xl px-3 py-2 text-[10px] font-black transition ${mode === 'performance' ? 'bg-purple-700 text-white shadow' : 'text-gray-500 hover:text-purple-700'}`}>性能から選択</button>
         </div>
@@ -255,30 +273,50 @@ function EmotionPicker({ onSelect }: { onSelect: (emotion: EmotionPreset) => voi
 
         {mode === 'feeling' ? (
           <div className="mx-auto mt-3 w-full max-w-md">
-            <EmotionMiniMap selectedEmotionId={null} onSelect={onSelect} />
+            <EmotionMiniMap selectedEmotionId={selectedEmotion?.id ?? null} registeredEmotionIds={registeredEmotionIds} onSelect={onSelect} />
           </div>
         ) : (
           <div className="mt-3 space-y-2">
             {filtered.length === 0 ? (
               <div className="py-10 text-center text-xs font-bold text-gray-500">条件に一致するエモーションがありません。</div>
             ) : (
-              filtered.map((emotion) => (
-                <button key={emotion.id} type="button" onClick={() => onSelect(emotion)} className="w-full rounded-2xl border border-gray-200 bg-white p-3 text-left transition hover:border-purple-300 hover:bg-purple-50">
-                  <div className="flex items-start justify-between gap-3">
-                    <div className="min-w-0">
-                      <div className="font-serif text-sm font-black leading-relaxed text-purple-950">{emotion.emotionPhrase}</div>
-                      <div className="mt-1 text-[10px] font-black text-gray-500">{emotion.name}</div>
+              filtered.map((emotion) => {
+                const registered = registeredEmotionIds.has(emotion.id);
+                const selected = emotion.id === selectedEmotion?.id;
+                return (
+                  <button key={emotion.id} type="button" onClick={() => onSelect(emotion)} className={`w-full rounded-2xl border p-3 text-left transition ${selected ? 'border-purple-500 bg-purple-50 ring-2 ring-purple-100' : 'border-gray-200 bg-white hover:border-purple-300 hover:bg-purple-50'}`}>
+                    <div className="flex items-start justify-between gap-3">
+                      <div className="min-w-0">
+                        <div className={`font-serif text-sm font-black leading-relaxed ${registered ? 'text-gray-500' : 'text-purple-950'}`}>{emotion.emotionPhrase}</div>
+                        <div className="mt-1 flex items-center gap-1.5 text-[10px] font-black text-gray-500"><span>{emotion.name}</span>{registered && <span className="rounded-full bg-gray-200 px-1.5 py-0.5 text-[8px] text-gray-500">登録済み</span>}</div>
+                      </div>
+                      <div className="shrink-0 rounded-xl bg-purple-50 px-2 py-1.5 text-right">
+                        <div className="text-[9px] font-black text-purple-800">{emotion.statEffect}</div>
+                        <div className="text-[9px] font-bold text-gray-500">{emotion.effectAmount || ''} / {emotion.duration}</div>
+                      </div>
                     </div>
-                    <div className="shrink-0 rounded-xl bg-purple-50 px-2 py-1.5 text-right">
-                      <div className="text-[9px] font-black text-purple-800">{emotion.statEffect}</div>
-                      <div className="text-[9px] font-bold text-gray-500">{emotion.effectAmount || ''} / {emotion.duration}</div>
-                    </div>
-                  </div>
-                  <div className="mt-2 text-[9px] font-bold text-gray-500">対象：{emotion.target} ／ {emotion.effectCategory}</div>
-                  <div className="mt-1 text-[9px] leading-4 text-gray-600">{emotion.description}</div>
-                </button>
-              ))
+                    <div className="mt-2 text-[9px] font-bold text-gray-500">対象：{emotion.target} ／ {emotion.effectCategory}</div>
+                    <div className="mt-1 text-[9px] leading-4 text-gray-600">{emotion.description}</div>
+                  </button>
+                );
+              })
             )}
+          </div>
+        )}
+
+        {selectedEmotion && (
+          <div className="mt-3 rounded-2xl border border-purple-200 bg-purple-50/70 p-3">
+            <div className="text-[9px] font-black tracking-[0.14em] text-purple-500">SELECTED EMOTION</div>
+            <div className="mt-2 grid gap-2 sm:grid-cols-[minmax(0,1fr)_auto] sm:items-center">
+              <div className="min-w-0">
+                <div className="text-[9px] font-black text-purple-700">性能</div>
+                <div className="mt-0.5 text-sm font-black text-gray-950">{selectedEmotion.statEffect}{selectedEmotion.effectAmount ? ` ${selectedEmotion.effectAmount}` : ''}</div>
+                <div className="mt-0.5 text-[8px] font-bold text-gray-500">{selectedEmotion.target} / {selectedEmotion.duration} / {selectedEmotion.effectCategory}</div>
+                <div className="mt-1 text-[9px] leading-4 text-gray-600">{selectedEmotion.description}</div>
+                <div className="mt-2 text-sm font-serif font-black leading-relaxed text-purple-950">{selectedEmotion.emotionPhrase}</div>
+              </div>
+              <button type="button" onClick={onConfirm} className="w-full rounded-xl bg-purple-700 px-4 py-3 text-[10px] font-black text-white shadow sm:w-auto">このエモーションでカードを作る</button>
+            </div>
           </div>
         )}
       </div>
@@ -412,6 +450,10 @@ export default function Home() {
 
   const handleSelectEmotion = (emotion: EmotionPreset) => {
     setSelectedEmotion(emotion);
+  };
+
+  const handleConfirmEmotion = () => {
+    if (!selectedEmotion) return;
     setCurrentView('supportGen');
   };
 
@@ -698,7 +740,12 @@ export default function Home() {
               </div>
 
               <div className="mt-3 min-h-0 flex-1">
-                <EmotionPicker onSelect={handleSelectEmotion} />
+                <EmotionPicker
+                  selectedEmotion={selectedEmotion}
+                  registeredEmotionIds={new Set(pickerEntries.filter((entry) => entry.cardType === 'emotion').map((entry) => entry.presetId))}
+                  onSelect={handleSelectEmotion}
+                  onConfirm={handleConfirmEmotion}
+                />
               </div>
             </div>
           </div>
@@ -719,6 +766,7 @@ export default function Home() {
           <SupportCardGenerator
             selectedEmotion={selectedEmotion}
             onBackToHub={() => setCurrentView('cardRegisterSelect')}
+            onBackToEmotionSelect={() => setCurrentView('emotionSelect')}
           />
         )}
 

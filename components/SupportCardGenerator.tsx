@@ -18,6 +18,7 @@ import {
 interface SupportCardGeneratorProps {
   selectedEmotion?: EmotionPreset | null;
   onBackToHub?: () => void;
+  onBackToEmotionSelect?: () => void;
 }
 
 const DRAFT_KEY = 'reality_world_support_draft';
@@ -247,7 +248,7 @@ function EmotionMiniMap({
   );
 }
 
-export default function SupportCardGenerator({ selectedEmotion, onBackToHub }: SupportCardGeneratorProps) {
+export default function SupportCardGenerator({ selectedEmotion, onBackToHub, onBackToEmotionSelect }: SupportCardGeneratorProps) {
   const [selectedEmotionId, setSelectedEmotionId] = useState<string>(
     selectedEmotion?.id || EMOTION_PRESETS[0]?.id || '',
   );
@@ -405,6 +406,11 @@ export default function SupportCardGenerator({ selectedEmotion, onBackToHub }: S
       return;
     }
 
+    if (onBackToEmotionSelect) {
+      onBackToEmotionSelect();
+      return;
+    }
+
     onBackToHub?.();
   };
 
@@ -453,7 +459,7 @@ export default function SupportCardGenerator({ selectedEmotion, onBackToHub }: S
     value.trim().toLowerCase().replace(/\/$/, '');
 
   const validateBeforeConfirm = () => {
-    if (!profileUrl.trim() || !profileUrl.includes('reality.app/user/')) {
+    if (!profileUrl.trim() || !profileUrl.startsWith('https://reality.app/profile/')) {
       setErrorMessage('REALITYプロフURLを入力してください。');
       setActiveEditor('basic');
       return false;
@@ -947,7 +953,7 @@ export default function SupportCardGenerator({ selectedEmotion, onBackToHub }: S
 
                   <div>
                     <label className="mb-1 block font-bold">REALITY プロフURL <span className="text-red-500">*</span></label>
-                    <input type="text" value={profileUrl} onChange={(e) => setProfileUrl(e.target.value)} placeholder="https://reality.app/user/xxxxxx" className="w-full rounded-xl border px-3 py-2.5" />
+                    <input type="text" value={profileUrl} onChange={(e) => setProfileUrl(e.target.value)} placeholder="https://reality.app/profile/xxxxxx" className="w-full rounded-xl border px-3 py-2.5" />
                     <p className="mt-1 text-[9px] leading-4 text-gray-500">同じREALITYユーザーがサポートカードを複数登録することを防ぐために使用します。1ユーザーにつき1枚まで登録できます。</p>
                   </div>
 

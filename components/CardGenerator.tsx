@@ -391,14 +391,14 @@ export default function CardGenerator({
       return;
     }
 
-    if (!profileUrl.includes('reality.app/user/')) {
+    if (!profileUrl.startsWith('https://reality.app/profile/')) {
       setErrorMessage('有効なREALITYプロフURLを入力してください。');
       setActiveEditor('basic');
       return;
     }
     if (!userName.trim() || !imageDataUrl || !password.trim() || customSkills.some((skill) => !skill.trim())) {
       setErrorMessage('基本情報と4つのスキルをすべて入力してください。');
-      if (!userName.trim() || !profileUrl.includes('reality.app/user/') || !imageDataUrl || !password.trim()) {
+      if (!userName.trim() || !profileUrl.startsWith('https://reality.app/profile/') || !imageDataUrl || !password.trim()) {
         setActiveEditor('basic');
       } else {
         setActiveEditor('skills');
@@ -447,6 +447,20 @@ export default function CardGenerator({
     setIsModerating(false);
 
     const editingEntry = editingId ? currentEntries.find((entry) => entry.id === editingId) : null;
+
+    const normalizedProfileUrl = profileUrl.trim().toLowerCase().replace(/\/$/, '');
+    const duplicateCharacterEntry = currentEntries.find(
+      (entry) =>
+        entry.cardType === 'coordinate' &&
+        entry.id !== editingId &&
+        (entry.profileUrl || '').trim().toLowerCase().replace(/\/$/, '') === normalizedProfileUrl,
+    );
+
+    if (duplicateCharacterEntry) {
+      setErrorMessage('このREALITYプロフURLでは、すでにキャラカードが登録されています。1ユーザーにつき登録できるキャラカードは1枚です。');
+      setActiveEditor('basic');
+      return;
+    }
 
     let creatorToken = editingEntry ? creatorTokens[editingEntry.id] : undefined;
     if (!creatorToken) creatorToken = makeCreatorToken();
@@ -577,7 +591,7 @@ export default function CardGenerator({
 
   const basicInfoComplete = Boolean(
     userName.trim() &&
-      profileUrl.includes('reality.app/user/') &&
+      profileUrl.startsWith('https://reality.app/profile/') &&
       imageDataUrl &&
       password.trim(),
   );
@@ -800,7 +814,7 @@ export default function CardGenerator({
                       <label className="block font-bold">REALITY プロフURL <span className="text-red-500">*</span></label>
                       <button type="button" onClick={() => setShowProfileHelp(true)} className="rounded-lg border border-indigo-200 bg-indigo-50 px-2 py-1 text-[9px] font-black text-indigo-700">説明</button>
                     </div>
-                    <input type="text" value={profileUrl} onChange={(e) => setProfileUrl(e.target.value)} placeholder="https://reality.app/user/xxxxxx" className="w-full rounded-xl border px-3 py-2.5" />
+                    <input type="text" value={profileUrl} onChange={(e) => setProfileUrl(e.target.value)} placeholder="https://reality.app/profile/xxxxxx" className="w-full rounded-xl border px-3 py-2.5" />
                   </div>
                   <div><label className="mb-1 block font-bold">アバター画像 <span className="text-red-500">*</span></label><input type="file" accept="image/*" onChange={handleImageUpload} className="w-full text-xs" /></div>
                   <div><label className="mb-1 block font-bold">編集・削除用の合言葉 <span className="text-red-500">*</span></label><input type="password" value={password} onChange={(e) => setPassword(e.target.value)} placeholder="後からの編集・削除に使用します" className="w-full rounded-xl border px-3 py-2.5" /><p className="mt-1 text-[9px] text-gray-500">同じ端末では作成者トークンにより省略できます。</p></div>
