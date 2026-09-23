@@ -178,18 +178,29 @@ const isSupportEffectActive = (
 const getSupportEffectExpiration = (
   preset: EmotionPreset,
   turnOrdinal: number,
-  appliesToOpponent: boolean,
+  _appliesToOpponent: boolean,
 ) => {
-  if (preset.duration === '一時') {
-    return turnOrdinal + 2;
+  if (preset.duration !== '一時') {
+    return null;
   }
 
-  if (preset.note?.includes('最大4ターン')) {
-    return turnOrdinal + (appliesToOpponent ? 5 : 4);
-  }
+  const classEndTurnOrdinal =
+    (Math.floor(turnOrdinal / 8) + 1) * 8;
 
-  return null;
+  return Math.min(
+    turnOrdinal + 2,
+    classEndTurnOrdinal,
+  );
 };
+
+const clearSupportEffectsFromAvatars = (
+  avatars: BattleAvatar[],
+): BattleAvatar[] =>
+  avatars.map((avatar) => ({
+    ...avatar,
+    supportEffects: [],
+    supportControlEffects: [],
+  }));
 
 const getSupportUsageLimitFromEffects = (
   effects: SupportControlEffectState[] | undefined,
@@ -4070,8 +4081,17 @@ if (
       setMyClassScores(nextScores);
       if (playerRole === 'host') setHostTotalScore((prev) => prev + gainedScore);
       else setGuestTotalScore((prev) => prev + gainedScore);
-      setMyAvatars(nextMyAvatars);
-      setOppAvatars(nextOppAvatars);
+      const localNextMyAvatars =
+        next.currentYear !== currentYear
+          ? clearSupportEffectsFromAvatars(nextMyAvatars)
+          : nextMyAvatars;
+      const localNextOppAvatars =
+        next.currentYear !== currentYear
+          ? clearSupportEffectsFromAvatars(nextOppAvatars)
+          : nextOppAvatars;
+
+      setMyAvatars(localNextMyAvatars);
+      setOppAvatars(localNextOppAvatars);
       setUsedSkillsByClass(nextUsed);
       addLog(`「${skill.name}」発動！`);
       if (Object.keys(debuffs).length > 0 && !oppActiveAvatar.debuffImmune) {
@@ -4178,8 +4198,17 @@ if (!actionSubmitted) {
 
     await skillEffectPromise;
 
-    setMyAvatars(nextMyAvatars);
-    setOppAvatars(nextOppAvatars);
+    const onlineNextMyAvatars =
+      next.currentYear !== currentYear
+        ? clearSupportEffectsFromAvatars(nextMyAvatars)
+        : nextMyAvatars;
+    const onlineNextOppAvatars =
+      next.currentYear !== currentYear
+        ? clearSupportEffectsFromAvatars(nextOppAvatars)
+        : nextOppAvatars;
+
+    setMyAvatars(onlineNextMyAvatars);
+    setOppAvatars(onlineNextOppAvatars);
 
     // =====================================================
     // ローカル表示も即時更新
@@ -4437,16 +4466,33 @@ if (!actionSubmitted) {
       kind: SupportControlEffectState['kind'],
       appliesToOpponent: boolean,
     ): SupportControlEffectState => {
-      const effect: SupportControlEffectState = {
+      const baseEffect: SupportControlEffectState = {
         id: createSupportEffectId(preset.id),
         sourcePresetId: preset.id,
         duration: preset.duration,
         kind,
-        expiresAtTurnOrdinal: getSupportEffectExpiration(preset, turnOrdinal, appliesToOpponent),
+        expiresAtTurnOrdinal: getSupportEffectExpiration(
+          preset,
+          turnOrdinal,
+          appliesToOpponent,
+        ),
       };
-      if (kind === 'limit') effect.maxUsesPerTurn = Math.max(0, amount || 1);
-      if (kind === 'extra_draw') effect.extraDrawPerTurn = Math.max(0, amount || 1);
-      return effect;
+
+      if (kind === 'limit') {
+        return {
+          ...baseEffect,
+          maxUsesPerTurn: Math.max(0, amount || 1),
+        };
+      }
+
+      if (kind === 'extra_draw') {
+        return {
+          ...baseEffect,
+          extraDrawPerTurn: Math.max(0, amount || 1),
+        };
+      }
+
+      return baseEffect;
     };
 
     if (preset.effectCategory === '全ステータス') {

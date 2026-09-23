@@ -229,18 +229,31 @@ const isSupportEffectActive = (
 const getSupportEffectExpiration = (
   preset: EmotionPreset,
   turnOrdinal: number,
-  appliesToOpponent: boolean,
+  _appliesToOpponent: boolean,
 ) => {
-  if (preset.duration === '一時') {
-    return turnOrdinal + 2;
+  if (preset.duration !== '一時') {
+    return null;
   }
 
-  if (preset.note?.includes('最大4ターン')) {
-    return turnOrdinal + (appliesToOpponent ? 5 : 4);
-  }
+  const currentYear =
+    Math.floor(turnOrdinal / 8) + 1;
+  const classEndTurnOrdinal =
+    currentYear * 8;
 
-  return null;
+  return Math.min(
+    turnOrdinal + 2,
+    classEndTurnOrdinal,
+  );
 };
+
+const clearSupportEffectsFromAvatars = (
+  avatars: BattleAvatar[],
+): BattleAvatar[] =>
+  avatars.map((avatar) => ({
+    ...avatar,
+    supportEffects: [],
+    supportControlEffects: [],
+  }));
 
 const getAdditionalDrawFromEffects = (
   effects: SupportControlEffectState[] | undefined,
@@ -960,22 +973,18 @@ const calculateSupportEffectResult = (
     preset.effectCategory ===
     'サポートカード使用数'
   ) {
-    const effect: SupportControlEffectState = {
+    const isFreeSupportControl =
+      preset.statEffect.includes(
+        '制限されない',
+      );
+
+    const baseEffect: SupportControlEffectState = {
       id: actionId,
       sourcePresetId: preset.id,
       duration: preset.duration,
-      kind:
-        preset.statEffect.includes(
-          '制限されない',
-        )
-          ? 'free'
-          : 'limit',
-      maxUsesPerTurn:
-        preset.statEffect.includes(
-          '制限されない',
-        )
-          ? undefined
-          : Math.max(0, amount || 1),
+      kind: isFreeSupportControl
+        ? 'free'
+        : 'limit',
       expiresAtTurnOrdinal:
         getSupportEffectExpiration(
           preset,
@@ -983,6 +992,18 @@ const calculateSupportEffectResult = (
           preset.target === '相手',
         ),
     };
+
+    const effect: SupportControlEffectState =
+      isFreeSupportControl
+        ? baseEffect
+        : {
+            ...baseEffect,
+            maxUsesPerTurn:
+              Math.max(
+                0,
+                amount || 1,
+              ),
+          };
 
     if (preset.target === '自分') {
       nextActorAvatars =
@@ -2699,6 +2720,15 @@ export async function POST(
               turnIndex,
             );
 
+          const nextActorAvatars =
+            next.currentYear !== currentYear
+              ? clearSupportEffectsFromAvatars(actorAvatars)
+              : actorAvatars;
+          const nextOpponentAvatars =
+            next.currentYear !== currentYear
+              ? clearSupportEffectsFromAvatars(opponentAvatars)
+              : opponentAvatars;
+
           const processedAt =
             Date.now();
 
@@ -2757,7 +2787,7 @@ export async function POST(
             actorPlayerRef,
             {
               avatars:
-                actorAvatars,
+                nextActorAvatars,
 
               usedSkills:
                 nextUsedSkills,
@@ -2778,7 +2808,7 @@ export async function POST(
             opponentPlayerRef,
             {
               avatars:
-                opponentAvatars,
+                nextOpponentAvatars,
 
               battleStateVersion:
                 opponentBattleStateVersion + 1,
@@ -2803,8 +2833,8 @@ export async function POST(
             nextBattlePhase:
               next.battlePhase,
 
-            actorAvatars,
-            opponentAvatars,
+            nextActorAvatars,
+            nextOpponentAvatars,
 
             actorBattleStateVersion,
             opponentBattleStateVersion,

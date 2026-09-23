@@ -83,52 +83,52 @@ export const EMOTION_PRESETS: EmotionPreset[] = [
   {
     id: 'emo_11', name: 'ランニングシューズ', duration: '永続', target: '自分',
     effectCategory: '体力', statEffect: '体力増加', effectAmount: '+10',
-    description: '自分の体力を増加させる。', note: '最大4ターン',
+    description: '自分の体力を増加させる。',
   },
   {
     id: 'emo_12', name: '眼鏡', duration: '永続', target: '自分',
     effectCategory: '知略', statEffect: '知略増加', effectAmount: '+10',
-    description: '自分の知略を増加させる。', note: '最大4ターン',
+    description: '自分の知略を増加させる。',
   },
   {
     id: 'emo_13', name: 'ワークグローブ', duration: '永続', target: '自分',
     effectCategory: '器用', statEffect: '器用増加', effectAmount: '+10',
-    description: '自分の器用を増加させる。', note: '最大4ターン',
+    description: '自分の器用を増加させる。',
   },
   {
     id: 'emo_14', name: 'こだわりアイテム', duration: '永続', target: '自分',
     effectCategory: '特技', statEffect: '特技増加', effectAmount: '+10',
-    description: '自分の特技を増加させる。', note: '最大4ターン',
+    description: '自分の特技を増加させる。',
   },
   {
     id: 'emo_15', name: '健康的な生活', duration: '永続', target: '自分',
     effectCategory: '全ステータス', statEffect: '全ステータス増加', effectAmount: '+5',
-    description: '自分の全ステータスを増加させる。', note: '最大4ターン',
+    description: '自分の全ステータスを増加させる。',
   },
   {
     id: 'emo_16', name: '重いリュック', duration: '永続', target: '相手',
     effectCategory: '体力', statEffect: '体力減少', effectAmount: '-10',
-    description: '相手の体力を減少させる。', note: '最大4ターン / 0を下回らない',
+    description: '相手の体力を減少させる。', note: '0を下回らない',
   },
   {
     id: 'emo_17', name: '騒音プロペラ', duration: '永続', target: '相手',
     effectCategory: '知略', statEffect: '知略減少', effectAmount: '-10',
-    description: '相手の知略を減少させる。', note: '最大4ターン / 0を下回らない',
+    description: '相手の知略を減少させる。', note: '0を下回らない',
   },
   {
     id: 'emo_18', name: 'かじかむ手袋', duration: '永続', target: '相手',
     effectCategory: '器用', statEffect: '器用減少', effectAmount: '-10',
-    description: '相手の器用を減少させる。', note: '最大4ターン / 0を下回らない',
+    description: '相手の器用を減少させる。', note: '0を下回らない',
   },
   {
     id: 'emo_19', name: 'プレッシャー', duration: '永続', target: '相手',
     effectCategory: '特技', statEffect: '特技減少', effectAmount: '-10',
-    description: '相手の特技を減少させる。', note: '最大4ターン / 0を下回らない',
+    description: '相手の特技を減少させる。', note: '0を下回らない',
   },
   {
     id: 'emo_20', name: 'かぜ', duration: '永続', target: '相手',
     effectCategory: '全ステータス', statEffect: '全ステータス減少', effectAmount: '-5',
-    description: '相手の全ステータスを減少させる。', note: '最大4ターン / 0を下回らない',
+    description: '相手の全ステータスを減少させる。', note: '0を下回らない',
   },
   {
     id: 'emo_21', name: 'ラッキーコイン', duration: '一時', target: '自分',
