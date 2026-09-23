@@ -36,6 +36,8 @@ function isStaleClosedRoomCleanup() {
   return
     request.auth != null
     &&
+    isStageStale()
+    &&
     get(
       /databases/$(database)/documents/rooms/$(roomId)
     ).data.roomClosed == true
@@ -47,6 +49,47 @@ function isStaleClosedRoomCleanup() {
     get(
       /databases/$(database)/documents/rooms/$(roomId)
     ).data.exitGuest == false;
+}
+
+function isStaleClosedRoomTakeover() {
+  let room = resource.data;
+  let nextRoom = request.resource.data;
+
+  return
+    request.auth != null
+    && room.roomClosed == true
+    && room.exitHost == false
+    && room.exitGuest == false
+    && isStageStale()
+    && nextRoom.hostUid == request.auth.uid
+    && nextRoom.guestUid == null
+    && nextRoom.hostJoined == true
+    && nextRoom.guestJoined == false
+    && nextRoom.battlePhase == 'setup'
+    && nextRoom.currentYear == 1
+    && nextRoom.turnIndex == 0
+    && nextRoom.firstPlayer == null
+    && nextRoom.startSeasonIdx == null
+    && nextRoom.hostTotalScore == 0
+    && nextRoom.guestTotalScore == 0
+    && nextRoom.hostClassScores == [0, 0, 0]
+    && nextRoom.guestClassScores == [0, 0, 0]
+    && nextRoom.hostUsedSkills is map
+    && nextRoom.hostUsedSkills.keys().size() == 0
+    && nextRoom.guestUsedSkills is map
+    && nextRoom.guestUsedSkills.keys().size() == 0
+    && nextRoom.rematchHost == false
+    && nextRoom.rematchGuest == false
+    && nextRoom.rematchPlayerResetHost == false
+    && nextRoom.rematchPlayerResetGuest == false
+    && nextRoom.exitHost == false
+    && nextRoom.exitGuest == false
+    && nextRoom.readyHost == false
+    && nextRoom.readyGuest == false
+    && nextRoom.roomClosed == false
+    && nextRoom.createdAt is number
+    && nextRoom.hostLastSeenAt == nextRoom.createdAt
+    && nextRoom.guestLastSeenAt == 0;
 }
 
 function isStaleStageClosure() {
@@ -275,6 +318,15 @@ function isValidBattleStateTransition() {
       request.resource.data.turnIndex == 0
 
       &&
+      request.resource.data.guestUid != null
+
+      &&
+      request.resource.data.readyHost == true
+
+      &&
+      request.resource.data.readyGuest == true
+
+      &&
       (
         request.resource.data.firstPlayer == 'host'
         ||
@@ -333,6 +385,9 @@ allow update: if request.auth != null
   && (
 
     isStaleStageClosure()
+    ||
+
+    isStaleClosedRoomTakeover()
     ||
 
 

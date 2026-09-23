@@ -173,7 +173,7 @@ const isStageStale = (
     guestLastSeenAt: 0,
   });
 
-  const takeOverStaleStage = async (
+  const deleteClosedStaleRoomData = async (
     roomRef: ReturnType<typeof doc>,
     hostPlayerRef: ReturnType<typeof doc>,
     guestPlayerRef: ReturnType<typeof doc>,
@@ -181,48 +181,45 @@ const isStageStale = (
     guestPrivatePlayerRef: ReturnType<typeof doc>,
     hostPresenceRef: ReturnType<typeof doc>,
     guestPresenceRef: ReturnType<typeof doc>,
-    uid: string,
-    now: number,
   ) => {
-    await runTransaction(
+    const deleted = await runTransaction(
       db,
       async (transaction) => {
         const roomSnap =
           await transaction.get(roomRef);
 
         if (!roomSnap.exists()) {
-          throw new Error('ROOM_NOT_FOUND');
+          return false;
         }
 
         const roomData =
           roomSnap.data() as RoomRecord;
 
-if (roomData.roomClosed !== true) {
-  throw new Error('ROOM_CLOSED');
-}
+        if (roomData.roomClosed !== true) {
+          throw new Error('ROOM_NOT_CLOSED');
+        }
+
+        if (
+          roomData.exitHost === true ||
+          roomData.exitGuest === true
+        ) {
+          throw new Error('ROOM_CLOSED');
+        }
 
         const hostPresenceSnap =
-          await transaction.get(
-            hostPresenceRef,
-          );
+          await transaction.get(hostPresenceRef);
 
         const guestPresenceSnap =
-          await transaction.get(
-            guestPresenceRef,
-          );
+          await transaction.get(guestPresenceRef);
 
         const hostPresenceData =
           hostPresenceSnap.exists()
-            ? (
-                hostPresenceSnap.data() as PresenceRecord
-              )
+            ? (hostPresenceSnap.data() as PresenceRecord)
             : null;
 
         const guestPresenceData =
           guestPresenceSnap.exists()
-            ? (
-                guestPresenceSnap.data() as PresenceRecord
-              )
+            ? (guestPresenceSnap.data() as PresenceRecord)
             : null;
 
         if (
@@ -232,33 +229,43 @@ if (roomData.roomClosed !== true) {
             guestPresenceData,
           )
         ) {
-          throw new Error(
-            'ROOM_ALREADY_IN_USE',
-          );
+          throw new Error('ROOM_ALREADY_IN_USE');
+        }
+
+        transaction.delete(hostPlayerRef);
+        transaction.delete(guestPlayerRef);
+        transaction.delete(hostPrivatePlayerRef);
+        transaction.delete(guestPrivatePlayerRef);
+        transaction.delete(hostPresenceRef);
+        transaction.delete(guestPresenceRef);
+        transaction.delete(roomRef);
+
+        return true;
+      },
+    );
+
+    return deleted;
+  };
+
+  const createFreshRoom = async (
+    roomRef: ReturnType<typeof doc>,
+    hostPresenceRef: ReturnType<typeof doc>,
+    uid: string,
+  ) => {
+    const now = Date.now();
+
+    await runTransaction(
+      db,
+      async (transaction) => {
+        const snapshot = await transaction.get(roomRef);
+
+        if (snapshot.exists()) {
+          throw new Error('ROOM_ALREADY_IN_USE');
         }
 
         transaction.set(
           roomRef,
-          buildNewRoomData(
-            uid,
-            now,
-          ),
-        );
-
-        transaction.delete(
-          hostPlayerRef,
-        );
-        transaction.delete(
-          guestPlayerRef,
-        );
-        transaction.delete(
-          hostPrivatePlayerRef,
-        );
-        transaction.delete(
-          guestPrivatePlayerRef,
-        );
-        transaction.delete(
-          guestPresenceRef,
+          buildNewRoomData(uid, now),
         );
 
         transaction.set(
@@ -286,11 +293,7 @@ if (roomData.roomClosed !== true) {
 
     const roomId = roomKey.trim();
 
-    const roomRef = doc(
-      db,
-      'rooms',
-      roomId,
-    );
+    const roomRef = doc(db, 'rooms', roomId);
 
     const hostPlayerRef = doc(
       db,
@@ -341,161 +344,67 @@ if (roomData.roomClosed !== true) {
     );
 
     try {
-      const currentUser =
-        await ensureAnonymousAuth();
-
+      const currentUser = await ensureAnonymousAuth();
       const now = Date.now();
 
       let result:
         | {
-            mode:
-              | 'created'
-              | 'rejoined'
-              | 'closedStale'
-              | 'staleClosed'
-              | 'takeover';
+            mode: 'created' | 'rejoined';
             guestJoined: boolean;
           };
 
-      const stageResult =
-        await runTransaction(
-          db,
-          async (transaction) => {
-            const snapshot =
-              await transaction.get(
-                roomRef,
-              );
+      const stageResult = await runTransaction(
+        db,
+        async (transaction) => {
+          const snapshot = await transaction.get(roomRef);
 
-            if (!snapshot.exists()) {
-              transaction.set(
-                roomRef,
-                buildNewRoomData(
-                  currentUser.uid,
-                  now,
-                ),
-              );
+          if (!snapshot.exists()) {
+            transaction.set(
+              roomRef,
+              buildNewRoomData(
+                currentUser.uid,
+                now,
+              ),
+            );
 
-              transaction.set(
-                hostPresenceRef,
-                {
-                  uid: currentUser.uid,
-                  role: 'host',
-                  lastSeenAt: now,
-                },
-              );
+            transaction.set(
+              hostPresenceRef,
+              {
+                uid: currentUser.uid,
+                role: 'host',
+                lastSeenAt: now,
+              },
+            );
 
-              return {
-                mode:
-                  'created' as const,
-                guestJoined: false,
-              };
-            }
+            return {
+              mode: 'created' as const,
+              guestJoined: false,
+            };
+          }
 
-            const roomData =
-              snapshot.data() as RoomRecord;
+          const roomData = snapshot.data() as RoomRecord;
 
-if (
-  roomData.roomClosed === true
-) {
-  const hostPresenceSnap =
-                await transaction.get(
-                  hostPresenceRef,
-                );
-
-              const guestPresenceSnap =
-                await transaction.get(
-                  guestPresenceRef,
-                );
-
-              const hostPresenceData =
-                hostPresenceSnap.exists()
-                  ? (
-                      hostPresenceSnap.data() as PresenceRecord
-                    )
-                  : null;
-
-              const guestPresenceData =
-                guestPresenceSnap.exists()
-                  ? (
-                      guestPresenceSnap.data() as PresenceRecord
-                    )
-                  : null;
-
-              if (
-                !isStageStale(
-                  roomData,
-                  hostPresenceData,
-                  guestPresenceData,
-                )
-              ) {
-                throw new Error(
-                  'ROOM_ALREADY_IN_USE',
-                );
-              }
-
-              return {
-                mode:
-                  'closedStale' as const,
-                guestJoined: false,
-              };
-            }
-
+          if (roomData.roomClosed === true) {
             if (
-              roomData.hostUid ===
-              currentUser.uid
+              roomData.exitHost === true ||
+              roomData.exitGuest === true
             ) {
-              transaction.update(
-                roomRef,
-                {
-                  hostJoined: true,
-                  hostRejoinedAt: now,
-                  hostLastSeenAt: now,
-                },
-              );
-
-              transaction.set(
-                hostPresenceRef,
-                {
-                  uid: currentUser.uid,
-                  role: 'host',
-                  lastSeenAt: now,
-                },
-                {
-                  merge: true,
-                },
-              );
-
-              return {
-                mode:
-                  'rejoined' as const,
-                guestJoined: Boolean(
-                  roomData.guestJoined,
-                ),
-              };
+              throw new Error('ROOM_CLOSED');
             }
 
             const hostPresenceSnap =
-              await transaction.get(
-                hostPresenceRef,
-              );
-
+              await transaction.get(hostPresenceRef);
             const guestPresenceSnap =
-              await transaction.get(
-                guestPresenceRef,
-              );
+              await transaction.get(guestPresenceRef);
 
             const hostPresenceData =
               hostPresenceSnap.exists()
-                ? (
-                    hostPresenceSnap.data() as PresenceRecord
-                  )
+                ? (hostPresenceSnap.data() as PresenceRecord)
                 : null;
 
             const guestPresenceData =
               guestPresenceSnap.exists()
-                ? (
-                    guestPresenceSnap.data() as PresenceRecord
-                  )
+                ? (guestPresenceSnap.data() as PresenceRecord)
                 : null;
 
             if (
@@ -505,31 +414,87 @@ if (
                 guestPresenceData,
               )
             ) {
-              throw new Error(
-                'ROOM_ALREADY_IN_USE',
-              );
+              throw new Error('ROOM_ALREADY_IN_USE');
             }
 
+            return {
+              mode: 'closedStale' as const,
+              guestJoined: false,
+            };
+          }
+
+          if (roomData.hostUid === currentUser.uid) {
             transaction.update(
               roomRef,
               {
-                roomClosed: true,
+                hostJoined: true,
+                hostRejoinedAt: now,
+                hostLastSeenAt: now,
               },
             );
 
+            transaction.set(
+              hostPresenceRef,
+              {
+                uid: currentUser.uid,
+                role: 'host',
+                lastSeenAt: now,
+              },
+              { merge: true },
+            );
+
             return {
-              mode:
-                'staleClosed' as const,
-              guestJoined: false,
+              mode: 'rejoined' as const,
+              guestJoined: Boolean(roomData.guestJoined),
             };
-          },
-        );
+          }
+
+          const hostPresenceSnap =
+            await transaction.get(hostPresenceRef);
+          const guestPresenceSnap =
+            await transaction.get(guestPresenceRef);
+
+          const hostPresenceData =
+            hostPresenceSnap.exists()
+              ? (hostPresenceSnap.data() as PresenceRecord)
+              : null;
+
+          const guestPresenceData =
+            guestPresenceSnap.exists()
+              ? (guestPresenceSnap.data() as PresenceRecord)
+              : null;
+
+          if (
+            !isStageStale(
+              roomData,
+              hostPresenceData,
+              guestPresenceData,
+            )
+          ) {
+            throw new Error('ROOM_ALREADY_IN_USE');
+          }
+
+          transaction.update(
+            roomRef,
+            { roomClosed: true },
+          );
+
+          return {
+            mode: 'staleClosed' as const,
+            guestJoined: false,
+          };
+        },
+      );
 
       if (
         stageResult.mode === 'staleClosed' ||
         stageResult.mode === 'closedStale'
       ) {
-        await takeOverStaleStage(
+        setStatusMessage(
+          '放置されたステージを閉鎖し、旧データを削除しています...',
+        );
+
+        await deleteClosedStaleRoomData(
           roomRef,
           hostPlayerRef,
           guestPlayerRef,
@@ -537,49 +502,34 @@ if (
           guestPrivatePlayerRef,
           hostPresenceRef,
           guestPresenceRef,
+        );
+
+        setStatusMessage(
+          '旧ステージの削除が完了しました。新しいステージを作成しています...',
+        );
+
+        await createFreshRoom(
+          roomRef,
+          hostPresenceRef,
           currentUser.uid,
-          now,
         );
 
         result = {
-          mode: 'takeover',
+          mode: 'created',
           guestJoined: false,
         };
       } else {
         result = stageResult;
       }
 
-      // -------------------------------------------------------
-      // 新規作成時だけHost Playerを初期化
-      // stale引き継ぎ時は旧PlayerをTransaction内で削除済み。
-      // -------------------------------------------------------
+      if (result.mode === 'created') {
+        const freshNow = Date.now();
 
-      if (
-        result.mode ===
-        'created'
-      ) {
         await resetPlayerForNewStage(
           hostPlayerRef,
           currentUser.uid,
           'host',
-          now,
-        );
-
-        await resetPrivatePlayerForNewStage(
-          hostPrivatePlayerRef,
-          currentUser.uid,
-        );
-      }
-
-      if (
-        result.mode ===
-        'takeover'
-      ) {
-        await resetPlayerForNewStage(
-          hostPlayerRef,
-          currentUser.uid,
-          'host',
-          now,
+          freshNow,
         );
 
         await resetPrivatePlayerForNewStage(
@@ -597,77 +547,49 @@ if (
           : `🎉 ステージ「${roomKey}」を作成しました！友達の参加を待っています...`,
       );
 
-      // -------------------------------------------------------
-      // Guest参加監視
-      // -------------------------------------------------------
+      const unsubscribe = onSnapshot(
+        roomRef,
+        (docSnap) => {
+          const data = docSnap.data();
 
-      const unsubscribe =
-        onSnapshot(
-          roomRef,
-          (docSnap) => {
-            const data =
-              docSnap.data();
+          if (
+            data &&
+            data.roomClosed === true
+          ) {
+            unsubscribe();
+            setIsWaitingForGuest(false);
+            setStatusMessage(
+              'このステージは終了しました。',
+            );
+            return;
+          }
 
-            if (
-              data &&
-              data.roomClosed ===
-                true
-            ) {
-              unsubscribe();
-              setIsWaitingForGuest(
-                false,
-              );
-              setStatusMessage(
-                'このステージは終了しました。',
-              );
-              return;
-            }
-
-            if (
-              data &&
-              data.guestJoined &&
-              data.guestUid
-            ) {
-              unsubscribe();
-              setIsWaitingForGuest(
-                false,
-              );
-              onMatchStart(
-                roomId,
-                true,
-              );
-            }
-          },
-        );
+          if (
+            data &&
+            data.guestJoined &&
+            data.guestUid
+          ) {
+            unsubscribe();
+            setIsWaitingForGuest(false);
+            onMatchStart(roomId, true);
+          }
+        },
+      );
 
       if (
-        result.mode ===
-          'rejoined' &&
+        result.mode === 'rejoined' &&
         result.guestJoined
       ) {
         unsubscribe();
-        setIsWaitingForGuest(
-          false,
-        );
-        onMatchStart(
-          roomId,
-          true,
-        );
+        setIsWaitingForGuest(false);
+        onMatchStart(roomId, true);
       }
     } catch (err) {
-      console.error(
-        'Create Room Error:',
-        err,
-      );
-
+      console.error('Create Room Error:', err);
       setIsLoading(false);
 
-      if (
-        err instanceof Error
-      ) {
-        switch (
-          err.message
-        ) {
+      if (err instanceof Error) {
+        switch (err.message) {
           case 'ROOM_ALREADY_IN_USE':
             setStatusMessage(
               '❌ その合言葉のステージはすでに使用されています。別の合言葉を設定してください。',
@@ -676,13 +598,14 @@ if (
 
           case 'ROOM_CLOSED':
             setStatusMessage(
-              '❌ このステージは終了しています。新しい合言葉を設定してください。',
+              '❌ このステージは終了処理中です。新しい合言葉を設定してください。',
             );
             return;
 
           case 'ROOM_NOT_FOUND':
+          case 'ROOM_NOT_CLOSED':
             setStatusMessage(
-              '❌ ステージが見つかりません。もう一度お試しください。',
+              '❌ ステージの状態を確認できませんでした。もう一度お試しください。',
             );
             return;
         }
@@ -857,7 +780,7 @@ transaction.set(
 
             // -------------------------------------------------
             // 同じGuest以外はstale Roomへ参加不可
-            // stale Roomは新しいHostが引き継ぐ。
+            // stale Roomは新しいHostによる引き継ぎを行わず、作成側で物理削除する。
             // -------------------------------------------------
 
             if (
@@ -1051,7 +974,7 @@ return {
 
           case 'ROOM_STALE':
             setStatusMessage(
-              '❌ このステージは放置されているため、新しいホストによる引き継ぎ処理が必要です。',
+              '❌ このステージは60秒以上放置されたため利用できません。新しいステージを作成してください。',
             );
             return;
 

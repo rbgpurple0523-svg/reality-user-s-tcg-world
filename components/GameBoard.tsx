@@ -684,6 +684,8 @@ void ensureAnonymousAuth()
   } | null>(null);
   const [readyHost, setReadyHost] = useState(false);
   const [readyGuest, setReadyGuest] = useState(false);
+  const [hostDeckId, setHostDeckId] = useState<string | null>(null);
+  const [guestDeckId, setGuestDeckId] = useState<string | null>(null);
 
   const [activeCardsRevealed, setActiveCardsRevealed] = useState(false);
   const [battleDealAnimationKey, setBattleDealAnimationKey] = useState(0);
@@ -702,7 +704,6 @@ void ensureAnonymousAuth()
   // 相手の手札・山札枚数。オンラインではFirebaseから同期し、CPU戦ではCPUのローカル状態を表示する。
   const [opponentHandCount, setOpponentHandCount] = useState(0);
   const [opponentDeckCount, setOpponentDeckCount] = useState(0);
-  const [supportHandContainerWidth, setSupportHandContainerWidth] = useState(0);
   const lastActionRef = useRef<string>('');
   const lastSkillActionRef = useRef<string>('');
   const lastObservedBattlePhaseRef = useRef<string>('');
@@ -730,7 +731,6 @@ const currentUserUidRef =
 const roomCloseRedirectRef =
   useRef<number | null>(null);
 const supportSubmitInProgressRef = useRef(false);
-const supportHandContainerRef = useRef<HTMLDivElement | null>(null);
 const supportDealTimerRef = useRef<number | null>(null);
 const supportRevealTimerRef = useRef<number | null>(null);
 const supportPointerStartRef = useRef<{ index: number; y: number } | null>(null);
@@ -738,22 +738,7 @@ const supportClickSuppressRef = useRef(false);
 const myActiveCardAnchorRef = useRef<HTMLDivElement | null>(null);
 const opponentActiveCardAnchorRef = useRef<HTMLDivElement | null>(null);
 
-  useEffect(() => {
-    const element = supportHandContainerRef.current;
-    if (!element || typeof ResizeObserver === 'undefined') return;
-
-    const updateWidth = () => {
-      setSupportHandContainerWidth(element.getBoundingClientRect().width);
-    };
-
-    updateWidth();
-    const observer = new ResizeObserver(updateWidth);
-    observer.observe(element);
-
-    return () => observer.disconnect();
-  }, []);
-
-  const addLog = (message: string) => setLog((prev) => [...prev, message]);
+  const addLog = (message: string) => setLog((prev) => [message, ...prev]);
 
 type BattleVisualCard = AvatarCard & {
   colorHex?: string;
@@ -1820,12 +1805,27 @@ const opponentPresenceRef =
           Number(data.guestTotalScore ?? 0),
         );
 
-        setReadyHost(
-          Boolean(data.readyHost),
+        const roomReadyHost = Boolean(data.readyHost);
+        const roomReadyGuest = Boolean(data.readyGuest);
+
+        setReadyHost(roomReadyHost);
+        setReadyGuest(roomReadyGuest);
+
+        setHostDeckId(
+          typeof data.hostDeckId === 'string'
+            ? data.hostDeckId
+            : null,
+        );
+        setGuestDeckId(
+          typeof data.guestDeckId === 'string'
+            ? data.guestDeckId
+            : null,
         );
 
-        setReadyGuest(
-          Boolean(data.readyGuest),
+        setDeckConfirmed(
+          playerRole === 'host'
+            ? roomReadyHost
+            : roomReadyGuest,
         );
 
         // ===================================================
@@ -2220,6 +2220,14 @@ return () => {
   // ===== 現在の季節・手番・出場キャラ =====
   const currentSeasonIdx = startSeasonIdx === null ? 0 : (startSeasonIdx + Math.floor(turnIndex / 2)) % 4;
   const currentSeason = SEASONS[currentSeasonIdx];
+  const onlineDecksConfirmed =
+    !isOnline ||
+    (
+      readyHost &&
+      readyGuest &&
+      Boolean(hostDeckId) &&
+      Boolean(guestDeckId)
+    );
   const myTurn =
     firstPlayer !== null &&
     ((turnIndex % 2 === 0 ? firstPlayer : firstPlayer === 'host' ? 'guest' : 'host') === playerRole);
@@ -3701,40 +3709,94 @@ useEffect(() => {
 
   // ===== 先手・後手を決定（デッキ確定後のみ） =====
   const decideFirstPlayer = async () => {
-    if (battlePhase !== 'setup' || isCoinTossing || !deckConfirmed || (isOnline && !authReady)) return;
-    // オンラインでは両者がデッキ確定してから、ホストだけがコイントスを行う。
-    if (isOnline && !isHost) return;
-    if (isOnline && currentYear === 1 && (!readyHost || !readyGuest)) return;
-
-    setIsCoinTossing(true);
-    await new Promise((resolve) => setTimeout(resolve, 650));
-    const result: PlayerRole = Math.random() < 0.5 ? 'host' : 'guest';
-
-    if (!isOnline) {
-      setFirstPlayer(result);
-      setStartSeasonIdx(0);
-      setPreparationMessage(
-        `コイントス結果：${result === 'host' ? '自分' : 'CPU'}が先手です。\n春から${ROLE_NAMES[currentYear - 1]}戦を開始します。`,
-      );
-      addLog(`🪙 コイントス結果：${result === 'host' ? '自分' : 'CPU'}が先手です。`);
-      setBattlePhase('battle');
-      setTurnIndex(0);
-      setIsCoinTossing(false);
+    if (
+      battlePhase !== 'setup' ||
+      isCoinTossing ||
+      (isOnline ? !onlineDecksConfirmed : !deckConfirmed) ||
+      (isOnline && !authReady)
+    ) {
       return;
     }
 
+    if (isOnline && !isHost) return;
+
+    setIsCoinTossing(true);
+
     try {
-      await updateDoc(doc(db, 'rooms', roomId), {
-        firstPlayer: result,
-        startSeasonIdx: 0,
-        turnIndex: 0,
-        battlePhase: 'battle',
+      if (!isOnline) {
+        await new Promise((resolve) => setTimeout(resolve, 650));
+        const result: PlayerRole = Math.random() < 0.5 ? 'host' : 'guest';
+
+        setFirstPlayer(result);
+        setStartSeasonIdx(0);
+        setPreparationMessage(
+          `コイントス結果：${result === 'host' ? '自分' : 'CPU'}が先手です。\n春から${ROLE_NAMES[currentYear - 1]}戦を開始します。`,
+        );
+        addLog(`🪙 コイントス結果：${result === 'host' ? '自分' : 'CPU'}が先手です。`);
+        setBattlePhase('battle');
+        setTurnIndex(0);
+        return;
+      }
+
+      const roomRef = doc(db, 'rooms', roomId);
+      const result = await runTransaction(db, async (transaction) => {
+        const snapshot = await transaction.get(roomRef);
+
+        if (!snapshot.exists()) {
+          throw new Error('ROOM_NOT_FOUND');
+        }
+
+        const data = snapshot.data() as Record<string, unknown>;
+        const roomCurrentYear = Number(data.currentYear ?? 1);
+
+        if (data.battlePhase !== 'setup') {
+          throw new Error('ROOM_NOT_IN_SETUP');
+        }
+
+        if (data.firstPlayer !== null) {
+          throw new Error('FIRST_PLAYER_ALREADY_SET');
+        }
+
+        if (roomCurrentYear !== currentYear) {
+          throw new Error('YEAR_MISMATCH');
+        }
+
+        if (!data.guestUid) {
+          throw new Error('OPPONENT_NOT_JOINED');
+        }
+
+        if (
+          data.readyHost !== true ||
+          data.readyGuest !== true ||
+          typeof data.hostDeckId !== 'string' ||
+          !data.hostDeckId ||
+          typeof data.guestDeckId !== 'string' ||
+          !data.guestDeckId
+        ) {
+          throw new Error('BOTH_DECKS_NOT_CONFIRMED');
+        }
+
+        const firstPlayer: PlayerRole = Math.random() < 0.5 ? 'host' : 'guest';
+
+        transaction.update(roomRef, {
+          firstPlayer,
+          startSeasonIdx: 0,
+          turnIndex: 0,
+          battlePhase: 'battle',
+        });
+
+        return firstPlayer;
       });
-      setPreparationMessage(`🪙 コイントス結果：${result === playerRole ? '自分' : '相手'}が先手です。春から${ROLE_NAMES[currentYear - 1]}戦を開始します。`);
+
+      setFirstPlayer(result);
+      setStartSeasonIdx(0);
+      setPreparationMessage(
+        `🪙 コイントス結果：${result === playerRole ? '自分' : '相手'}が先手です。春から${ROLE_NAMES[currentYear - 1]}戦を開始します。`,
+      );
       addLog(`🪙 コイントス結果：${result === playerRole ? '自分' : '相手'}が先手です。`);
     } catch (error) {
       console.error('コイントス結果の同期エラー:', error);
-      addLog('⚠️ 先手決定に失敗しました。');
+      addLog('⚠️ 先手決定に失敗しました。両者のデッキ確定状態を確認してください。');
     } finally {
       setIsCoinTossing(false);
     }
@@ -3765,7 +3827,7 @@ useEffect(() => {
   // 両者の準備完了後、ホストがbattleへ移行
   useEffect(() => {
     if (!isOnline || !isHost || battlePhase !== 'setup' || !firstPlayer || startSeasonIdx === null) return;
-    if (currentYear === 1 && (!readyHost || !readyGuest)) return;
+    if (!onlineDecksConfirmed) return;
     // 現在準備しているクラス番号をそのまま引き継ぐ。
     // ここを 1 固定にすると、中堅戦・大将戦の開始時に先鋒戦へ巻き戻ってしまう。
     void updateDoc(doc(db, 'rooms', roomId), {
@@ -3773,7 +3835,7 @@ useEffect(() => {
       currentYear,
       turnIndex: 0,
     });
-  }, [isOnline, isHost, battlePhase, firstPlayer, startSeasonIdx, readyHost, readyGuest, roomId]);
+  }, [isOnline, isHost, battlePhase, firstPlayer, startSeasonIdx, onlineDecksConfirmed, currentYear, roomId]);
 
   // ===== クラス終了リザルト =====
   const showClassResult = (
@@ -6548,13 +6610,13 @@ const field =
               <div className="mt-1 text-lg font-black">🪙 先手・後手をコイントスで決定</div>
               {!firstPlayer ? (
                 isOnline ? (
-                  isHost && (currentYear > 1 || (readyHost && readyGuest)) ? (
+                  isHost && onlineDecksConfirmed ? (
                     <button onClick={() => void decideFirstPlayer()} disabled={isCoinTossing} className="mt-4 w-full rounded-xl bg-amber-400 px-5 py-3 font-black text-slate-950 disabled:opacity-50">
                       {isCoinTossing ? '🪙 コイントス中…' : '🪙 コイントスを行う'}
                     </button>
                   ) : (
                     <div className="mt-4 rounded-xl bg-white/10 p-3 text-sm font-bold">
-                      {currentYear > 1 ? '前のクラスと同じデッキを使用します。コイントスで先手を決めます。' : '両者のデッキ確定後、コイントスで先手を決めます。'}
+                      {currentYear > 1 ? '前のクラスと同じデッキを使用します。両者の準備完了を確認後、コイントスで先手を決めます。' : '両者のデッキ確定後、コイントスで先手を決めます。'}
                     </div>
                   )
                 ) : (
@@ -6841,20 +6903,10 @@ const field =
                       {(() => {
                         const cardWidth = 82;
                         const cardGap = 8;
-                        const cardStep =
-                          myHand.length <= 1 ||
-                          supportHandContainerWidth <= 0
-                            ? cardWidth + cardGap
-                            : Math.min(
-                                cardWidth + cardGap,
-                                Math.max(14, (supportHandContainerWidth - cardWidth) / Math.max(1, myHand.length - 1)),
-                              );
-                        const overlap = Math.max(0, cardWidth + cardGap - cardStep);
 
                         return (
                           <div
-                            ref={supportHandContainerRef}
-                            className="flex min-h-[132px] w-full items-center overflow-hidden pb-2 pt-2"
+                            className="relative h-[146px] w-full overflow-hidden"
                           >
                             {myHand.length === 0 ? (
                               <div className="py-4 text-xs font-bold opacity-40">手札がありません。</div>
@@ -6886,10 +6938,14 @@ const field =
                                         supportClickSuppressRef.current = true;
                                         setSelectedSupportCardIndex(index);
                                         void handleUseSupportCard(card, index);
-                                        window.setTimeout(() => { supportClickSuppressRef.current = false; }, 50);
+                                        window.setTimeout(() => {
+                                          supportClickSuppressRef.current = false;
+                                        }, 50);
                                       }
                                     }}
-                                    onPointerCancel={() => { supportPointerStartRef.current = null; }}
+                                    onPointerCancel={() => {
+                                      supportPointerStartRef.current = null;
+                                    }}
                                     onClick={() => {
                                       if (!myTurn || supportClickSuppressRef.current) return;
                                       if (selectedSupportCardIndex === index) {
@@ -6899,13 +6955,22 @@ const field =
                                       setSelectedSupportCardIndex(index);
                                     }}
                                     style={{
-                                      marginLeft: index === 0 ? 0 : -overlap,
+                                      position: 'absolute',
+                                      left:
+                                        myHand.length <= 1
+                                          ? 0
+                                          : `min(${index * (cardWidth + cardGap)}px, max(0px, calc((100% - ${cardWidth}px) * ${index} / ${Math.max(1, myHand.length - 1)})))`,
+                                      top: isSelected ? 8 : 18,
                                       zIndex: isSelected ? myHand.length + 10 : index + 1,
                                     }}
-                                    className={`relative w-[82px] shrink-0 rounded-xl border bg-white p-1.5 text-left shadow-md transition duration-200 ${
-                                      !myTurn ? 'cursor-not-allowed opacity-50' : 'cursor-pointer hover:border-indigo-400'
+                                    className={`relative w-[82px] rounded-xl border bg-white p-1.5 text-left shadow-md transition duration-200 ${
+                                      !myTurn
+                                        ? 'cursor-not-allowed opacity-50'
+                                        : 'cursor-pointer hover:border-indigo-400'
                                     } ${
-                                      isSelected ? '-translate-y-3 border-indigo-500 ring-2 ring-indigo-200' : 'border-slate-200'
+                                      isSelected
+                                        ? 'border-indigo-500 ring-2 ring-indigo-200'
+                                        : 'border-slate-200'
                                     }`}
                                   >
                                     {isSubmitting && (
@@ -6921,7 +6986,11 @@ const field =
                                       colorHex={getBattleVisualColorHex(myActiveAvatar.card)}
                                     >
                                       {getSupportImage(card) ? (
-                                        <img src={getSupportImage(card)} alt="" className="h-full w-full rounded-xl bg-white object-contain p-0.5" />
+                                        <img
+                                          src={getSupportImage(card)}
+                                          alt=""
+                                          className="h-full w-full rounded-xl bg-white object-contain p-0.5"
+                                        />
                                       ) : (
                                         <div className="flex h-full items-center justify-center text-2xl">🃏</div>
                                       )}
@@ -7033,7 +7102,7 @@ const field =
         {/* ===== ⑥ LIVE LOG：盤面の最後 ===== */}
         <section className="mt-4 rounded-2xl bg-slate-950/80 p-3 text-xs text-white shadow-lg">
           <div className="mb-2 font-black opacity-50">
-            LIVE LOG
+            試合実況
           </div>
 
           <div
