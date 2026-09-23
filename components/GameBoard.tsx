@@ -4357,6 +4357,65 @@ if (!actionSubmitted) {
     return preset ? `/support_sample/${encodeURIComponent(preset.name)}.jpg` : undefined;
   };
 
+  const getSupportDetailDescription = (preset: EmotionPreset) => {
+    const targetLabel =
+      preset.target === '自分'
+        ? '自分'
+        : preset.target === '相手'
+          ? '相手'
+          : '自分と相手';
+    const durationLabel =
+      preset.duration === '一時'
+        ? '次の自分のターンまで'
+        : 'このクラス中';
+    const amount = parseEmotionAmount(preset.effectAmount);
+    const absoluteAmount = Math.abs(amount);
+    const direction = amount >= 0 ? '増加' : '減少';
+
+    if (preset.effectCategory === '体力') {
+      return `${targetLabel}の体力を${durationLabel}${absoluteAmount}${direction}させる。${preset.note?.includes('0') ? '（0は下回らない）' : ''}`;
+    }
+    if (preset.effectCategory === '知略') {
+      return `${targetLabel}の知略を${durationLabel}${absoluteAmount}${direction}させる。${preset.note?.includes('0') ? '（0は下回らない）' : ''}`;
+    }
+    if (preset.effectCategory === '器用') {
+      return `${targetLabel}の器用を${durationLabel}${absoluteAmount}${direction}させる。${preset.note?.includes('0') ? '（0は下回らない）' : ''}`;
+    }
+    if (preset.effectCategory === '特技') {
+      return `${targetLabel}の特技を${durationLabel}${absoluteAmount}${direction}させる。${preset.note?.includes('0') ? '（0は下回らない）' : ''}`;
+    }
+    if (preset.effectCategory === '全ステータス') {
+      return `${targetLabel}の全ステータスを${durationLabel}${absoluteAmount}${direction}させる。${preset.note?.includes('0') ? '（0は下回らない）' : ''}`;
+    }
+    if (preset.effectCategory === 'スコア') {
+      return preset.target === '自分'
+        ? `使用時に自分の現在クラスのスコアを${absoluteAmount}増やす。`
+        : `使用時に相手の現在クラスのスコアを${absoluteAmount}減らす。${preset.note?.includes('0') ? '（0は下回らない）' : ''}`;
+    }
+    if (preset.effectCategory === 'サポートカード使用数') {
+      if (preset.statEffect.includes('制限されない')) {
+        return `${targetLabel}のサポートカード使用数を制限しない。${durationLabel}有効。`;
+      }
+      return `${targetLabel}がこのターンに使用できるサポートカードを${preset.effectAmount || '指定枚数'}までに制限する。${durationLabel}有効。`;
+    }
+    if (preset.effectCategory === 'ドロー') {
+      if (preset.duration === '永続') {
+        return `${targetLabel}は各ターン、カードを${absoluteAmount}枚追加でドローする。このクラス中有効。`;
+      }
+      return `${targetLabel}はカードを${absoluteAmount}枚追加でドローする。`;
+    }
+    if (preset.effectCategory === 'ステータスコピー・平均化') {
+      return `${preset.description}${preset.duration === '一時' ? '次の自分のターンまで有効。' : 'このクラス中有効。'}`;
+    }
+    if (preset.effectCategory === '効果反射') {
+      return `${preset.description}${preset.note ? `（${preset.note}）` : ''}`;
+    }
+    if (preset.effectCategory === '技封印') {
+      return `${targetLabel}の技④の使用を${durationLabel}封印する。`;
+    }
+    return preset.description;
+  };
+
   const parseEmotionAmount = (value?: string) => {
     const match = value?.match(/[-+]?\d+(?:\.\d+)?/);
     return match ? Number(match[0]) : 0;
@@ -6777,200 +6836,147 @@ const field =
                   : undefined;
 
                 return (
-                  <div
-                    className={
-                      selectedCard
-                        ? 'mt-3 grid grid-cols-[minmax(0,0.95fr)_minmax(0,1.05fr)] items-start gap-3'
-                        : 'mt-3'
-                    }
-                  >
-                    {selectedCard && selectedPreset && selectedBadges && (
-                      <div className="min-w-0 rounded-2xl border border-indigo-200 bg-indigo-50/90 p-3 shadow-sm">
-                        <div className="flex flex-col gap-3 sm:flex-row sm:items-start">
-                          <div className="shrink-0 self-center sm:self-start">
-                            <BattleCardReveal
-                            revealed
-                            width={74}
-                            height={104}
-                            colorHex={getBattleVisualColorHex(myActiveAvatar.card)}
-                          >
-                            {getSupportImage(selectedCard) ? (
-                              <img
-                                src={getSupportImage(selectedCard)}
-                                alt=""
-                                className="h-full w-full rounded-xl bg-white object-contain p-0.5"
-                              />
-                            ) : (
-                              <div className="flex h-full items-center justify-center text-3xl">🃏</div>
-                            )}
-                            </BattleCardReveal>
-                          </div>
-                          <div className="min-w-0 flex-1">
-                            <div className="text-sm font-black text-indigo-950">{selectedCard.name}</div>
-                            <div className="mt-2 flex flex-wrap gap-1">
-                              {[
-                                selectedBadges.target,
-                                selectedBadges.duration,
-                                selectedBadges.effect,
-                              ].map((badge, badgeIndex) => (
-                                <span
-                                  key={`${badge.label}_${badgeIndex}`}
-                                  title={badge.description}
-                                  className="inline-flex min-w-7 items-center justify-center rounded-md border border-indigo-200 bg-white px-1.5 py-0.5 text-[10px] font-black text-indigo-900"
-                                >
-                                  {badge.label}
-                                </span>
-                              ))}
-                            </div>
-                            <div className="mt-2 text-xs font-black leading-relaxed text-slate-800">
-                              {selectedCard.description || selectedPreset.description}
-                            </div>
-                          </div>
-                        </div>
-
-                        <div className="mt-3 grid grid-cols-1 gap-1.5 text-[10px] font-bold text-slate-700">
-                          <div className="rounded-lg border border-indigo-100 bg-white/80 px-2 py-1.5">
-                            <span className="font-black text-indigo-900">対象：</span>
-                            {selectedBadges.target.description}
-                          </div>
-                          <div className="rounded-lg border border-indigo-100 bg-white/80 px-2 py-1.5">
-                            <span className="font-black text-indigo-900">期限：</span>
-                            {selectedPreset.duration === '一時'
-                              ? 'このターン＋次の1ターンの間有効。'
-                              : 'このクラスの終了まで有効。次のクラスには持ち越さない。'}
-                          </div>
-                          <div className="rounded-lg border border-indigo-100 bg-white/80 px-2 py-1.5">
-                            <span className="font-black text-indigo-900">性能：</span>
-                            {selectedPreset.statEffect}
-                            {selectedPreset.effectAmount ? `（${selectedPreset.effectAmount}）` : ''}
-                          </div>
-                          {selectedPreset.note && (
-                            <div className="rounded-lg border border-indigo-100 bg-white/80 px-2 py-1.5">
-                              <span className="font-black text-indigo-900">補足：</span>
-                              {selectedPreset.note}
-                            </div>
-                          )}
-                        </div>
-                      </div>
-                    )}
-
-                    <div className={selectedCard ? 'min-w-0' : ''}>
+                  <div className="mt-3 grid grid-cols-1 items-stretch gap-3 md:grid-cols-[minmax(0,1fr)_minmax(250px,320px)]">
+                    <div className="order-1 min-w-0">
                       {(() => {
                         const cardWidth = 82;
                         const cardGap = 8;
-                        const naturalWidth =
-                          myHand.length * cardWidth +
-                          Math.max(0, myHand.length - 1) * cardGap;
                         const cardStep =
                           myHand.length <= 1 ||
                           supportHandContainerWidth <= 0
                             ? cardWidth + cardGap
                             : Math.min(
                                 cardWidth + cardGap,
-                                Math.max(14, (supportHandContainerWidth - cardWidth) / (myHand.length - 1)),
+                                Math.max(14, (supportHandContainerWidth - cardWidth) / Math.max(1, myHand.length - 1)),
                               );
-                        const overlap = cardWidth + cardGap - cardStep;
+                        const overlap = Math.max(0, cardWidth + cardGap - cardStep);
 
                         return (
                           <div
                             ref={supportHandContainerRef}
-                            className="flex w-full items-center overflow-hidden pb-2 pt-2"
+                            className="flex min-h-[132px] w-full items-center overflow-hidden pb-2 pt-2"
                           >
-                        {myHand.length === 0 ? (
-                          <div className="py-4 text-xs font-bold opacity-40">手札がありません。</div>
-                        ) : (
-                          myHand.map((card, index) => {
-                            const isSelected = selectedSupportCardIndex === index;
-                            const isSubmitting = supportSubmittingCardIndex === index;
-                            const isRevealing = revealingSupportCardIndexes.includes(index);
-                            const preset = getEmotionPresetForCard(card);
-                            const badges = preset
-                              ? getEmotionPerformanceBadges(preset)
-                              : undefined;
+                            {myHand.length === 0 ? (
+                              <div className="py-4 text-xs font-bold opacity-40">手札がありません。</div>
+                            ) : (
+                              myHand.map((card, index) => {
+                                const isSelected = selectedSupportCardIndex === index;
+                                const isSubmitting = supportSubmittingCardIndex === index;
+                                const isRevealing = revealingSupportCardIndexes.includes(index);
+                                const preset = getEmotionPresetForCard(card);
+                                const badges = preset
+                                  ? getEmotionPerformanceBadges(preset)
+                                  : undefined;
 
-                            return (
-                              <button
-                                key={`${card.id}_${index}`}
-                                type="button"
-                                disabled={!myTurn || supportSubmittingCardIndex !== null}
-                                onPointerDown={(event) => {
-                                  if (!myTurn) return;
-                                  supportPointerStartRef.current = { index, y: event.clientY };
-                                }}
-                                onPointerUp={(event) => {
-                                  if (!myTurn) return;
-                                  const startPoint = supportPointerStartRef.current;
-                                  supportPointerStartRef.current = null;
-                                  if (!startPoint || startPoint.index !== index) return;
-                                  if (event.clientY - startPoint.y <= -45) {
-                                    supportClickSuppressRef.current = true;
-                                    setSelectedSupportCardIndex(index);
-                                    void handleUseSupportCard(card, index);
-                                    window.setTimeout(() => { supportClickSuppressRef.current = false; }, 50);
-                                  }
-                                }}
-                                onPointerCancel={() => { supportPointerStartRef.current = null; }}
-                                onClick={() => {
-                                  if (!myTurn || supportClickSuppressRef.current) return;
-                                  if (selectedSupportCardIndex === index) {
-                                    void handleUseSupportCard(card, index);
-                                    return;
-                                  }
-                                  setSelectedSupportCardIndex(index);
-                                }}
-                                style={{
-                                  marginLeft: index === 0 ? 0 : -overlap,
-                                  zIndex: isSelected ? myHand.length + 10 : index + 1,
-                                }}
-                                className={`relative w-[82px] shrink-0 rounded-xl border bg-white p-1.5 text-left shadow-md transition duration-200 ${
-                                  !myTurn ? 'cursor-not-allowed opacity-50' : 'cursor-pointer hover:border-indigo-400'
-                                } ${
-                                  isSelected ? '-translate-y-3 border-indigo-500 ring-2 ring-indigo-200' : 'border-slate-200'
-                                }`}
-                              >
-                                {isSubmitting && (
-                                  <div className="absolute inset-0 z-30 flex items-center justify-center rounded-xl bg-slate-950/55 text-[11px] font-black text-white backdrop-blur-[1px]">
-                                    発動中…
-                                  </div>
-                                )}
-                                <BattleCardReveal
-                                  revealed={!isRevealing}
-                                  width={70}
-                                  height={98}
-                                  className="mx-auto"
-                                  colorHex={getBattleVisualColorHex(myActiveAvatar.card)}
-                                >
-                                  {getSupportImage(card) ? (
-                                    <img src={getSupportImage(card)} alt="" className="h-full w-full rounded-xl bg-white object-contain p-0.5" />
-                                  ) : (
-                                    <div className="flex h-full items-center justify-center text-2xl">🃏</div>
-                                  )}
-                                </BattleCardReveal>
+                                return (
+                                  <button
+                                    key={`${card.id}_${index}`}
+                                    type="button"
+                                    disabled={!myTurn || supportSubmittingCardIndex !== null}
+                                    onPointerDown={(event) => {
+                                      if (!myTurn) return;
+                                      supportPointerStartRef.current = { index, y: event.clientY };
+                                    }}
+                                    onPointerUp={(event) => {
+                                      if (!myTurn) return;
+                                      const startPoint = supportPointerStartRef.current;
+                                      supportPointerStartRef.current = null;
+                                      if (!startPoint || startPoint.index !== index) return;
+                                      if (event.clientY - startPoint.y <= -45) {
+                                        supportClickSuppressRef.current = true;
+                                        setSelectedSupportCardIndex(index);
+                                        void handleUseSupportCard(card, index);
+                                        window.setTimeout(() => { supportClickSuppressRef.current = false; }, 50);
+                                      }
+                                    }}
+                                    onPointerCancel={() => { supportPointerStartRef.current = null; }}
+                                    onClick={() => {
+                                      if (!myTurn || supportClickSuppressRef.current) return;
+                                      if (selectedSupportCardIndex === index) {
+                                        void handleUseSupportCard(card, index);
+                                        return;
+                                      }
+                                      setSelectedSupportCardIndex(index);
+                                    }}
+                                    style={{
+                                      marginLeft: index === 0 ? 0 : -overlap,
+                                      zIndex: isSelected ? myHand.length + 10 : index + 1,
+                                    }}
+                                    className={`relative w-[82px] shrink-0 rounded-xl border bg-white p-1.5 text-left shadow-md transition duration-200 ${
+                                      !myTurn ? 'cursor-not-allowed opacity-50' : 'cursor-pointer hover:border-indigo-400'
+                                    } ${
+                                      isSelected ? '-translate-y-3 border-indigo-500 ring-2 ring-indigo-200' : 'border-slate-200'
+                                    }`}
+                                  >
+                                    {isSubmitting && (
+                                      <div className="absolute inset-0 z-30 flex items-center justify-center rounded-xl bg-slate-950/55 text-[11px] font-black text-white backdrop-blur-[1px]">
+                                        発動中…
+                                      </div>
+                                    )}
+                                    <BattleCardReveal
+                                      revealed={!isRevealing}
+                                      width={70}
+                                      height={98}
+                                      className="mx-auto"
+                                      colorHex={getBattleVisualColorHex(myActiveAvatar.card)}
+                                    >
+                                      {getSupportImage(card) ? (
+                                        <img src={getSupportImage(card)} alt="" className="h-full w-full rounded-xl bg-white object-contain p-0.5" />
+                                      ) : (
+                                        <div className="flex h-full items-center justify-center text-2xl">🃏</div>
+                                      )}
+                                    </BattleCardReveal>
 
-                                {badges && (
-                                  <div className="mt-1 flex justify-center gap-0.5">
-                                    {[badges.target, badges.duration, badges.effect].map((badge, badgeIndex) => (
-                                      <span
-                                        key={`${badge.label}_${badgeIndex}`}
-                                        title={badge.description}
-                                        className="inline-flex h-4 min-w-4 items-center justify-center rounded-[4px] border border-slate-200 bg-slate-50 px-0.5 text-[8px] font-black leading-none text-slate-700"
-                                      >
-                                        {badge.label}
-                                      </span>
-                                    ))}
-                                  </div>
-                                )}
+                                    {badges && (
+                                      <div className="mt-1 flex justify-center gap-0.5">
+                                        {[badges.target, badges.duration, badges.effect].map((badge, badgeIndex) => (
+                                          <span
+                                            key={`${badge.label}_${badgeIndex}`}
+                                            title={badge.description}
+                                            className="inline-flex h-4 min-w-4 items-center justify-center rounded-[4px] border border-slate-200 bg-slate-50 px-0.5 text-[8px] font-black leading-none text-slate-700"
+                                          >
+                                            {badge.label}
+                                          </span>
+                                        ))}
+                                      </div>
+                                    )}
 
-                                <div className="mt-1 text-center">
-                                  <span className="block truncate text-[9px] font-black">{card.name}</span>
-                                </div>
-                              </button>
-                            );
-                          })
-                        )}
+                                    <div className="mt-1 text-center">
+                                      <span className="block truncate text-[9px] font-black">{card.name}</span>
+                                    </div>
+                                  </button>
+                                );
+                              })
+                            )}
                           </div>
                         );
                       })()}
+                    </div>
+
+                    <div className="order-2 h-[132px] min-w-0 overflow-hidden rounded-2xl border border-indigo-200 bg-indigo-50/90 p-3 shadow-sm md:order-2">
+                      <div className="text-[10px] font-black tracking-wide text-indigo-950">サポートカード説明・性能詳細</div>
+                      {selectedCard && selectedPreset && selectedBadges ? (
+                        <>
+                          <div className="mt-2 flex flex-wrap items-center gap-1">
+                            {[selectedBadges.target, selectedBadges.duration, selectedBadges.effect].map((badge, badgeIndex) => (
+                              <span
+                                key={`${badge.label}_${badgeIndex}`}
+                                title={badge.description}
+                                className="inline-flex min-w-7 items-center justify-center rounded-md border border-indigo-200 bg-white px-1.5 py-0.5 text-[10px] font-black text-indigo-900"
+                              >
+                                {badge.label}
+                              </span>
+                            ))}
+                          </div>
+                          <div className="mt-2 text-xs font-bold leading-relaxed text-slate-800">
+                            {getSupportDetailDescription(selectedPreset)}
+                          </div>
+                        </>
+                      ) : (
+                        <div className="mt-5 text-xs font-bold leading-relaxed text-slate-500">
+                          手札のカードをタップすると、ここに対象・期限・具体的な性能が表示されます。
+                        </div>
+                      )}
                     </div>
                   </div>
                 );
