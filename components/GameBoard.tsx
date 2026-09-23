@@ -2815,6 +2815,9 @@ const submitBattleAction = async (
             turnIndex: action.turnIndex,
             avatarIndex: action.avatarIndex,
             supportCardId: action.supportCardId,
+            supportPresetId: action.supportPresetId,
+            supportFlavorText: action.supportFlavorText,
+            supportColorHex: action.supportColorHex || DEFAULT_SUPPORT_COLOR_HEX,
           }),
         });
 
@@ -3274,7 +3277,7 @@ const handleIncomingActionRef =
         imageUrl: getSupportImage(supportCard),
         targetPositions: getSupportTargetPositions(),
         dialogue: supportCard.flavorText || preset?.description,
-        colorHex: supportCard.colorHex,
+        colorHex: supportCard.colorHex || DEFAULT_SUPPORT_COLOR_HEX,
         target: getSupportBattleTarget(preset, false),
       });
 
@@ -4531,8 +4534,11 @@ if (!actionSubmitted) {
   const getSupportFlavorText = (card: SupportCard) =>
     (card as SupportCard & SupportCardDisplayMeta).flavorText || '';
 
+  const DEFAULT_SUPPORT_COLOR_HEX = '#22D3EE';
+
   const getSupportColorHex = (card: SupportCard) =>
-    (card as SupportCard & SupportCardDisplayMeta).colorHex || undefined;
+    (card as SupportCard & SupportCardDisplayMeta).colorHex ||
+    DEFAULT_SUPPORT_COLOR_HEX;
 
   const getSupportDetailDescription = (preset: EmotionPreset) => {
     const targetLabel =
@@ -5406,8 +5412,8 @@ const handleUseSupportCard = async (
         cardName: card.name,
         imageUrl: getSupportImage(card),
         targetPositions: getSupportTargetPositions(),
-        dialogue: supportPreset?.description,
-        colorHex: undefined,
+        dialogue: getSupportFlavorText(card) || supportPreset?.description,
+        colorHex: getSupportColorHex(card),
         target: getSupportBattleTarget(
           supportPreset,
           true,
@@ -5496,6 +5502,12 @@ const handleUseSupportCard = async (
             activeIndex,
           supportCardId:
             card.id,
+          supportPresetId:
+            supportPreset?.id,
+          supportFlavorText:
+            getSupportFlavorText(card),
+          supportColorHex:
+            getSupportColorHex(card),
         },
       );
 
