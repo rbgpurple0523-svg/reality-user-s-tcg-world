@@ -485,15 +485,7 @@ export default function Home() {
       currentView === 'coordinateSelect' ||
       currentView === 'cardGen' ||
       currentView === 'emotionSelect' ||
-      currentView === 'supportGen' ||
-      currentView === 'friendMatchSetup' ||
-      currentView === 'gameBoard' ||
-      currentView === 'friendGameBoard');
-
-  const hideGlobalHeader =
-    currentView === 'friendMatchSetup' ||
-    currentView === 'gameBoard' ||
-    currentView === 'friendGameBoard';
+      currentView === 'supportGen');
 
   if (showIntro) {
     return (
@@ -556,7 +548,6 @@ export default function Home() {
 
   return (
     <main className={`${isFixedView ? 'h-[100dvh] overflow-hidden' : 'min-h-screen'} bg-white text-gray-900 flex flex-col`}>
-      {!hideGlobalHeader && (
       <header className="shrink-0 border-b border-gray-200 bg-white px-4 py-3 shadow-sm sm:px-6">
         <div className="flex items-center justify-between gap-3">
           <button
@@ -580,9 +571,8 @@ export default function Home() {
           )}
         </div>
       </header>
-      )}
 
-      <div className={`${isFixedView ? 'min-h-0 flex-1 overflow-hidden' : 'flex-1'} flex flex-col`}>
+      <div className={`${isFixedView ? 'min-h-0' : 'flex-1'} flex flex-col`}>
         {currentView === 'menu' && (
           <div className="mx-auto flex min-h-0 w-full max-w-xl flex-1 flex-col px-4 py-5 sm:px-6 sm:py-7">
             <div className="text-center">

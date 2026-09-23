@@ -19,7 +19,11 @@ import {
 } from '@/types/card';
 import { CHARACTER_SAMPLE_CARDS } from './characterSampleCards';
 import { COORDINATE_PRESETS } from './coordinatePresets';
-import { createVirtualSupportCards, VIRTUAL_SUPPORT_PREFIX } from './supportSampleCards';
+import {
+  createVirtualSupportCards,
+  getVirtualSupportImageDataUrl,
+  VIRTUAL_SUPPORT_PREFIX,
+} from './supportSampleCards';
 import {
   EMOTION_PRESETS,
   getEmotionPerformanceBadges,
@@ -118,7 +122,7 @@ function buildPresetSkills(
   const rank = getStatRankFromPreset(preset);
   return [
     { id: 'skill_1', name: names[0] || preset.defaultSkills[0], description: preset.skillDescriptions[0], maxUsesPerClass: 0, type: 'score', rule: 'primary_score', primaryStat: rank[0] },
-    { id: 'skill_2', name: names[1] || preset.defaultSkills[1], description: preset.skillDescriptions[1], maxUsesPerClass: 0, type: 'score', rule: 'product_score', primaryStat: rank[2], secondaryStat: rank[3] },
+    { id: 'skill_2', name: names[1] || preset.defaultSkills[1], description: preset.skillDescriptions[1], maxUsesPerClass: 0, type: 'score', rule: 'product_score', primaryStat: rank[1], secondaryStat: rank[2] },
     { id: 'skill_3', name: names[2] || preset.defaultSkills[2], description: preset.skillDescriptions[2], maxUsesPerClass: 0, type: 'score', rule: 'difference_score', primaryStat: rank[0] },
     { id: 'skill_4', name: names[3] || preset.defaultSkills[3], description: preset.skillDescriptions[3], maxUsesPerClass: 1, type: 'debuff_attack', rule: 'combo_score_and_debuff', primaryStat: rank[0], secondaryStat: rank[1], tertiaryStat: rank[3] },
   ];
@@ -678,6 +682,7 @@ void ensureAnonymousAuth()
   const [modalAvatar, setModalAvatar] = useState<BattleAvatar | null>(null);
   const [rematchChoice, setRematchChoice] = useState<'rematch' | 'exit' | null>(null);
   const [waitingMessage, setWaitingMessage] = useState('');
+  const [waitingMode, setWaitingMode] = useState<'opponent' | 'return'>('opponent');
   const [preparationMessage, setPreparationMessage] = useState('');
   const [showOpponentDisconnectModal, setShowOpponentDisconnectModal] =
     useState(false);
@@ -1619,9 +1624,10 @@ const opponentPresenceRef =
       roomRef,
       async (snapshot) => {
         if (!snapshot.exists()) {
+          setWaitingMode('return');
           setBattlePhase('waiting');
           setWaitingMessage(
-            'このステージは終了しました。合言葉は解放されています。',
+            'このステージは終了しました。ホーム画面へ戻ります。',
           );
           return;
         }
@@ -1644,6 +1650,7 @@ const opponentPresenceRef =
         ? '相手が退出しました。この対戦は終了しました。ホームへ戻ります。'
         : 'この対戦を終了しました。ホームへ戻ります。';
 
+      setWaitingMode('return');
       setBattlePhase('waiting');
       setWaitingMessage(message);
 
@@ -1925,6 +1932,7 @@ if (data.roomClosed === true) {
     ? '相手が退出しました。この対戦は終了しました。ホームへ戻ります。'
     : 'この対戦を終了しました。ホームへ戻ります。';
 
+  setWaitingMode('return');
   setBattlePhase('waiting');
   setWaitingMessage(message);
 
@@ -1958,6 +1966,7 @@ if (data.roomClosed === true) {
           if (
             rematcher === playerRole
           ) {
+            setWaitingMode('opponent');
             setBattlePhase('waiting');
 
             setWaitingMessage(
@@ -4528,7 +4537,7 @@ if (!actionSubmitted) {
     const withImage = card as SupportCard & { imageDataUrl?: string };
     if (withImage.imageDataUrl) return withImage.imageDataUrl;
     const preset = getEmotionPresetForCard(card);
-    return preset ? `/support_sample/${encodeURIComponent(preset.name)}.jpg` : undefined;
+    return preset ? getVirtualSupportImageDataUrl(preset) : undefined;
   };
 
   const getSupportFlavorText = (card: SupportCard) =>
@@ -4818,7 +4827,8 @@ if (!actionSubmitted) {
     } else if (preset.effectCategory === 'ステータスコピー・平均化') {
       const actorEffective = getEffectiveStats(actor, turnOrdinal);
       const targetEffective = getEffectiveStats(target, turnOrdinal);
-      if (preset.name === '手鏡') {
+
+      if (preset.id === 'emo_29') {
         const highest = Math.max(...Object.values(targetEffective));
         const key = STAT_KEYS.find((item) => targetEffective[item] === highest) || 'hp';
         addActorAvatarEffect({
@@ -4826,7 +4836,7 @@ if (!actionSubmitted) {
           statOverride: { [key]: highest },
           expiresAtTurnOrdinal: getSupportEffectExpiration(preset, turnOrdinal, false),
         });
-      } else if (preset.name === '押し売り') {
+      } else if (preset.id === 'emo_30') {
         const lowest = Math.min(...Object.values(actorEffective));
         const key = STAT_KEYS.find((item) => actorEffective[item] === lowest) || 'hp';
         addTargetAvatarEffect({
@@ -4834,29 +4844,34 @@ if (!actionSubmitted) {
           statOverride: { [key]: lowest },
           expiresAtTurnOrdinal: getSupportEffectExpiration(preset, turnOrdinal, true),
         });
-      } else {
+      } else if (preset.id === 'emo_31') {
         const average = Math.round(
           Object.values(actorEffective).reduce((sum, value) => sum + value, 0) / 4,
         );
-        const averageEffect = {
-          hp: average,
-          intellect: average,
-          dexterity: average,
-          charm: average,
-        };
-        if (preset.name === '平穏な空気') {
-          addActorAvatarEffect({
-            sourcePresetId: preset.id,
-            statOverride: averageEffect,
-            expiresAtTurnOrdinal: getSupportEffectExpiration(preset, turnOrdinal, false),
-          });
-        } else if (preset.name === 'トンボがけ') {
-          addTargetAvatarEffect({
-            sourcePresetId: preset.id,
-            statOverride: averageEffect,
-            expiresAtTurnOrdinal: getSupportEffectExpiration(preset, turnOrdinal, true),
-          });
-        }
+        addActorAvatarEffect({
+          sourcePresetId: preset.id,
+          statOverride: {
+            hp: average,
+            intellect: average,
+            dexterity: average,
+            charm: average,
+          },
+          expiresAtTurnOrdinal: getSupportEffectExpiration(preset, turnOrdinal, false),
+        });
+      } else if (preset.id === 'emo_32') {
+        const average = Math.round(
+          Object.values(targetEffective).reduce((sum, value) => sum + value, 0) / 4,
+        );
+        addTargetAvatarEffect({
+          sourcePresetId: preset.id,
+          statOverride: {
+            hp: average,
+            intellect: average,
+            dexterity: average,
+            charm: average,
+          },
+          expiresAtTurnOrdinal: getSupportEffectExpiration(preset, turnOrdinal, true),
+        });
       }
     } else if (preset.effectCategory === '効果反射') {
       if (preset.id === 'emo_33') {
@@ -5982,12 +5997,24 @@ const exitBecauseOpponentDisconnected =
     // CPU対戦はFirebaseを使わず、この画面内で新しい準備フェイズを開始します。
     if (!isOnline) {
       if (choice === 'exit') {
+        setRematchChoice('exit');
+        setWaitingMode('return');
         setWaitingMessage(
           'CPU対戦を終了しました。',
         );
         setBattlePhase(
           'waiting',
         );
+
+        if (
+          roomCloseRedirectRef.current ===
+          null
+        ) {
+          roomCloseRedirectRef.current =
+            window.setTimeout(() => {
+              window.location.assign('/');
+            }, 1200);
+        }
         return;
       }
 
@@ -6017,9 +6044,10 @@ if (choice === 'exit') {
     await deleteRoomData();
 
     setRematchChoice('exit');
+    setWaitingMode('return');
 
     setWaitingMessage(
-      '対戦を終了しました。ホームへ戻ります。',
+      '対戦を終了しました。',
     );
 
     setBattlePhase('waiting');
@@ -6872,7 +6900,7 @@ const field =
           <section className="mt-2 flex min-h-0 flex-1 items-center justify-center">
             <div className="w-full max-w-md rounded-[2rem] border border-white/70 bg-white/90 p-6 text-center shadow-2xl backdrop-blur-md">
               <div className="text-5xl">⏳</div>
-              <h2 className="mt-3 text-2xl font-black">対戦相手を待っています</h2>
+              <h2 className="mt-3 text-2xl font-black">{waitingMode === 'return' ? '自動的にホーム画面に戻ります' : '対戦相手を待っています'}</h2>
               <p className="mt-3 whitespace-pre-line text-sm font-bold leading-relaxed text-slate-500">
                 {waitingMessage}
               </p>

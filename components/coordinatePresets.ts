@@ -69,33 +69,33 @@ const STAT_LABELS: Record<StatKey, string> = {
 };
 
 const STAT_RANKS: Record<string, StatKey[]> = {
-  p6: ['hp', 'intellect', 'dexterity', 'charm'],
-  p5: ['hp', 'intellect', 'charm', 'dexterity'],
-  p4: ['hp', 'dexterity', 'intellect', 'charm'],
-  p2: ['hp', 'dexterity', 'charm', 'intellect'],
-  p3: ['hp', 'charm', 'intellect', 'dexterity'],
   p1: ['hp', 'charm', 'dexterity', 'intellect'],
+  p2: ['hp', 'charm', 'intellect', 'dexterity'],
+  p3: ['hp', 'dexterity', 'charm', 'intellect'],
+  p4: ['hp', 'dexterity', 'intellect', 'charm'],
+  p5: ['hp', 'intellect', 'charm', 'dexterity'],
+  p6: ['hp', 'intellect', 'dexterity', 'charm'],
 
-  w2: ['intellect', 'hp', 'dexterity', 'charm'],
   w1: ['intellect', 'hp', 'charm', 'dexterity'],
-  t3: ['intellect', 'dexterity', 'hp', 'charm'],
-  s6: ['intellect', 'dexterity', 'charm', 'hp'],
-  t4: ['intellect', 'charm', 'hp', 'dexterity'],
-  s5: ['intellect', 'charm', 'dexterity', 'hp'],
+  w2: ['intellect', 'hp', 'dexterity', 'charm'],
+  w3: ['intellect', 'charm', 'hp', 'dexterity'],
+  w4: ['intellect', 'charm', 'dexterity', 'hp'],
+  w5: ['intellect', 'dexterity', 'hp', 'charm'],
+  w6: ['intellect', 'dexterity', 'charm', 'hp'],
 
-  w5: ['dexterity', 'hp', 'intellect', 'charm'],
-  w3: ['dexterity', 'hp', 'charm', 'intellect'],
   t1: ['dexterity', 'intellect', 'hp', 'charm'],
-  s4: ['dexterity', 'intellect', 'charm', 'hp'],
+  t2: ['dexterity', 'intellect', 'charm', 'hp'],
+  t3: ['dexterity', 'hp', 'intellect', 'charm'],
+  t4: ['dexterity', 'hp', 'charm', 'intellect'],
+  t5: ['dexterity', 'charm', 'intellect', 'hp'],
   t6: ['dexterity', 'charm', 'hp', 'intellect'],
-  s2: ['dexterity', 'charm', 'intellect', 'hp'],
 
-  w6: ['charm', 'hp', 'intellect', 'dexterity'],
-  w4: ['charm', 'hp', 'dexterity', 'intellect'],
-  t2: ['charm', 'intellect', 'hp', 'dexterity'],
-  s3: ['charm', 'intellect', 'dexterity', 'hp'],
-  t5: ['charm', 'dexterity', 'hp', 'intellect'],
   s1: ['charm', 'dexterity', 'intellect', 'hp'],
+  s2: ['charm', 'dexterity', 'hp', 'intellect'],
+  s3: ['charm', 'intellect', 'dexterity', 'hp'],
+  s4: ['charm', 'intellect', 'hp', 'dexterity'],
+  s5: ['charm', 'hp', 'dexterity', 'intellect'],
+  s6: ['charm', 'hp', 'intellect', 'dexterity'],
 
   a1: ['hp', 'intellect', 'dexterity', 'charm'],
 };
@@ -186,7 +186,7 @@ const skillNamesFor = (
 
   return [
     `${STAT_LABELS[rank[0]]}ブースト`,
-    `${STAT_LABELS[rank[2]]}×${STAT_LABELS[rank[3]]}スコア`,
+    `${STAT_LABELS[rank[1]]}×${STAT_LABELS[rank[2]]}スコア`,
     `${STAT_LABELS[rank[0]]}対抗スコア`,
     `${STAT_LABELS[rank[1]]}＋${STAT_LABELS[rank[3]]}スコア`,
   ];
@@ -223,7 +223,7 @@ const skillDescriptionsFor = (
 
   return [
     `${STAT_LABELS[rank[0]]}×10でスコアを獲得する。`,
-    `${STAT_LABELS[rank[2]]}×${STAT_LABELS[rank[3]]}でスコアを獲得する。`,
+    `${STAT_LABELS[rank[1]]}×${STAT_LABELS[rank[2]]}でスコアを獲得する。`,
     `(自分の${STAT_LABELS[rank[0]]}−相手の${STAT_LABELS[rank[0]]})×20でスコアを獲得する。`,
     `(${STAT_LABELS[rank[1]]}＋${STAT_LABELS[rank[3]]})×5でスコアを獲得し、相手の${STAT_LABELS[rank[0]]}を半減する（1回のみ）。`,
   ];

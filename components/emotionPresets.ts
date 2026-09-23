@@ -317,8 +317,8 @@ export const EMOTION_PRESETS: EmotionPreset[] = [
     id: 'emo_32', name: '夕暮れの高台', duration: '一時', target: '相手',
     emotionPhrase: '視点を高く持てばどんな人も同じ人間だ、というあなたに',
     emotionAxes: { challenge: 0, compassion: 25, temptation: 0, freedom: 10, philosophy: 65 },
-    effectCategory: 'ステータスコピー・平均化', statEffect: '相手の全ステータスを自分の全ステータスの平均値にする',
-    description: '相手の全ステータスを、自分の全ステータスの平均値にする。',
+    effectCategory: 'ステータスコピー・平均化', statEffect: '相手の全ステータスを相手自身の全ステータスの平均値にする',
+    description: '相手の全ステータスを、相手自身の全ステータスの平均値にする。',
   },
   {
     id: 'emo_33', name: 'カウンターパンチ', duration: '一時', target: '自分・相手',
