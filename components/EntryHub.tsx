@@ -8,6 +8,7 @@ import type { EmotionPreset } from './emotionPresets';
 import { COORDINATE_PRESETS } from './coordinatePresets';
 import type { Archetype, CardColor, CoordinatePreset, Season } from './coordinatePresets';
 import type { ColorType } from './colorTypes';
+import CoordinateRadialMap from './CoordinateRadialMap';
 
 // =========================================================
 // 型定義
