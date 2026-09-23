@@ -394,15 +394,20 @@ const DEFAULT_OPP_AVATARS: BattleAvatar[] = [
 function RadarChart({
   baseStats,
   currentStats,
+  size = 250,
+  showLabels = true,
+  showLegend = true,
 }: {
   baseStats: AvatarCard['stats'];
   currentStats: AvatarCard['stats'];
+  size?: number;
+  showLabels?: boolean;
+  showLegend?: boolean;
 }) {
   // キャラ情報と横並びに置いても窮屈にならないサイズ。
   // ラベルは頂点の外側へ逃がし、現在スコアと干渉しないようにする。
-  const size = 250;
   const center = size / 2;
-  const r = 86;
+  const r = size * 0.344;
   const max = 100;
 
   const values = [
@@ -434,7 +439,7 @@ function RadarChart({
   const midPoints = angles.map((angle) => point(50, angle));
 
   // ラベルはレーダーの各頂点方向に十分離して配置。
-  const labelPositions = angles.map((angle) => point(max, angle, r + 18));
+  const labelPositions = angles.map((angle) => point(max, angle, r + size * 0.072));
   const labels = [
     ['体力', currentValues[0]],
     ['知略', currentValues[1]],
@@ -521,7 +526,7 @@ function RadarChart({
           strokeWidth="3"
         />
 
-        {labels.map(([label, value], index) => {
+        {showLabels && labels.map(([label, value], index) => {
           const position = labelPositions[index];
           const anchor =
             index === 1 ? 'start' :
@@ -540,7 +545,7 @@ function RadarChart({
               y={position.y + dy}
               textAnchor={anchor}
               className="fill-slate-700"
-              fontSize="11"
+              fontSize={Math.max(8, size * 0.044)}
               fontWeight="800"
             >
               {label} {value}
@@ -549,10 +554,12 @@ function RadarChart({
         })}
       </svg>
 
-      <div className="mt-0 flex items-center gap-3 text-[10px] font-bold opacity-70">
-        <span>■ 基礎</span>
-        <span className="text-yellow-700">■ 現在</span>
-      </div>
+      {showLegend && (
+        <div className="mt-0 flex items-center gap-3 text-[10px] font-bold opacity-70">
+          <span>■ 基礎</span>
+          <span className="text-yellow-700">■ 現在</span>
+        </div>
+      )}
     </div>
   );
 }
@@ -695,6 +702,8 @@ void ensureAnonymousAuth()
   const [battleDealAnimationKey, setBattleDealAnimationKey] = useState(0);
   const [battleDealAnimationActive, setBattleDealAnimationActive] = useState(false);
   const [selectedSupportCardIndex, setSelectedSupportCardIndex] = useState<number | null>(null);
+  const [showBattleLog, setShowBattleLog] = useState(false);
+  const [selectedSkillDetail, setSelectedSkillDetail] = useState<Skill | null>(null);
   const [supportSubmittingCardIndex, setSupportSubmittingCardIndex] = useState<number | null>(null);
   const [revealingSupportCardIndexes, setRevealingSupportCardIndexes] = useState<number[]>([]);
   const [supportDealAnimationKey, setSupportDealAnimationKey] = useState(0);
@@ -6522,44 +6531,105 @@ const field =
   const hostWaitingIndexes = [2, 1, 0];
   const guestWaitingIndexes = [0, 1, 2];
 
+  const roleDisplayNames: Record<RoleName, string> = {
+    先鋒: 'フェザークラス',
+    中堅: 'オーロラクラス',
+    大将: 'スタークラス',
+  };
+
+  const currentRoleName = ROLE_NAMES[currentYear - 1];
+  const currentRoleDisplayName = roleDisplayNames[currentRoleName];
+  const canShowCoinToss =
+    deckConfirmed &&
+    onlineDecksConfirmed &&
+    onlineClassPreparationConfirmed;
+
+  const selectedSupportCard =
+    selectedSupportCardIndex !== null
+      ? myHand[selectedSupportCardIndex]
+      : undefined;
+  const selectedSupportPreset = selectedSupportCard
+    ? getEmotionPresetForCard(selectedSupportCard)
+    : undefined;
+  const selectedSupportBadges = selectedSupportPreset
+    ? getEmotionPerformanceBadges(selectedSupportPreset)
+    : undefined;
+
+  const currentSkillTurnOrdinal = getBattleTurnOrdinal(
+    currentYear,
+    turnIndex,
+  );
+
+  const isSkillUsable = (skill: Skill) => {
+    const skillIndex = myActiveAvatar.skills.findIndex(
+      (item) => item.id === skill.id,
+    );
+    return (
+      myTurn &&
+      !(
+        skill.maxUsesPerClass > 0 &&
+        usedThisClass.includes(skill.id)
+      ) &&
+      !hasSkillSeal(
+        myActiveAvatar,
+        skillIndex,
+        currentSkillTurnOrdinal,
+      )
+    );
+  };
+
   return (
-    <div className="relative min-h-[calc(100vh-120px)] overflow-hidden text-slate-900">
+    <div className="relative h-full min-h-0 w-full overflow-hidden text-slate-900">
       <BattleEffectLayer />
       <OutdoorStageBackground season={currentSeason} />
 
-      <div className="relative z-10 mx-auto w-full max-w-7xl p-2 sm:p-3 md:p-5">
-        {/* ===== ヘッダー：ここで完全に閉じる ===== */}
-        <header className="w-full rounded-2xl border border-white/50 bg-white/65 p-2.5 shadow-lg backdrop-blur-md sm:p-3">
-          <div className="flex flex-wrap items-center justify-between gap-3">
-            <div>
-              <div className="text-xs font-black opacity-60">REALITY LIVE BATTLE</div>
-              <div className="text-xl font-black">
-                {currentYear}年目　{ROLE_NAMES[currentYear - 1]}戦
+      <div className="relative z-10 mx-auto flex h-full min-h-0 w-full max-w-7xl flex-col p-2 sm:p-3 md:p-4">
+        <header className="shrink-0 rounded-2xl border border-white/60 bg-white/75 p-2.5 shadow-lg backdrop-blur-md sm:p-3">
+          <div className="flex items-center justify-between gap-2">
+            <div className="min-w-0">
+              <div className="truncate text-[9px] font-black tracking-[0.2em] text-indigo-500">
+                REALITY LIVE BATTLE
+              </div>
+              <div className="mt-0.5 truncate text-sm font-black text-slate-950 sm:text-base">
+                {currentYear}年目　{currentRoleDisplayName}
                 {battlePhase === 'battle' && <>　／　{currentSeason}</>}
               </div>
+              {battlePhase === 'battle' && (
+                <div className="mt-0.5 text-[10px] font-bold text-slate-500">
+                  ターン {turnIndex + 1} / 8
+                </div>
+              )}
             </div>
 
-            <div className="flex items-center gap-2 rounded-xl bg-slate-950/85 px-3 py-2 text-white shadow sm:px-4">
-              <div className="text-center">
-                <div className="text-[10px] opacity-60">自分</div>
-                <div className="text-2xl font-black">
-                  {myTotalScore}<span className="text-xs">スコア</span>
+            <div className="flex shrink-0 items-center gap-2">
+              {battlePhase === 'battle' && (
+                <div className="rounded-xl bg-slate-950/90 px-2.5 py-1.5 text-center text-white shadow">
+                  <div className="text-[8px] font-bold opacity-55">
+                    {currentRoleDisplayName} スコア
+                  </div>
+                  <div className="text-lg font-black leading-none sm:text-xl">
+                    {currentMyClassScore}
+                    <span className="ml-0.5 text-[9px]">VS</span>
+                    {currentOppClassScore}
+                  </div>
                 </div>
-              </div>
-              <div className="px-2 text-xs font-black opacity-50">VS</div>
-              <div className="text-center">
-                <div className="text-[10px] opacity-60">相手</div>
-                <div className="text-2xl font-black">
-                  {opponentTotalScore}<span className="text-xs">スコア</span>
-                </div>
-              </div>
-            </div>
-
-            <div className="flex items-center gap-2">
-                            {battlePhase === 'battle' && (
+              )}
+              {battlePhase === 'battle' && (
+                <button
+                  type="button"
+                  onClick={() => setShowBattleLog(true)}
+                  className="rounded-xl bg-white px-2.5 py-2 text-[9px] font-black text-slate-700 shadow-sm ring-1 ring-slate-200 transition hover:bg-slate-50"
+                >
+                  試合実況
+                  <span className="ml-1 opacity-40">{log.length}</span>
+                </button>
+              )}
+              {battlePhase === 'battle' && (
                 <span
-                  className={`rounded-full px-3 py-1 text-xs font-black ${
-                    myTurn ? 'bg-amber-300' : 'bg-slate-900 text-white'
+                  className={`hidden rounded-full px-2.5 py-1.5 text-[9px] font-black sm:inline-flex ${
+                    myTurn
+                      ? 'bg-amber-300 text-amber-950'
+                      : 'bg-slate-900 text-white'
                   }`}
                 >
                   {myTurn ? '自分のターン' : '相手のターン'}
@@ -6569,735 +6639,613 @@ const field =
           </div>
         </header>
 
-        {/* ===== クラス終了リザルト ===== */}
         {classResult && (
-          <section className="mt-4 rounded-3xl border border-white/70 bg-white/95 p-6 text-center shadow-2xl backdrop-blur-md">
-            <div className="text-xs font-black tracking-widest opacity-50">CLASS RESULT</div>
-            <h2 className="mt-1 text-2xl font-black">{ROLE_NAMES[classResult.completedYear - 1]}戦 終了</h2>
-            <div className="mt-5 grid grid-cols-2 gap-3">
-              <div className="rounded-2xl border border-indigo-200 bg-indigo-50 p-4">
-                <div className="text-sm font-black text-indigo-700">自分</div>
-                <div className="mt-1 text-3xl font-black">{classResult.myScore}<span className="text-sm">スコア</span></div>
+          <section className="mt-2 flex min-h-0 flex-1 items-center justify-center">
+            <div className="w-full max-w-md rounded-[2rem] border border-white/80 bg-white/95 p-5 text-center shadow-2xl backdrop-blur-md sm:p-6">
+              <div className="text-[10px] font-black tracking-[0.22em] text-indigo-500">
+                CLASS RESULT
               </div>
-              <div className="rounded-2xl border border-rose-200 bg-rose-50 p-4">
-                <div className="text-sm font-black text-rose-700">相手</div>
-                <div className="mt-1 text-3xl font-black">{classResult.opponentScore}<span className="text-sm">スコア</span></div>
+              <h2 className="mt-1 text-2xl font-black text-slate-950">
+                {roleDisplayNames[ROLE_NAMES[classResult.completedYear - 1]]} 終了
+              </h2>
+              <div className="mt-5 grid grid-cols-2 gap-3">
+                <div className="rounded-2xl border border-indigo-200 bg-indigo-50 p-4">
+                  <div className="text-xs font-black text-indigo-700">あなた</div>
+                  <div className="mt-1 text-3xl font-black text-indigo-950">
+                    {classResult.myScore}
+                    <span className="ml-1 text-sm">スコア</span>
+                  </div>
+                </div>
+                <div className="rounded-2xl border border-rose-200 bg-rose-50 p-4">
+                  <div className="text-xs font-black text-rose-700">相手</div>
+                  <div className="mt-1 text-3xl font-black text-rose-950">
+                    {classResult.opponentScore}
+                    <span className="ml-1 text-sm">スコア</span>
+                  </div>
+                </div>
               </div>
-            </div>
-            <div className="mt-4 text-xl font-black">
-              {classResult.myScore > classResult.opponentScore ? 'このクラスは自分の勝利！' : classResult.myScore < classResult.opponentScore ? 'このクラスは相手の勝利。' : 'このクラスは引き分け。'}
-            </div>
-            <div className="mt-2 text-sm font-bold opacity-60">
-              累計　{classResult.myTotal}スコア　VS　{classResult.opponentTotal}スコア
-            </div>
-            {classResult.completedYear < 3 ? (
-              <div className="mt-6 w-full rounded-xl bg-indigo-50 px-5 py-3 text-sm font-black text-indigo-900">
-                次のクラスへ自動的に移行します。
+              <div className="mt-4 text-lg font-black text-slate-900">
+                {classResult.myScore > classResult.opponentScore
+                  ? 'このクラスはあなたの勝利！'
+                  : classResult.myScore < classResult.opponentScore
+                    ? 'このクラスは相手の勝利。'
+                    : 'このクラスは引き分け。'}
               </div>
-            ) : (
               <button
-                onClick={continueAfterClassResult}
-                className="mt-6 w-full rounded-xl bg-indigo-600 px-5 py-3 text-base font-black text-white shadow-lg hover:bg-indigo-700"
+                type="button"
+                onClick={() => void continueAfterClassResult()}
+                className="mt-5 w-full rounded-2xl bg-indigo-600 px-4 py-3.5 text-sm font-black text-white shadow-lg shadow-indigo-200 transition hover:bg-indigo-700"
               >
-                最終結果を見る
+                {classResult.completedYear < 3
+                  ? '次のクラスの準備へ'
+                  : '最終結果を見る'}
               </button>
+            </div>
+          </section>
+        )}
+
+        {battlePhase === 'setup' && !classResult && (
+          <section className="mt-2 flex min-h-0 flex-1 flex-col gap-2 overflow-hidden">
+            {!canShowCoinToss ? (
+              <>
+                <div className="shrink-0 rounded-2xl border border-white/70 bg-white/90 p-3 shadow-lg backdrop-blur-md">
+                  <div className="flex items-start justify-between gap-2">
+                    <div>
+                      <div className="text-[9px] font-black tracking-[0.18em] text-indigo-500">
+                        MATCH PREP
+                      </div>
+                      <h2 className="mt-0.5 text-lg font-black text-slate-950">
+                        対戦準備
+                      </h2>
+                    </div>
+                    {preparationMessage && (
+                      <div className="max-w-[58%] text-right text-[9px] font-bold leading-relaxed text-slate-500">
+                        {preparationMessage}
+                      </div>
+                    )}
+                  </div>
+
+                  <div className="mt-3 grid grid-cols-3 gap-2">
+                    {myAvatars.map((avatar, index) => (
+                      <div
+                        key={avatar.card.id}
+                        className={`rounded-2xl border p-2 text-center ${
+                          index === activeIndex
+                            ? 'border-indigo-300 bg-indigo-50'
+                            : 'border-slate-200 bg-slate-50'
+                        }`}
+                      >
+                        <div className="text-[8px] font-black text-slate-400">
+                          {roleDisplayNames[avatar.roleName]}
+                        </div>
+                        <img
+                          src={avatar.card.imageDataUrl}
+                          alt=""
+                          className="mx-auto mt-1 h-16 w-12 rounded-xl bg-white object-contain p-0.5 sm:h-20 sm:w-14"
+                        />
+                        <div className="mt-1 truncate text-[9px] font-black text-slate-800">
+                          {avatar.card.userName}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+
+                  <div className="mt-2 flex items-center justify-between rounded-2xl bg-slate-50 px-3 py-2">
+                    <div className="text-[10px] font-black text-slate-600">
+                      サポートカード
+                    </div>
+                    <div className="text-base font-black text-indigo-700">
+                      {activeDeckId
+                        ? loadDeckDefinition(activeDeckId)?.supportCardIds?.length || 0
+                        : 0}
+                      <span className="ml-1 text-[9px] text-slate-400">/ 18枚</span>
+                    </div>
+                  </div>
+                </div>
+
+                <div className="grid shrink-0 grid-cols-2 gap-2">
+                  <div className="rounded-2xl border border-indigo-200 bg-indigo-50/90 p-3">
+                    <div className="text-[9px] font-black tracking-wide text-indigo-500">
+                      あなた
+                    </div>
+                    <div className="mt-1 text-sm font-black text-indigo-950">
+                      {deckConfirmed ? '準備完了' : myDeckReady ? '確認待ち' : 'デッキ未選択'}
+                    </div>
+                  </div>
+                  <div className="rounded-2xl border border-slate-200 bg-white/90 p-3">
+                    <div className="text-[9px] font-black tracking-wide text-slate-400">
+                      相手
+                    </div>
+                    <div className="mt-1 text-sm font-black text-slate-800">
+                      {isOnline
+                        ? readyHost && readyGuest
+                          ? '準備完了'
+                          : '待機中'
+                        : 'CPU 準備完了'}
+                    </div>
+                  </div>
+                </div>
+
+                <div className="mt-auto grid shrink-0 grid-cols-2 gap-2">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      if (activeDeckId && onEditDeck) {
+                        onEditDeck(activeDeckId);
+                        return;
+                      }
+                      setIsDeckSelectOpen(true);
+                    }}
+                    disabled={
+                      currentYear !== 1 ||
+                      deckConfirmed ||
+                      (isOnline &&
+                        (playerRole === 'host'
+                          ? readyHost
+                          : readyGuest))
+                    }
+                    className="rounded-2xl bg-white px-4 py-3 text-xs font-black text-slate-700 shadow-sm ring-1 ring-slate-200 transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-35"
+                  >
+                    デッキを変更
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => void startBattleWithDeck()}
+                    disabled={!myDeckReady || deckConfirmed || currentYear !== 1}
+                    className="rounded-2xl bg-indigo-600 px-4 py-3 text-xs font-black text-white shadow-lg shadow-indigo-200 transition hover:bg-indigo-700 disabled:cursor-not-allowed disabled:opacity-35"
+                  >
+                    このデッキではじめる
+                  </button>
+                </div>
+              </>
+            ) : (
+              <div className="flex min-h-0 flex-1 items-center justify-center">
+                <div className="w-full max-w-md rounded-[2rem] bg-slate-950/95 p-6 text-center text-white shadow-2xl">
+                  <div className="text-[10px] font-black tracking-[0.25em] text-slate-400">
+                    COIN TOSS
+                  </div>
+                  <h2 className="mt-2 text-2xl font-black">
+                    先手・後手を決めます
+                  </h2>
+                  <div className="mx-auto mt-6 flex h-24 w-24 items-center justify-center rounded-full border-4 border-amber-300 bg-white text-5xl text-slate-900 shadow-xl">
+                    🪙
+                  </div>
+
+                  {!firstPlayer ? (
+                    isOnline ? (
+                      isHost ? (
+                        <button
+                          type="button"
+                          onClick={() => void decideFirstPlayer()}
+                          disabled={isCoinTossing}
+                          className="mt-6 w-full rounded-2xl bg-amber-300 px-4 py-4 text-sm font-black text-slate-950 shadow-lg transition hover:bg-amber-200 disabled:cursor-not-allowed disabled:opacity-45"
+                        >
+                          {isCoinTossing ? 'コイントス中…' : 'コイントスを行う'}
+                        </button>
+                      ) : (
+                        <div className="mt-6 rounded-2xl bg-white/10 px-4 py-4 text-sm font-black text-slate-200">
+                          ルーム作成者がコイントスを行います。
+                        </div>
+                      )
+                    ) : (
+                      <button
+                        type="button"
+                        onClick={() => void decideFirstPlayer()}
+                        disabled={isCoinTossing}
+                        className="mt-6 w-full rounded-2xl bg-amber-300 px-4 py-4 text-sm font-black text-slate-950 shadow-lg transition hover:bg-amber-200 disabled:cursor-not-allowed disabled:opacity-45"
+                      >
+                        {isCoinTossing ? 'コイントス中…' : 'コイントスを行う'}
+                      </button>
+                    )
+                  ) : (
+                    <div className="mt-6 rounded-2xl bg-white/10 px-4 py-4 text-xl font-black text-amber-300">
+                      {firstPlayer === playerRole ? 'あなたが先手！' : '相手が先手！'}
+                    </div>
+                  )}
+
+                  {firstPlayer && (
+                    <div className="mt-4 text-sm font-bold text-slate-300">
+                      {firstPlayer === playerRole
+                        ? '開始シーズンを選んで対戦へ進みます。'
+                        : '相手の準備を待っています。'}
+                    </div>
+                  )}
+                </div>
+              </div>
             )}
           </section>
         )}
 
-        {/* ===== 準備フェイズ ===== */}
-        {battlePhase === 'setup' && !classResult && (
-          <section className="mt-4 rounded-3xl border border-white/60 bg-white/75 p-5 shadow-xl backdrop-blur-md">
-            <div className="text-center">
-              <div className="text-xs font-black tracking-widest opacity-50">PREPARATION</div>
-              <h2 className="mt-1 text-3xl font-black">
-                {currentYear}年目　{ROLE_NAMES[currentYear - 1]}戦の準備
-              </h2>
-              {preparationMessage && (
-                <div className="mx-auto mt-3 max-w-2xl whitespace-pre-line rounded-2xl border border-indigo-200 bg-indigo-50 px-4 py-3 text-sm font-black text-indigo-900">
-                  {preparationMessage}
-                </div>
-              )}
-            </div>
-
-            {/* STEP 1：デッキ確定。先鋒戦前だけ変更可能。中堅・大将戦では固定。 */}
-            <div className="mt-5 rounded-2xl border border-white/50 bg-white/70 p-4">
-              <div className="text-xs font-black opacity-60">STEP 1</div>
-              <div className="mt-1 text-lg font-black">現在選択中のデッキ</div>
-
-              {(() => {
-                const deck = activeDeckId ? loadDeckDefinition(activeDeckId) : null;
-                const deckName = deck?.name || 'デッキ未選択';
-                const supportSummary = getDeckSupportSummary(deck);
-
-                return (
-                  <div className="mt-3 rounded-2xl border border-slate-200 bg-white p-3 shadow-sm">
-                    <div className="flex items-center justify-between gap-2">
-                      <div className="font-black">{deckName}</div>
-                      <div className="text-[10px] font-bold opacity-50">
-                        実戦デッキ 18枚
-                      </div>
-                    </div>
-
-                    <div className="mt-3 grid grid-cols-3 gap-2">
-                      {ROLE_NAMES.map((role, index) => {
-                        const avatar = myAvatars[index];
-
-                        return (
-                          <div
-                            key={role}
-                            className="min-w-0 rounded-xl bg-slate-100 p-2"
-                          >
-                            <div className="text-[9px] font-black opacity-50">{role}</div>
-
-                            {avatar ? (
-                              <div className="mt-1 flex items-center gap-2">
-                                <img
-                                  src={avatar.card.imageDataUrl}
-                                  alt=""
-                                  className="h-12 w-9 shrink-0 rounded-md bg-white object-contain p-0.5"
-                                />
-                                <div className="min-w-0">
-                                  <div className="truncate text-[11px] font-black">
-                                    {avatar.card.userName}
-                                  </div>
-                                  <div className="mt-0.5 text-[8px] font-bold opacity-55">
-                                    体{avatar.baseStats.hp} 知{avatar.baseStats.intellect} 器{avatar.baseStats.dexterity} 特{avatar.baseStats.charm}
-                                  </div>
-                                </div>
-                              </div>
-                            ) : (
-                              <div className="py-3 text-[10px] font-bold opacity-40">
-                                未設定
-                              </div>
-                            )}
-                          </div>
-                        );
-                      })}
-                    </div>
-
-                    <div className="mt-1 text-[10px] font-bold leading-relaxed text-slate-500">
-                      サポート内訳：{supportSummary}
-                    </div>
-                  </div>
-                );
-              })()}
-
-              <div className="mt-3 grid gap-2 sm:grid-cols-2">
-                <button
-                  onClick={() => setIsDeckSelectOpen(true)}
-                  disabled={battlePhase !== 'setup' || currentYear !== 1 || (isOnline && (playerRole === 'host' ? readyHost : readyGuest))}
-                  className="w-full rounded-xl border border-slate-300 bg-white px-4 py-2.5 text-sm font-black disabled:cursor-not-allowed disabled:opacity-40"
-                >
-                  デッキを変更
-                </button>
-                <button
-                  onClick={() => void startBattleWithDeck()}
-                  disabled={!myDeckReady || deckConfirmed || currentYear !== 1 || (isOnline && (playerRole === 'host' ? readyHost : readyGuest))}
-                  className="w-full rounded-xl bg-emerald-600 px-4 py-3 text-sm font-black text-white shadow-lg transition hover:bg-emerald-700 disabled:cursor-not-allowed disabled:opacity-40"
-                >
-                  このデッキではじめる
-                </button>
-              </div>
-
-              <div className="mt-2 text-xs font-bold opacity-50">
-                {currentYear === 1
-                  ? (isOnline
-                    ? '両者のデッキ確定後にコイントスを行い、春から開始します。'
-                    : 'デッキを確定するとコイントスを行い、春から開始します。')
-                  : 'この対戦ではデッキ変更できません。前のクラスと同じデッキを継続使用します。'}
-              </div>
-            </div>
-
-            {/* STEP 2：双方のデッキ確定後にコイントス。 */}
-            <div className="mt-4 rounded-2xl bg-slate-950/90 p-4 text-white">
-              <div className="text-xs font-black opacity-50">STEP 2</div>
-              <div className="mt-1 text-lg font-black">🪙 先手・後手をコイントスで決定</div>
-              {!firstPlayer ? (
-                isOnline ? (
-                  isHost && onlineDecksConfirmed && onlineClassPreparationConfirmed ? (
-                    <button onClick={() => void decideFirstPlayer()} disabled={isCoinTossing} className="mt-4 w-full rounded-xl bg-amber-400 px-5 py-3 font-black text-slate-950 disabled:opacity-50">
-                      {isCoinTossing ? '🪙 コイントス中…' : '🪙 コイントスを行う'}
-                    </button>
-                  ) : (
-                    <div className="mt-4 rounded-xl bg-white/10 p-3 text-sm font-bold">
-                      {!onlineDecksConfirmed
-                        ? '両者のデッキ確定を待っています。'
-                        : !onlineClassPreparationConfirmed
-                          ? '相手のクラス準備完了を待っています。'
-                          : '両者の準備が完了しました。コイントスで先手を決めます。'}
-                    </div>
-                  )
-                ) : (
-                  deckConfirmed ? (
-                    <button onClick={() => void decideFirstPlayer()} disabled={isCoinTossing} className="mt-4 w-full rounded-xl bg-amber-400 px-5 py-3 font-black text-slate-950 disabled:opacity-50">
-                      {isCoinTossing ? '🪙 コイントス中…' : '🪙 コイントスを行う'}
-                    </button>
-                  ) : (
-                    <div className="mt-4 rounded-xl bg-white/10 p-3 text-sm font-bold">先にSTEP 1の「このデッキではじめる」を押してデッキを確定してください。</div>
-                  )
-                )
-              ) : (
-                <div className="mt-4 rounded-xl bg-white/10 p-3 text-lg font-black text-amber-300">
-                  {firstPlayer === playerRole ? '自分' : '相手'} が先手
-                </div>
-              )}
-            </div>
-
-          </section>
-        )}
-
-        {/* ===== 待機中 ===== */}
         {battlePhase === 'waiting' && (
-          <section className="mt-4 rounded-3xl border border-white/60 bg-white/80 p-8 text-center shadow-xl backdrop-blur-md">
-            <div className="text-5xl">🎤</div>
-            <h2 className="mt-3 text-2xl font-black">対戦相手を待っています</h2>
-            <p className="mx-auto mt-3 max-w-lg whitespace-pre-line text-sm font-bold opacity-70">
-              {waitingMessage}
-            </p>
-            <button
-              onClick={() => window.location.reload()}
-              className="mt-5 rounded-xl bg-slate-900 px-5 py-3 text-sm font-black text-white"
-            >
-              退出する
-            </button>
+          <section className="mt-2 flex min-h-0 flex-1 items-center justify-center">
+            <div className="w-full max-w-md rounded-[2rem] border border-white/70 bg-white/90 p-6 text-center shadow-2xl backdrop-blur-md">
+              <div className="text-5xl">⏳</div>
+              <h2 className="mt-3 text-2xl font-black">対戦相手を待っています</h2>
+              <p className="mt-3 whitespace-pre-line text-sm font-bold leading-relaxed text-slate-500">
+                {waitingMessage}
+              </p>
+            </div>
           </section>
         )}
 
-        {/* ================================================================== */}
-        {/* ===== 対戦盤面：ヘッダーの直下から「待機列 → 対戦 → 手番…」 ===== */}
-        {/* ================================================================== */}
         {battlePhase === 'battle' && (
-          <section className="mt-4 space-y-4">
-            {/* ===== ① 待機キャラ6枚：現在対戦中キャラの上 ===== */}
-            <div className="rounded-3xl border border-white/60 bg-white/35 p-3 shadow-xl backdrop-blur-md">
-              <div className="mb-3 grid grid-cols-2 gap-3 text-center text-xs font-black">
-                <div className="rounded-full bg-indigo-700 px-3 py-1.5 text-white">自分</div>
-                <div className="rounded-full bg-slate-950/80 px-3 py-1.5 text-white">相手</div>
-              </div>
-
-              <div className="grid grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-6">
-                {/* ホスト：大将 → 中堅 → 先鋒 */}
-                {hostWaitingIndexes.map((index) => {
-                  const avatar = myAvatars[index] || DEFAULT_MY_AVATARS[index];
-                  const active = index === activeIndex;
-
-                  return (
-                    <button
-                      key={`host_${avatar.card.id}_${index}`}
-                      onClick={() => setModalAvatar(avatar)}
-                      className={`min-w-0 rounded-2xl border p-1.5 text-left shadow-md backdrop-blur-md transition sm:p-2 ${
-                        active
-                          ? 'border-amber-400 bg-white/95 ring-2 ring-amber-300'
-                          : 'border-white/60 bg-white/65 hover:bg-white/85'
-                      }`}
-                    >
-                      <div className="text-center text-[9px] font-black opacity-60 sm:text-[10px]">
-                        {ROLE_NAMES[index]}
-                      </div>
-                      <img
-                        src={avatar.card.imageDataUrl}
-                        alt=""
-                        className="mt-1 h-24 w-full rounded-xl bg-white object-contain p-1 sm:h-28"
-                      />
-                      <div className="mt-1 truncate text-center text-[9px] font-black sm:text-[11px]">
-                        {avatar.card.userName}
-                      </div>
-                    </button>
-                  );
-                })}
-
-                {/* ゲスト：先鋒 → 中堅 → 大将 */}
-                {guestWaitingIndexes.map((index) => {
-                  const avatar = oppAvatars[index] || DEFAULT_OPP_AVATARS[index];
-                  const active = index === activeIndex;
-
-                  return (
-                    <button
-                      key={`guest_${avatar.card.id}_${index}`}
-                      onClick={() => setModalAvatar(avatar)}
-                      className={`min-w-0 rounded-2xl border p-1.5 text-left shadow-md backdrop-blur-md transition sm:p-2 ${
-                        active
-                          ? 'border-rose-400 bg-white/95 ring-2 ring-rose-300'
-                          : 'border-white/60 bg-white/65 hover:bg-white/85'
-                      }`}
-                    >
-                      <div className="text-center text-[9px] font-black opacity-60 sm:text-[10px]">
-                        {ROLE_NAMES[index]}
-                      </div>
-                      <img
-                        src={avatar.card.imageDataUrl}
-                        alt=""
-                        className="mt-1 h-24 w-full rounded-xl bg-white object-contain p-1 sm:h-28"
-                      />
-                      <div className="mt-1 truncate text-center text-[9px] font-black sm:text-[11px]">
-                        {avatar.card.userName}
-                      </div>
-                    </button>
-                  );
-                })}
-              </div>
-
-              <div className="mt-2 grid grid-cols-6 text-center text-[9px] font-black opacity-45 sm:text-[10px]">
-                <span>大将</span>
-                <span>中堅</span>
-                <span>先鋒</span>
-                <span>先鋒</span>
-                <span>中堅</span>
-                <span>大将</span>
-              </div>
-            </div>
-
-            {/* ===== ② 現在対戦中の2キャラ：情報左＋レーダー右 ===== */}
-            <div className="rounded-3xl border border-white/60 bg-white/35 p-3 shadow-xl backdrop-blur-md">
-              <div className="grid grid-cols-1 gap-3 lg:grid-cols-2">
-                {/* 自分：常に左 */}
-                <div className="order-2 rounded-3xl border-2 border-indigo-400/80 bg-white/90 p-3 shadow-lg ring-1 ring-indigo-200/70 lg:order-1">
-                  <div className="text-center text-xs font-black text-indigo-700">
-                    自分　{mySideActiveAvatar.roleName}
-                  </div>
-
-                  <div className="mt-2 flex flex-col items-center gap-3 sm:flex-row sm:items-start">
-                    <div className="min-w-0 flex-1">
-                      <div className="flex items-start justify-center gap-2">
-                        <div ref={myActiveCardAnchorRef} className="shrink-0">
-                          <BattleCardReveal
-                            revealed={activeCardsRevealed}
-                            width={180}
-                            height={224}
-                            className="mx-auto w-full max-w-[180px] sm:h-56"
-                            colorHex={getBattleVisualColorHex(mySideActiveAvatar.card)}
-                          >
-                            <img
-                              src={mySideActiveAvatar.card.imageDataUrl}
-                              alt=""
-                              className="h-full w-full rounded-2xl bg-white object-contain p-2 shadow-md"
-                            />
-                          </BattleCardReveal>
-                        </div>
-                        <VerticalScoreGauge
-                          label="このクラス"
-                          score={mySideActiveClassScore}
-                          side="self"
-                          active={myTurn}
-                          compact
-                          baseHeightPx={224}
-                        />
-                      </div>
-                      <h3 className="mt-2 text-center text-xl font-black">
-                        {mySideActiveAvatar.card.userName}
-                      </h3>
-                      <div className="mt-3 rounded-xl bg-indigo-50 p-2 text-center">
-                        <div className="text-[10px] font-black opacity-50">このクラスの得点</div>
-                        <div className="text-xl font-black text-indigo-700">
-                          {mySideActiveClassScore}スコア
-                        </div>
-                      </div>
-                    </div>
-
-                    <RadarChart
-                      baseStats={mySideActiveAvatar.baseStats || mySideActiveAvatar.card.stats}
-                      currentStats={getEffectiveStats(mySideActiveAvatar)}
-                    />
+          <section className="mt-2 flex min-h-0 flex-1 flex-col gap-2 overflow-hidden">
+            <div className="shrink-0 rounded-2xl border border-white/70 bg-white/65 px-3 py-2 shadow-md backdrop-blur-md">
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <div className="text-[9px] font-black text-indigo-600">あなた</div>
+                  <div className="mt-1 flex items-center gap-1.5">
+                    {[2, 1, 0].map((index) => {
+                      const avatar = myAvatars[index] || DEFAULT_MY_AVATARS[index];
+                      const active = index === activeIndex;
+                      return (
+                        <button
+                          key={`my-mini-${avatar.card.id}`}
+                          type="button"
+                          onClick={() => setModalAvatar(avatar)}
+                          className={`flex h-9 w-9 items-center justify-center overflow-hidden rounded-full border-2 bg-white transition ${
+                            active
+                              ? 'border-amber-400 ring-2 ring-amber-200'
+                              : 'border-slate-200 opacity-70'
+                          }`}
+                          aria-label={`${roleDisplayNames[avatar.roleName]} ${avatar.card.userName}`}
+                        >
+                          <img
+                            src={avatar.card.imageDataUrl}
+                            alt=""
+                            className="h-full w-full object-contain"
+                          />
+                        </button>
+                      );
+                    })}
                   </div>
                 </div>
-
-                {/* 相手：常に右 */}
-                <div className="order-1 rounded-3xl border-2 border-rose-400/80 bg-white/90 p-3 shadow-lg ring-1 ring-rose-200/70 lg:order-2">
-                  <div className="text-center text-xs font-black text-rose-700">
-                    相手　{opponentSideActiveAvatar.roleName}
-                  </div>
-
-                  <div className="mt-2 flex flex-col items-center gap-3 sm:flex-row sm:items-start">
-                    <div className="min-w-0 flex-1">
-                      <div className="flex items-start justify-center gap-2">
-                        <div ref={opponentActiveCardAnchorRef} className="shrink-0">
-                          <BattleCardReveal
-                            revealed={activeCardsRevealed}
-                            width={180}
-                            height={224}
-                            className="mx-auto w-full max-w-[180px] sm:h-56"
-                            colorHex={getBattleVisualColorHex(opponentSideActiveAvatar.card)}
-                          >
-                            <img
-                              src={opponentSideActiveAvatar.card.imageDataUrl}
-                              alt=""
-                              className="h-full w-full rounded-2xl bg-white object-contain p-2 shadow-md"
-                            />
-                          </BattleCardReveal>
-                        </div>
-                        <VerticalScoreGauge
-                          label="このクラス"
-                          score={opponentSideActiveClassScore}
-                          side="opponent"
-                          active={!myTurn}
-                          compact
-                          baseHeightPx={224}
-                        />
-                      </div>
-                      <h3 className="mt-2 text-center text-xl font-black">
-                        {opponentSideActiveAvatar.card.userName}
-                      </h3>
-                      <div className="mt-3 rounded-xl bg-rose-50 p-2 text-center">
-                        <div className="text-[10px] font-black opacity-50">このクラスの得点</div>
-                        <div className="text-xl font-black text-rose-700">
-                          {opponentSideActiveClassScore}スコア
-                        </div>
-                      </div>
-                    </div>
-
-                    <RadarChart
-                      baseStats={opponentSideActiveAvatar.baseStats || opponentSideActiveAvatar.card.stats}
-                      currentStats={getEffectiveStats(opponentSideActiveAvatar)}
-                    />
+                <div className="text-right">
+                  <div className="text-[9px] font-black text-rose-600">相手</div>
+                  <div className="mt-1 flex items-center justify-end gap-1.5">
+                    {[0, 1, 2].map((index) => {
+                      const avatar = oppAvatars[index] || DEFAULT_OPP_AVATARS[index];
+                      const active = index === activeIndex;
+                      return (
+                        <button
+                          key={`opp-mini-${avatar.card.id}`}
+                          type="button"
+                          onClick={() => setModalAvatar(avatar)}
+                          className={`flex h-9 w-9 items-center justify-center overflow-hidden rounded-full border-2 bg-white transition ${
+                            active
+                              ? 'border-amber-400 ring-2 ring-amber-200'
+                              : 'border-slate-200 opacity-70'
+                          }`}
+                          aria-label={`${roleDisplayNames[avatar.roleName]} ${avatar.card.userName}`}
+                        >
+                          <img
+                            src={avatar.card.imageDataUrl}
+                            alt=""
+                            className="h-full w-full object-contain"
+                          />
+                        </button>
+                      );
+                    })}
                   </div>
                 </div>
               </div>
             </div>
 
-            {/* ===== ③ 手番 ===== */}
-            <div
-              className={`rounded-2xl p-3 text-center shadow-lg transition ${
-                myTurn
-                  ? 'bg-emerald-900/90 text-white ring-2 ring-emerald-300/70'
-                  : 'bg-slate-950/85 text-white'
-              }`}
-            >
-              <div className={`text-xs font-black ${myTurn ? 'text-emerald-100 opacity-90' : 'opacity-60'}`}>
-                {currentSeason}　／　{Math.floor(turnIndex / 2) + 1}季目　／　
-                {turnIndex % 2 === 0 ? '先手' : '後手'}
-              </div>
-              <div className={`mt-1 text-lg font-black ${myTurn ? 'text-emerald-50' : 'text-white'}`}>
-                {myTurn ? '自分のターン' : '相手のターン'}
-              </div>
-            </div>
-
-            {/* ===== ④ サポートカード ===== */}
-            <section className="rounded-2xl border border-white/60 bg-white/75 p-3 shadow-lg backdrop-blur-md">
-              <div className="flex flex-wrap items-center justify-between gap-2">
-                <div className="text-sm font-black">🃏 サポートカード</div>
-                <div className="flex items-center gap-2">
-                  <div className="text-[10px] font-bold opacity-60">手札 {myHand.length}/{MAX_HAND}</div>
-                  <div className="text-[10px] font-bold opacity-60">相手 {isOnline ? opponentHandCount : cpuHand.length}/{MAX_HAND}</div>
-                  <BattleDeckPile
-                    label="山札"
-                    count={myDeck.length}
-                    animationKey={supportDealAnimationKey}
-                    dealCount={supportDealAnimationActive ? supportDealAnimationCount : 0}
-                    side="self"
-                    compact
+            <div className="grid shrink-0 grid-cols-2 gap-2">
+              <div className="rounded-2xl border border-indigo-300 bg-white/90 p-2.5 shadow-lg ring-1 ring-indigo-100">
+                <div className="text-center text-[9px] font-black text-indigo-600">
+                  あなた　{currentRoleDisplayName}
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setModalAvatar(myActiveAvatar)}
+                  className="mt-1 block w-full"
+                >
+                  <div ref={myActiveCardAnchorRef}>
+                    <BattleCardReveal
+                      revealed={activeCardsRevealed}
+                      width={92}
+                      height={118}
+                      className="mx-auto"
+                      colorHex={getBattleVisualColorHex(myActiveAvatar.card)}
+                    >
+                      <img
+                        src={myActiveAvatar.card.imageDataUrl}
+                        alt=""
+                        className="h-full w-full rounded-2xl bg-white object-contain p-1"
+                      />
+                    </BattleCardReveal>
+                  </div>
+                </button>
+                <div className="mt-1 truncate text-center text-xs font-black text-slate-950">
+                  {myActiveAvatar.card.userName}
+                </div>
+                <div className="mt-0.5 text-center text-[10px] font-black text-indigo-700">
+                  {currentMyClassScore} スコア
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setModalAvatar(myActiveAvatar)}
+                  className="mx-auto mt-1 block rounded-xl p-0.5 transition hover:bg-indigo-50"
+                  aria-label="自分のステータス詳細を開く"
+                >
+                  <RadarChart
+                    baseStats={myActiveAvatar.baseStats || myActiveAvatar.card.stats}
+                    currentStats={getEffectiveStats(myActiveAvatar)}
+                    size={104}
+                    showLabels={false}
+                    showLegend={false}
                   />
+                </button>
+              </div>
+
+              <div className="rounded-2xl border border-rose-300 bg-white/90 p-2.5 shadow-lg ring-1 ring-rose-100">
+                <div className="text-center text-[9px] font-black text-rose-600">
+                  相手　{currentRoleDisplayName}
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setModalAvatar(oppActiveAvatar)}
+                  className="mt-1 block w-full"
+                >
+                  <div ref={opponentActiveCardAnchorRef}>
+                    <BattleCardReveal
+                      revealed={activeCardsRevealed}
+                      width={92}
+                      height={118}
+                      className="mx-auto"
+                      colorHex={getBattleVisualColorHex(oppActiveAvatar.card)}
+                    >
+                      <img
+                        src={oppActiveAvatar.card.imageDataUrl}
+                        alt=""
+                        className="h-full w-full rounded-2xl bg-white object-contain p-1"
+                      />
+                    </BattleCardReveal>
+                  </div>
+                </button>
+                <div className="mt-1 truncate text-center text-xs font-black text-slate-950">
+                  {oppActiveAvatar.card.userName}
+                </div>
+                <div className="mt-0.5 text-center text-[10px] font-black text-rose-700">
+                  {currentOppClassScore} スコア
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setModalAvatar(oppActiveAvatar)}
+                  className="mx-auto mt-1 block rounded-xl p-0.5 transition hover:bg-rose-50"
+                  aria-label="相手のステータス詳細を開く"
+                >
+                  <RadarChart
+                    baseStats={oppActiveAvatar.baseStats || oppActiveAvatar.card.stats}
+                    currentStats={getEffectiveStats(oppActiveAvatar)}
+                    size={104}
+                    showLabels={false}
+                    showLegend={false}
+                  />
+                </button>
+              </div>
+            </div>
+
+            <section className="shrink-0 rounded-2xl border border-white/70 bg-white/85 p-2.5 shadow-lg backdrop-blur-md">
+              <div className="flex items-center justify-between gap-2">
+                <div className="text-xs font-black text-slate-950">
+                  サポート手札
+                </div>
+                <div className="text-right text-[9px] font-black text-slate-500">
+                  手札 {myHand.length}/{MAX_HAND}　山札 {myDeck.length}
+                  {isOnline && (
+                    <>　／　相手 {opponentHandCount}/{MAX_HAND}・{opponentDeckCount}</>
+                  )}
                 </div>
               </div>
 
-              <div className="mt-2 text-[9px] font-bold text-slate-500">
-                タップ1回で確認、もう一度タップで使用。上へスワイプでも使用できます。
+              <div className="mt-0.5 text-[8px] font-bold text-slate-400">
+                タップして内容を確認 → 使用
               </div>
 
-              {(() => {
-                const selectedCard =
-                  selectedSupportCardIndex !== null
-                    ? myHand[selectedSupportCardIndex]
-                    : undefined;
-                const selectedPreset = selectedCard
-                  ? getEmotionPresetForCard(selectedCard)
-                  : undefined;
-                const selectedBadges = selectedPreset
-                  ? getEmotionPerformanceBadges(selectedPreset)
-                  : undefined;
-
-                return (
-                  <div className="mt-3 grid grid-cols-1 items-stretch gap-3 md:grid-cols-[minmax(0,1fr)_minmax(250px,320px)]">
-                    <div className="order-1 min-w-0">
-                      {(() => {
-                        const cardWidth = 82;
-                        const cardGap = 8;
-
-                        return (
-                          <div
-                            className="relative h-[146px] w-full overflow-hidden"
-                          >
-                            {myHand.length === 0 ? (
-                              <div className="py-4 text-xs font-bold opacity-40">手札がありません。</div>
-                            ) : (
-                              myHand.map((card, index) => {
-                                const isSelected = selectedSupportCardIndex === index;
-                                const isSubmitting = supportSubmittingCardIndex === index;
-                                const isRevealing = revealingSupportCardIndexes.includes(index);
-                                const preset = getEmotionPresetForCard(card);
-                                const badges = preset
-                                  ? getEmotionPerformanceBadges(preset)
-                                  : undefined;
-
-                                return (
-                                  <button
-                                    key={`${card.id}_${index}`}
-                                    type="button"
-                                    disabled={!myTurn || supportSubmittingCardIndex !== null}
-                                    onPointerDown={(event) => {
-                                      if (!myTurn) return;
-                                      supportPointerStartRef.current = { index, y: event.clientY };
-                                    }}
-                                    onPointerUp={(event) => {
-                                      if (!myTurn) return;
-                                      const startPoint = supportPointerStartRef.current;
-                                      supportPointerStartRef.current = null;
-                                      if (!startPoint || startPoint.index !== index) return;
-                                      if (event.clientY - startPoint.y <= -45) {
-                                        supportClickSuppressRef.current = true;
-                                        setSelectedSupportCardIndex(index);
-                                        void handleUseSupportCard(card, index);
-                                        window.setTimeout(() => {
-                                          supportClickSuppressRef.current = false;
-                                        }, 50);
-                                      }
-                                    }}
-                                    onPointerCancel={() => {
-                                      supportPointerStartRef.current = null;
-                                    }}
-                                    onClick={() => {
-                                      if (!myTurn || supportClickSuppressRef.current) return;
-                                      if (selectedSupportCardIndex === index) {
-                                        void handleUseSupportCard(card, index);
-                                        return;
-                                      }
-                                      setSelectedSupportCardIndex(index);
-                                    }}
-                                    style={{
-                                      position: 'absolute',
-                                      left:
-                                        myHand.length <= 1
-                                          ? 0
-                                          : `min(${index * (cardWidth + cardGap)}px, max(0px, calc((100% - ${cardWidth}px) * ${index} / ${Math.max(1, myHand.length - 1)})))`,
-                                      top: isSelected ? 8 : 18,
-                                      zIndex: isSelected ? myHand.length + 10 : index + 1,
-                                    }}
-                                    className={`relative w-[82px] rounded-xl border bg-white p-1.5 text-left shadow-md transition duration-200 ${
-                                      !myTurn
-                                        ? 'cursor-not-allowed opacity-50'
-                                        : 'cursor-pointer hover:border-indigo-400'
-                                    } ${
-                                      isSelected
-                                        ? 'border-indigo-500 ring-2 ring-indigo-200'
-                                        : 'border-slate-200'
-                                    }`}
-                                  >
-                                    {isSubmitting && (
-                                      <div className="absolute inset-0 z-30 flex items-center justify-center rounded-xl bg-slate-950/55 text-[11px] font-black text-white backdrop-blur-[1px]">
-                                        発動中…
-                                      </div>
-                                    )}
-                                    <BattleCardReveal
-                                      revealed={!isRevealing}
-                                      width={70}
-                                      height={98}
-                                      className="mx-auto"
-                                      colorHex={getSupportColorHex(card) || getBattleVisualColorHex(myActiveAvatar.card)}
-                                    >
-                                      {getSupportImage(card) ? (
-                                        <img
-                                          src={getSupportImage(card)}
-                                          alt=""
-                                          className="h-full w-full rounded-xl bg-white object-contain p-0.5"
-                                        />
-                                      ) : (
-                                        <div className="flex h-full items-center justify-center text-2xl">🃏</div>
-                                      )}
-                                    </BattleCardReveal>
-
-                                    {badges && (
-                                      <div className="mt-1 flex justify-center gap-0.5">
-                                        {[badges.target, badges.duration, badges.effect].map((badge, badgeIndex) => (
-                                          <span
-                                            key={`${badge.label}_${badgeIndex}`}
-                                            title={badge.description}
-                                            className="inline-flex h-4 min-w-4 items-center justify-center rounded-[4px] border border-slate-200 bg-slate-50 px-0.5 text-[8px] font-black leading-none text-slate-700"
-                                          >
-                                            {badge.label}
-                                          </span>
-                                        ))}
-                                      </div>
-                                    )}
-
-                                    <div className="mt-1 text-center">
-                                      <span className="block truncate text-[9px] font-black">{card.name}</span>
-                                    </div>
-                                  </button>
-                                );
-                              })
-                            )}
-                          </div>
-                        );
-                      })()}
-                    </div>
-
-                    <div className="order-2 h-[132px] min-w-0 overflow-hidden rounded-2xl border border-indigo-200 bg-indigo-50/90 p-3 shadow-sm md:order-2">
-                      <div className="text-[10px] font-black tracking-wide text-indigo-950">サポートカード説明・性能詳細</div>
-                      {selectedCard && selectedPreset && selectedBadges ? (
-                        <>
-                          <div className="mt-2 flex flex-wrap items-center gap-1">
-                            {[selectedBadges.target, selectedBadges.duration, selectedBadges.effect].map((badge, badgeIndex) => (
-                              <span
-                                key={`${badge.label}_${badgeIndex}`}
-                                title={badge.description}
-                                className="inline-flex min-w-7 items-center justify-center rounded-md border border-indigo-200 bg-white px-1.5 py-0.5 text-[10px] font-black text-indigo-900"
-                              >
-                                {badge.label}
-                              </span>
-                            ))}
-                          </div>
-                          <div className="mt-2 text-xs font-bold leading-relaxed text-slate-800">
-                            {getSupportDetailDescription(selectedPreset)}
-                          </div>
-                          {getSupportFlavorText(selectedCard) && (
-                            <div className="mt-2 rounded-xl border border-purple-200 bg-white p-2.5">
-                              <div className="text-[10px] font-black text-purple-900">💬 フレーバーテキスト</div>
-                              <div className="mt-1 text-[11px] leading-relaxed text-slate-700 whitespace-pre-wrap">
-                                {getSupportFlavorText(selectedCard)}
-                              </div>
-                            </div>
-                          )}
-                        </>
-                      ) : (
-                        <div className="mt-5 text-xs font-bold leading-relaxed text-slate-500">
-                          手札のカードをタップすると、ここに対象・期限・具体的な性能が表示されます。
-                        </div>
-                      )}
-                    </div>
+              <div className="mt-1.5 flex min-h-[94px] items-end justify-center overflow-x-auto px-1 pb-1 pt-2 touch-pan-x">
+                {myHand.length === 0 ? (
+                  <div className="py-5 text-xs font-bold text-slate-400">
+                    手札がありません。
                   </div>
-                );
-              })()}
+                ) : (
+                  myHand.map((card, index) => {
+                    const isSelected = selectedSupportCardIndex === index;
+                    const isSubmitting = supportSubmittingCardIndex === index;
+                    const isRevealing = revealingSupportCardIndexes.includes(index);
+                    return (
+                      <button
+                        key={`${card.id}_${index}`}
+                        type="button"
+                        disabled={supportSubmittingCardIndex !== null}
+                        onClick={() => setSelectedSupportCardIndex(index)}
+                        className={`relative h-[88px] w-[60px] shrink-0 overflow-hidden rounded-xl border bg-white p-1 text-left shadow-md transition sm:h-[96px] sm:w-[66px] ${
+                          index > 0 ? '-ml-6' : ''
+                        } ${
+                          isSelected
+                            ? '-translate-y-2 z-20 border-indigo-500 ring-2 ring-indigo-200'
+                            : 'z-10 border-slate-200'
+                        } ${
+                          supportSubmittingCardIndex !== null
+                            ? 'cursor-wait opacity-60'
+                            : 'cursor-pointer hover:border-indigo-400'
+                        }`}
+                      >
+                        {isSubmitting && (
+                          <div className="absolute inset-0 z-30 flex items-center justify-center rounded-xl bg-slate-950/55 text-[9px] font-black text-white">
+                            発動中…
+                          </div>
+                        )}
+                        <BattleCardReveal
+                          revealed={!isRevealing}
+                          width={52}
+                          height={72}
+                          className="mx-auto"
+                          colorHex={getSupportColorHex(card) || getBattleVisualColorHex(myActiveAvatar.card)}
+                        >
+                          {getSupportImage(card) ? (
+                            <img
+                              src={getSupportImage(card)}
+                              alt=""
+                              className="h-full w-full rounded-lg bg-white object-contain"
+                            />
+                          ) : (
+                            <div className="flex h-full items-center justify-center text-xl">🃏</div>
+                          )}
+                        </BattleCardReveal>
+                        <div className="mt-0.5 truncate text-center text-[8px] font-black text-slate-700">
+                          {card.name}
+                        </div>
+                      </button>
+                    );
+                  })
+                )}
+              </div>
             </section>
 
-            {/* ===== ⑤ 現在キャラ固有の4技 ===== */}
-            <div className="rounded-2xl border border-white/60 bg-white/80 p-3 shadow-lg">
-              <div className="mb-2 flex items-center justify-between gap-2">
-                <span className="text-sm font-black">⚔️ {myActiveAvatar.card.userName} の技</span>
-                <span className="text-[10px] font-bold opacity-50">技を選ぶと即ターン終了</span>
+            <section className="min-h-0 flex-1 rounded-2xl border border-white/70 bg-white/80 p-2.5 shadow-lg backdrop-blur-md">
+              <div className="mb-1.5 flex items-center justify-between gap-2">
+                <div className="text-xs font-black text-slate-950">
+                  ⚔️ {myActiveAvatar.card.userName} のスキル
+                </div>
+                <div className="rounded-full bg-slate-100 px-2 py-1 text-[8px] font-black text-slate-500">
+                  使用すると即ターン終了
+                </div>
               </div>
-
-              <div className="grid grid-cols-2 gap-2">
+              <div className="grid grid-cols-2 gap-1.5">
                 {myActiveAvatar.skills.map((skill, index) => {
-                  const disabled =
-                    !myTurn ||
-                    (skill.maxUsesPerClass > 0 && usedThisClass.includes(skill.id)) ||
-                    hasSkillSeal(
-                      myActiveAvatar,
-                      index,
-                      getBattleTurnOrdinal(currentYear, turnIndex),
-                    );
-                  const skillNumber = ['①', '②', '③', '④'][index] || `${index + 1}.`;
-
+                  const skillIndex = index;
+                  const used =
+                    skill.maxUsesPerClass > 0 &&
+                    usedThisClass.includes(skill.id);
+                  const sealed = hasSkillSeal(
+                    myActiveAvatar,
+                    skillIndex,
+                    currentSkillTurnOrdinal,
+                  );
                   return (
                     <button
                       key={`${myActiveAvatar.card.id}_${skill.id}`}
-                      disabled={disabled}
-                      onClick={() => void handleUseSkill(skill)}
-                      className={`min-h-24 rounded-xl border p-3 text-left transition ${
-                        disabled
-                          ? 'cursor-not-allowed border-slate-200 bg-slate-100 opacity-45'
-                          : 'border-indigo-300 bg-indigo-50 hover:-translate-y-0.5 hover:bg-indigo-100'
+                      type="button"
+                      onClick={() => setSelectedSkillDetail(skill)}
+                      className={`min-h-[54px] rounded-xl border p-2 text-left transition ${
+                        used || sealed
+                          ? 'border-slate-200 bg-slate-100 opacity-55'
+                          : myTurn
+                            ? 'border-indigo-200 bg-indigo-50 hover:bg-indigo-100'
+                            : 'border-slate-200 bg-white'
                       }`}
                     >
-                      <div className="text-sm font-black text-indigo-900">{skillNumber} {skill.name}</div>
-                      <div className="mt-1 text-xs leading-relaxed opacity-75">
-                        {skill.description}
+                      <div className="text-[10px] font-black text-indigo-950">
+                        {['①', '②', '③', '④'][index]} {skill.name}
                       </div>
-                      <div className="mt-2 text-[9px] font-black opacity-50">
-                        {skill.maxUsesPerClass
-                          ? `このクラス ${usedThisClass.includes(skill.id) ? '使用済み' : '1回'}`
-                          : '回数制限なし'}
+                      <div className="mt-0.5 truncate text-[8px] font-bold text-slate-500">
+                        {used ? 'このクラスは使用済み' : sealed ? '封印中' : myTurn ? 'タップして詳細' : '相手のターン'}
                       </div>
                     </button>
                   );
                 })}
               </div>
-            </div>
+            </section>
           </section>
         )}
 
-        {/* ===== ⑥ LIVE LOG：盤面の最後 ===== */}
-        <section className="mt-4 rounded-2xl bg-slate-950/80 p-3 text-xs text-white shadow-lg">
-          <div className="mb-2 font-black opacity-50">
-            試合実況
-          </div>
-
-          <div
-            style={{
-              maxHeight: 300,
-              overflowY: 'auto',
-            }}
-          >
-            {log.map((item, index) => (
-              <div
-                key={`${item}_${index}`}
-                className={
-                  index === 0
-                    ? 'font-black'
-                    : 'opacity-60'
-                }
-              >
-                {item}
-              </div>
-            ))}
-          </div>
-        </section>
-
-        {/* ===== 勝敗・再戦 ===== */}
         {battlePhase === 'finished' && !classResult && (
-          <section className="mt-4 rounded-3xl border border-white/70 bg-white/90 p-8 text-center shadow-2xl">
-            <div className="text-xs font-black tracking-widest opacity-50">BATTLE FINISH</div>
-            <h2 className="mt-2 text-4xl font-black">
-              {myTotalScore > opponentTotalScore
-                ? 'YOU WIN!'
-                : myTotalScore < opponentTotalScore
-                  ? 'YOU LOSE'
-                  : 'DRAW'}
-            </h2>
-            <div className="mt-4 text-3xl font-black">
-              {myTotalScore} <span className="text-sm">スコア</span>　VS　{opponentTotalScore}{' '}
-              <span className="text-sm">スコア</span>
-            </div>
+          <section className="mt-2 flex min-h-0 flex-1 items-center justify-center">
+            <div className="w-full max-w-lg rounded-[2rem] border border-white/80 bg-white/95 p-6 text-center shadow-2xl backdrop-blur-md">
+              <div className="text-xs font-black tracking-[0.25em] text-indigo-500">
+                BATTLE FINISH
+              </div>
+              <h2 className="mt-2 text-4xl font-black text-slate-950">
+                {myTotalScore > opponentTotalScore
+                  ? 'YOU WIN!'
+                  : myTotalScore < opponentTotalScore
+                    ? 'YOU LOSE'
+                    : 'DRAW'}
+              </h2>
 
-            <div className="mx-auto mt-5 grid max-w-md grid-cols-3 gap-2 text-xs">
-              {ROLE_NAMES.map((role, index) => (
-                <div key={role} className="rounded-xl bg-slate-100 p-3">
-                  <div className="font-black">{role}</div>
-                  <div>{myClassScores[index]} - {oppClassScores[index]}</div>
+              <div className="mt-5 grid grid-cols-2 gap-3">
+                <div className="rounded-2xl border border-indigo-200 bg-indigo-50 p-4">
+                  <div className="text-xs font-black text-indigo-700">あなた</div>
+                  <div className="mt-1 text-3xl font-black text-indigo-950">
+                    {myTotalScore}
+                    <span className="ml-1 text-sm">総合スコア</span>
+                  </div>
                 </div>
-              ))}
-            </div>
+                <div className="rounded-2xl border border-rose-200 bg-rose-50 p-4">
+                  <div className="text-xs font-black text-rose-700">相手</div>
+                  <div className="mt-1 text-3xl font-black text-rose-950">
+                    {opponentTotalScore}
+                    <span className="ml-1 text-sm">総合スコア</span>
+                  </div>
+                </div>
+              </div>
 
-            <div className="mt-6 flex flex-col gap-2 sm:flex-row sm:justify-center">
-              <button
-                onClick={() => void chooseRematch('rematch')}
-                disabled={!!rematchChoice}
-                className="rounded-xl bg-indigo-600 px-6 py-3 font-black text-white disabled:opacity-50"
-              >
-                もう一回する
-              </button>
-              <button
-                onClick={() => void chooseRematch('exit')}
-                disabled={!!rematchChoice}
-                className="rounded-xl bg-slate-200 px-6 py-3 font-black text-slate-900 disabled:opacity-50"
-              >
-                退出する
-              </button>
-            </div>
-          </section>
-        )}
+              <div className="mt-5 grid grid-cols-3 gap-2 text-[10px] font-black">
+                {ROLE_NAMES.map((role, index) => (
+                  <div
+                    key={role}
+                    className="rounded-2xl border border-slate-200 bg-slate-50 p-3"
+                  >
+                    <div className="text-[9px] text-slate-400">
+                      {roleDisplayNames[role]}
+                    </div>
+                    <div className="mt-1 text-sm text-slate-900">
+                      {myClassScores[index]} - {oppClassScores[index]}
+                    </div>
+                  </div>
+                ))}
+              </div>
 
-        {/* ===== デッキ選択モーダル ===== */}
-        {isDeckSelectOpen && battlePhase === 'setup' && (
-          <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/60 p-4 backdrop-blur-sm">
-            <div className="w-full max-w-md rounded-3xl bg-white p-5 shadow-2xl">
-              <div className="flex items-center justify-between">
-                <h3 className="font-black">出撃するデッキを選択</h3>
-                <button onClick={() => setIsDeckSelectOpen(false)} className="font-black">
-                  ✕
+              <div className="mt-5 grid grid-cols-2 gap-2">
+                <button
+                  type="button"
+                  onClick={() => void chooseRematch('rematch')}
+                  disabled={!!rematchChoice}
+                  className="rounded-2xl bg-indigo-600 px-4 py-3.5 text-sm font-black text-white shadow-lg shadow-indigo-200 transition hover:bg-indigo-700 disabled:cursor-not-allowed disabled:opacity-45"
+                >
+                  もう一度遊ぶ
+                </button>
+                <button
+                  type="button"
+                  onClick={() => void chooseRematch('exit')}
+                  disabled={!!rematchChoice}
+                  className="rounded-2xl bg-slate-100 px-4 py-3.5 text-sm font-black text-slate-800 transition hover:bg-slate-200 disabled:cursor-not-allowed disabled:opacity-45"
+                >
+                  ホームへ戻る
                 </button>
               </div>
-              <div className="mt-4 space-y-2">
+              {rematchChoice === 'rematch' && (
+                <div className="mt-3 text-xs font-bold text-slate-400">
+                  相手の選択を待っています…
+                </div>
+              )}
+            </div>
+          </section>
+        )}
+
+        {isDeckSelectOpen && battlePhase === 'setup' && (
+          <div className="fixed inset-0 z-[70] flex items-center justify-center bg-slate-950/60 px-4 py-6 backdrop-blur-sm">
+            <div className="flex max-h-[85dvh] w-full max-w-md flex-col rounded-3xl bg-white p-5 shadow-2xl">
+              <div className="flex shrink-0 items-center justify-between gap-3">
+                <div>
+                  <div className="text-[9px] font-black tracking-[0.18em] text-indigo-500">
+                    TEAM
+                  </div>
+                  <h3 className="mt-0.5 text-lg font-black text-slate-950">
+                    チームを選ぶ
+                  </h3>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setIsDeckSelectOpen(false)}
+                  className="rounded-xl bg-slate-100 px-3 py-2 text-xs font-black text-slate-600"
+                >
+                  閉じる
+                </button>
+              </div>
+              <div className="mt-4 min-h-0 space-y-2 overflow-y-auto pr-1">
                 {(() => {
                   try {
                     const decks: Deck[] = JSON.parse(
@@ -7305,25 +7253,28 @@ const field =
                     );
                     if (!decks.length) {
                       return (
-                        <div className="py-6 text-center text-sm opacity-50">
-                          保存されたデッキがありません。
+                        <div className="py-8 text-center text-sm font-bold text-slate-400">
+                          保存されたチームがありません。
                         </div>
                       );
                     }
                     return decks.map((deck) => (
                       <button
                         key={deck.id}
+                        type="button"
                         onClick={() => void handleSelectDeck(deck.id)}
-                        className="w-full rounded-xl border bg-slate-50 p-3 text-left hover:bg-slate-100"
+                        className="w-full rounded-2xl border border-slate-200 bg-slate-50 p-3 text-left transition hover:border-indigo-300 hover:bg-indigo-50"
                       >
-                        <div className="font-black">{deck.name}</div>
-                        <div className="text-[10px] opacity-50">{deck.id}</div>
+                        <div className="font-black text-slate-950">{deck.name}</div>
+                        <div className="mt-1 text-[9px] font-bold text-slate-400">
+                          キャラ3人・サポート {deck.supportCardIds?.length || 0}枚
+                        </div>
                       </button>
                     ));
                   } catch {
                     return (
-                      <div className="text-sm text-red-600">
-                        デッキを読み込めませんでした。
+                      <div className="text-sm font-bold text-red-600">
+                        チームを読み込めませんでした。
                       </div>
                     );
                   }
@@ -7333,133 +7284,307 @@ const field =
           </div>
         )}
 
-        {/* ===== A-1 技ステータス選択モーダル ===== */}
-        {skillStatSelection && (
-          <div className="fixed inset-0 z-[60] flex items-center justify-center bg-slate-950/60 p-4 backdrop-blur-sm">
-            <div className="w-full max-w-sm rounded-3xl bg-white p-5 shadow-2xl">
+        {selectedSupportCard && (
+          <div className="fixed inset-0 z-[75] flex items-end justify-center bg-slate-950/60 px-3 py-3 backdrop-blur-sm sm:items-center sm:px-4">
+            <div className="max-h-[78dvh] w-full max-w-md overflow-y-auto rounded-[2rem] bg-white p-4 shadow-2xl sm:p-5">
               <div className="flex items-start justify-between gap-3">
                 <div>
-                  <div className="text-xs font-black opacity-50">A-1コーデ</div>
-                  <h3 className="mt-1 text-xl font-black">ステータスを選択</h3>
+                  <div className="text-[9px] font-black tracking-[0.18em] text-purple-500">
+                    SUPPORT CARD
+                  </div>
+                  <h3 className="mt-0.5 text-xl font-black text-slate-950">
+                    {selectedSupportCard.name}
+                  </h3>
                 </div>
-                <button type="button" onClick={() => setSkillStatSelection(null)} className="font-black">✕</button>
+                <button
+                  type="button"
+                  onClick={() => setSelectedSupportCardIndex(null)}
+                  className="rounded-xl bg-slate-100 px-3 py-2 text-xs font-black text-slate-600"
+                >
+                  閉じる
+                </button>
               </div>
-              <div className="mt-3 rounded-2xl bg-slate-50 p-3 text-xs font-bold text-slate-600">
-                {skillStatSelection.mode === 'response' ? '選んだステータスの「自分 − 相手」×20でスコアを計算します。' : '選んだステータスを2倍にしてから、技の処理を確定します。'}
+
+              <div className="mt-4 grid grid-cols-[92px_minmax(0,1fr)] gap-4">
+                <BattleCardReveal
+                  revealed={!revealingSupportCardIndexes.includes(selectedSupportCardIndex ?? -1)}
+                  width={88}
+                  height={120}
+                  className="mx-auto"
+                  colorHex={getSupportColorHex(selectedSupportCard) || getBattleVisualColorHex(myActiveAvatar.card)}
+                >
+                  {getSupportImage(selectedSupportCard) ? (
+                    <img
+                      src={getSupportImage(selectedSupportCard)}
+                      alt=""
+                      className="h-full w-full rounded-2xl bg-white object-contain p-1"
+                    />
+                  ) : (
+                    <div className="flex h-full items-center justify-center text-3xl">🃏</div>
+                  )}
+                </BattleCardReveal>
+
+                <div className="min-w-0">
+                  <div className="text-[9px] font-black text-slate-400">カード情報</div>
+                  {selectedSupportBadges && (
+                    <div className="mt-1 flex flex-wrap gap-1.5">
+                      {[selectedSupportBadges.target, selectedSupportBadges.duration, selectedSupportBadges.effect].map(
+                        (badge, badgeIndex) => (
+                          <span
+                            key={`${badge.label}_${badgeIndex}`}
+                            className="rounded-lg border border-purple-200 bg-purple-50 px-2 py-1 text-[9px] font-black text-purple-900"
+                          >
+                            {badge.label}
+                          </span>
+                        ),
+                      )}
+                    </div>
+                  )}
+                  {selectedSupportPreset && (
+                    <div className="mt-2 text-sm font-bold leading-relaxed text-slate-800">
+                      {getSupportDetailDescription(selectedSupportPreset)}
+                    </div>
+                  )}
+                </div>
               </div>
-              <div className="mt-3 grid grid-cols-2 gap-2">
-                {STAT_KEYS.map((stat) => {
-                  const mine = getEffectiveStats(myActiveAvatar)[stat];
-                  const opponent = getEffectiveStats(oppActiveAvatar)[stat];
-                  const score = Math.max(0, mine - opponent) * 20;
-                  const burstValue = mine * 2;
-                  return (
-                    <button
-                      key={stat}
-                      type="button"
-                      onClick={() => {
-                        const skill = myActiveAvatar.skills.find((item) => item.id === skillStatSelection.skillId);
-                        if (!skill) { setSkillStatSelection(null); return; }
-                        setSkillStatSelection(null);
-                        void handleUseSkill(skill, stat);
-                      }}
-                      className="rounded-2xl border border-indigo-200 bg-indigo-50 p-3 text-left shadow-sm transition hover:-translate-y-0.5 hover:border-indigo-400 hover:bg-indigo-100"
-                    >
-                      <div className="text-sm font-black text-indigo-950">{STAT_LABELS[stat]}</div>
-                      <div className="mt-1 text-xs font-bold text-slate-600">自分 {mine} ／ 相手 {opponent}</div>
-                      <div className="mt-2 text-sm font-black text-indigo-700">
-                        {skillStatSelection.mode === 'response' ? `+${score}スコア` : `${mine} → ${burstValue}`}
-                      </div>
-                    </button>
-                  );
-                })}
-              </div>
+
+              {getSupportFlavorText(selectedSupportCard) && (
+                <div className="mt-4 rounded-2xl border border-purple-100 bg-purple-50/70 p-3">
+                  <div className="text-[9px] font-black text-purple-700">フレーバーテキスト</div>
+                  <div className="mt-1 whitespace-pre-wrap text-xs font-bold leading-relaxed text-slate-700">
+                    {getSupportFlavorText(selectedSupportCard)}
+                  </div>
+                </div>
+              )}
+
+              <button
+                type="button"
+                disabled={!myTurn || supportSubmittingCardIndex !== null}
+                onClick={() => {
+                  if (selectedSupportCardIndex === null || !selectedSupportCard) return;
+                  const index = selectedSupportCardIndex;
+                  setSelectedSupportCardIndex(null);
+                  void handleUseSupportCard(selectedSupportCard, index);
+                }}
+                className="mt-5 w-full rounded-2xl bg-indigo-600 px-4 py-3.5 text-sm font-black text-white shadow-lg shadow-indigo-200 transition hover:bg-indigo-700 disabled:cursor-not-allowed disabled:opacity-40"
+              >
+                {myTurn ? 'このサポートカードを使用する' : '自分のターンではありません'}
+              </button>
             </div>
           </div>
         )}
 
-        {/* ===== キャラ詳細モーダル ===== */}
-        {modalAvatar && (
-          <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/60 p-4 backdrop-blur-sm">
-            <div className="w-full max-w-md rounded-3xl bg-white p-6 shadow-2xl">
-              <div className="flex justify-between">
+        {selectedSkillDetail && (
+          <div className="fixed inset-0 z-[75] flex items-end justify-center bg-slate-950/60 px-3 py-3 backdrop-blur-sm sm:items-center sm:px-4">
+            <div className="w-full max-w-md rounded-[2rem] bg-white p-5 shadow-2xl">
+              <div className="flex items-start justify-between gap-3">
                 <div>
-                  <div className="text-xs font-black opacity-50">{modalAvatar.roleName}</div>
-                  <h3 className="text-2xl font-black">{modalAvatar.card.userName}</h3>
+                  <div className="text-[9px] font-black tracking-[0.18em] text-indigo-500">
+                    SKILL
+                  </div>
+                  <h3 className="mt-0.5 text-xl font-black text-slate-950">
+                    {selectedSkillDetail.name}
+                  </h3>
                 </div>
-                <button onClick={() => setModalAvatar(null)} className="font-black">
-                  ✕
+                <button
+                  type="button"
+                  onClick={() => setSelectedSkillDetail(null)}
+                  className="rounded-xl bg-slate-100 px-3 py-2 text-xs font-black text-slate-600"
+                >
+                  閉じる
                 </button>
               </div>
-              <div className="mt-4 flex items-center gap-4">
+
+              <div className="mt-4 rounded-2xl border border-indigo-100 bg-indigo-50/70 p-4">
+                <div className="text-sm font-bold leading-relaxed text-slate-800">
+                  {selectedSkillDetail.description}
+                </div>
+                <div className="mt-3 rounded-xl bg-white p-3 text-xs font-black leading-relaxed text-slate-700 ring-1 ring-indigo-100">
+                  ⚠️ このスキルを使用すると、即ターン終了です。
+                </div>
+              </div>
+
+              <div className="mt-3 flex items-center justify-between rounded-xl bg-slate-50 px-3 py-2 text-[10px] font-black text-slate-500">
+                <span>
+                  {selectedSkillDetail.maxUsesPerClass
+                    ? usedThisClass.includes(selectedSkillDetail.id)
+                      ? 'このクラスは使用済み'
+                      : 'このクラス1回まで'
+                    : '回数制限なし'}
+                </span>
+                {hasSkillSeal(
+                  myActiveAvatar,
+                  myActiveAvatar.skills.findIndex((item) => item.id === selectedSkillDetail.id),
+                  currentSkillTurnOrdinal,
+                ) && <span className="text-rose-600">封印中</span>}
+              </div>
+
+              <button
+                type="button"
+                disabled={!isSkillUsable(selectedSkillDetail)}
+                onClick={() => {
+                  const skill = selectedSkillDetail;
+                  setSelectedSkillDetail(null);
+                  void handleUseSkill(skill);
+                }}
+                className="mt-5 w-full rounded-2xl bg-indigo-600 px-4 py-3.5 text-sm font-black text-white shadow-lg shadow-indigo-200 transition hover:bg-indigo-700 disabled:cursor-not-allowed disabled:opacity-40"
+              >
+                {myTurn ? 'このスキルを使用する' : '相手のターンです'}
+              </button>
+            </div>
+          </div>
+        )}
+
+        {modalAvatar && (
+          <div className="fixed inset-0 z-[75] flex items-end justify-center bg-slate-950/60 px-3 py-3 backdrop-blur-sm sm:items-center sm:px-4">
+            <div className="max-h-[86dvh] w-full max-w-lg overflow-y-auto rounded-[2rem] bg-white p-5 shadow-2xl sm:p-6">
+              <div className="flex items-start justify-between gap-3">
+                <div>
+                  <div className="text-[9px] font-black tracking-[0.18em] text-slate-400">
+                    CHARACTER STATUS
+                  </div>
+                  <div className="mt-0.5 text-xs font-black text-slate-500">
+                    {roleDisplayNames[modalAvatar.roleName]}
+                  </div>
+                  <h3 className="mt-0.5 text-2xl font-black text-slate-950">
+                    {modalAvatar.card.userName}
+                  </h3>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setModalAvatar(null)}
+                  className="rounded-xl bg-slate-100 px-3 py-2 text-xs font-black text-slate-600"
+                >
+                  閉じる
+                </button>
+              </div>
+
+              <div className="mt-4 grid grid-cols-[104px_minmax(0,1fr)] gap-4">
                 <img
                   src={modalAvatar.card.imageDataUrl}
                   alt=""
-                  className="h-36 w-28 rounded-2xl bg-white object-contain p-1"
+                  className="h-36 w-[104px] rounded-2xl bg-white object-contain p-1 shadow-sm ring-1 ring-slate-200"
                 />
-                <RadarChart baseStats={modalAvatar.baseStats || modalAvatar.card.stats} currentStats={getEffectiveStats(modalAvatar)} />
+                <div className="min-w-0">
+                  <div className="text-[9px] font-black text-slate-400">能力値</div>
+                  <div className="mt-1 grid grid-cols-2 gap-1.5 text-[10px] font-black">
+                    {STAT_KEYS.map((stat) => {
+                      const base = Number((modalAvatar.baseStats || modalAvatar.card.stats)[stat] || 0);
+                      const current = Number(getEffectiveStats(modalAvatar)[stat] || 0);
+                      const diff = current - base;
+                      return (
+                        <div
+                          key={stat}
+                          className="rounded-xl bg-slate-50 p-2"
+                        >
+                          <div className="text-[8px] text-slate-400">{STAT_LABELS[stat]}</div>
+                          <div className="mt-0.5 text-sm text-slate-900">
+                            {current}
+                            {diff !== 0 && (
+                              <span className={diff > 0 ? 'ml-1 text-red-500' : 'ml-1 text-blue-500'}>
+                                {diff > 0 ? `+${diff}` : diff}
+                              </span>
+                            )}
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
               </div>
-              <div className="mt-4 space-y-1 text-xs font-bold opacity-70">
+
+              <div className="mt-5 flex justify-center">
+                <RadarChart
+                  baseStats={modalAvatar.baseStats || modalAvatar.card.stats}
+                  currentStats={getEffectiveStats(modalAvatar)}
+                  size={220}
+                />
+              </div>
+
+              <div className="mt-2 rounded-2xl bg-slate-50 p-3 text-xs font-bold leading-relaxed text-slate-600">
                 <div>カラー：{modalAvatar.card.color}</div>
-                <div>得意季節：{modalAvatar.card.favoredSeason}</div>
+                <div className="mt-1">得意季節：{modalAvatar.card.favoredSeason}</div>
+                <div className="mt-1">ステータスの差分は、サポートやスキルによる現在値の変化を示します。</div>
               </div>
             </div>
           </div>
         )}
-{/* ===== 相手切断警告 ===== */}
-{showOpponentDisconnectModal &&
-  battlePhase === 'battle' && (
-    <div className="fixed inset-0 z-[60] flex items-center justify-center bg-slate-950/60 p-4 backdrop-blur-sm">
-      <div className="w-full max-w-md rounded-3xl bg-white p-6 text-center shadow-2xl">
-        <div className="text-4xl">
-          ⚠️
-        </div>
 
-        <h3 className="mt-3 text-xl font-black text-slate-900">
-          相手との接続を確認できません
-        </h3>
+        {showBattleLog && (
+          <div className="fixed inset-0 z-[76] flex items-end justify-center bg-slate-950/60 px-3 py-3 backdrop-blur-sm sm:items-center sm:px-4">
+            <div className="flex max-h-[82dvh] w-full max-w-lg flex-col rounded-[2rem] bg-slate-950 p-4 text-white shadow-2xl sm:p-5">
+              <div className="flex shrink-0 items-center justify-between gap-3">
+                <div>
+                  <div className="text-[9px] font-black tracking-[0.2em] text-slate-500">
+                    LIVE LOG
+                  </div>
+                  <h3 className="mt-0.5 text-xl font-black">試合実況</h3>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setShowBattleLog(false)}
+                  className="rounded-xl bg-white/10 px-3 py-2 text-xs font-black text-white"
+                >
+                  閉じる
+                </button>
+              </div>
+              <div className="mt-4 min-h-0 flex-1 space-y-1 overflow-y-auto rounded-2xl bg-white/5 p-3 text-xs leading-relaxed">
+                {log.length === 0 ? (
+                  <div className="py-8 text-center font-bold text-white/40">
+                    まだ実況ログはありません。
+                  </div>
+                ) : (
+                  log.map((item, index) => (
+                    <div
+                      key={`${item}_${index}`}
+                      className={`border-b border-white/5 pb-1.5 pt-1 ${index === 0 ? 'font-black text-white' : 'text-white/65'}`}
+                    >
+                      {item}
+                    </div>
+                  ))
+                )}
+              </div>
+            </div>
+          </div>
+        )}
 
-        <p className="mt-3 text-sm font-bold leading-relaxed text-slate-600">
-          {opponentDisconnectMessage}
-        </p>
-
-        <p className="mt-2 text-xs font-bold text-slate-400">
-          相手が復帰すれば、そのまま対戦を続けられます。
-        </p>
-
-        <div className="mt-6 grid grid-cols-2 gap-3">
-          <button
-            onClick={() => {
-              setShowOpponentDisconnectModal(
-                false,
-              );
-
-              opponentDisconnectDismissedUntilRef.current =
-                Date.now() + 30 * 1000;
-
-              setWaitingMessage(
-                '相手の復帰を待っています。',
-              );
-            }}
-            className="rounded-xl bg-indigo-600 px-4 py-3 text-sm font-black text-white shadow-lg hover:bg-indigo-700"
-          >
-            待機する
-          </button>
-
-          <button
-            onClick={() =>
-              void exitBecauseOpponentDisconnected()
-            }
-            className="rounded-xl bg-slate-200 px-4 py-3 text-sm font-black text-slate-900 hover:bg-slate-300"
-          >
-            退出する
-          </button>
-        </div>
-      </div>
-    </div>
-  )}
-
-
+        {showOpponentDisconnectModal && battlePhase === 'battle' && (
+          <div className="fixed inset-0 z-[90] flex items-center justify-center bg-slate-950/60 p-4 backdrop-blur-sm">
+            <div className="w-full max-w-md rounded-[2rem] bg-white p-5 text-center shadow-2xl">
+              <div className="text-4xl">⚠️</div>
+              <h3 className="mt-3 text-xl font-black text-slate-950">
+                相手との接続を確認できません
+              </h3>
+              <p className="mt-3 text-sm font-bold leading-relaxed text-slate-600">
+                {opponentDisconnectMessage}
+              </p>
+              <p className="mt-2 text-xs font-bold text-slate-400">
+                相手が復帰すれば、そのまま対戦を続けられます。
+              </p>
+              <div className="mt-5 grid grid-cols-2 gap-2">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setShowOpponentDisconnectModal(false);
+                    opponentDisconnectDismissedUntilRef.current =
+                      Date.now() + 30 * 1000;
+                    setWaitingMessage('相手の復帰を待っています。');
+                  }}
+                  className="rounded-2xl bg-indigo-600 px-4 py-3 text-sm font-black text-white"
+                >
+                  待機する
+                </button>
+                <button
+                  type="button"
+                  onClick={() => void exitBecauseOpponentDisconnected()}
+                  className="rounded-2xl bg-slate-100 px-4 py-3 text-sm font-black text-slate-900"
+                >
+                  退出する
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
       </div>
     </div>
   );

@@ -1001,187 +1001,226 @@ return {
   };
 
   return (
-    <div className="max-w-md mx-auto p-6 bg-white rounded-2xl shadow-md border border-gray-100 space-y-6">
-      <div className="flex justify-between items-center border-b pb-3">
-        <h2 className="text-lg font-bold text-gray-800">
-          🎮 友達と対戦する
-        </h2>
-
-        <button
-          onClick={onBack}
-          className="text-xs text-gray-500 hover:text-gray-700 font-bold px-2 py-1 bg-gray-100 rounded-lg cursor-pointer"
-        >
-          ← 戻る
-        </button>
-      </div>
-
-      {statusMessage && (
-        <div className="p-3 text-xs font-bold text-indigo-900 bg-indigo-50 border border-indigo-200 rounded-xl text-center">
-          {statusMessage}
-        </div>
-      )}
-
-      {/* メニュー選択 */}
-      {mode === 'menu' && (
-        <div className="space-y-3 pt-2">
-          <button
-            onClick={() => {
-              setMode('create');
-              setStatusMessage('');
-            }}
-            className="w-full py-3 bg-indigo-600 hover:bg-indigo-700 text-white font-bold rounded-xl shadow transition cursor-pointer"
-          >
-            ➕ 友達と使うステージを作成する
-          </button>
-
-          <button
-            onClick={() => {
-              setMode('join');
-              setStatusMessage('');
-            }}
-            className="w-full py-3 bg-emerald-600 hover:bg-emerald-700 text-white font-bold rounded-xl shadow transition cursor-pointer"
-          >
-            🔑 友達の作ったステージに入る
-          </button>
-        </div>
-      )}
-
-      {/* ステージ作成画面 */}
-      {mode === 'create' && (
-        <div className="space-y-4">
+    <div className="flex h-full min-h-0 w-full items-center justify-center bg-gradient-to-br from-slate-50 via-white to-indigo-50 px-4 py-4 text-slate-900 sm:px-6">
+      <div className="w-full max-w-md rounded-[2rem] border border-white/80 bg-white/90 p-5 shadow-2xl shadow-slate-200/60 backdrop-blur-md sm:p-6">
+        <div className="flex items-center justify-between gap-3 border-b border-slate-200 pb-4">
           <div>
-            <label className="block text-xs font-bold text-gray-700 mb-1">
-              合言葉を設定（ひらがな・漢字もOK！）
-            </label>
-
-            <input
-              type="text"
-              value={roomKey}
-              onChange={(e) =>
-                setRoomKey(e.target.value)
-              }
-              placeholder="例: ともだち"
-              disabled={
-                isLoading ||
-                isWaitingForGuest
-              }
-              className="w-full px-3 py-2 border rounded-xl text-sm bg-white text-gray-900 focus:ring-2 focus:ring-indigo-500"
-            />
+            <div className="text-[10px] font-black tracking-[0.22em] text-indigo-500">
+              FRIEND MATCH
+            </div>
+            <h2 className="mt-1 text-xl font-black text-slate-950">
+              友達と対戦する
+            </h2>
           </div>
+          <button
+            type="button"
+            onClick={onBack}
+            disabled={isLoading}
+            className="rounded-xl bg-slate-100 px-3 py-2 text-[10px] font-black text-slate-600 transition hover:bg-slate-200 disabled:opacity-40"
+          >
+            ← 戻る
+          </button>
+        </div>
 
-          {!isWaitingForGuest ? (
+        {statusMessage && (
+          <div className="mt-4 rounded-2xl border border-indigo-200 bg-indigo-50 p-3 text-center text-xs font-bold leading-relaxed text-indigo-900">
+            {statusMessage}
+          </div>
+        )}
+
+        {mode === 'menu' && (
+          <div className="mt-5 space-y-3">
             <button
-              onClick={handleCreateStage}
-              disabled={isLoading}
-              className="w-full py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white font-bold rounded-xl text-sm transition cursor-pointer disabled:opacity-50"
+              type="button"
+              onClick={() => {
+                setMode('create');
+                setStatusMessage('');
+                setRoomKey('');
+              }}
+              className="w-full rounded-2xl bg-indigo-600 px-4 py-4 text-left text-white shadow-lg shadow-indigo-200 transition hover:bg-indigo-700"
             >
-              {isLoading
-                ? '確認中...'
-                : 'ステージを作成'}
+              <div className="text-base font-black">ステージを作る</div>
+              <div className="mt-1 text-[11px] font-bold text-indigo-100">
+                合言葉を決めて、友達を待ちます。
+              </div>
             </button>
-          ) : (
-            <div className="text-center py-4 space-y-2">
-              <div className="animate-spin text-2xl inline-block">
-                ⏳
+
+            <button
+              type="button"
+              onClick={() => {
+                setMode('join');
+                setStatusMessage('');
+                setRoomKey('');
+              }}
+              className="w-full rounded-2xl bg-emerald-600 px-4 py-4 text-left text-white shadow-lg shadow-emerald-200 transition hover:bg-emerald-700"
+            >
+              <div className="text-base font-black">ステージに入る</div>
+              <div className="mt-1 text-[11px] font-bold text-emerald-100">
+                友達から教えてもらった合言葉を入力します。
+              </div>
+            </button>
+          </div>
+        )}
+
+        {mode === 'create' && (
+          <div className="mt-5 space-y-4">
+            {!isWaitingForGuest ? (
+              <>
+                <div>
+                  <label className="block text-xs font-black text-slate-700">
+                    合言葉を設定
+                  </label>
+                  <div className="mt-1 text-[10px] font-bold text-slate-400">
+                    ひらがな・漢字もOK
+                  </div>
+                  <input
+                    type="text"
+                    value={roomKey}
+                    onChange={(e) => setRoomKey(e.target.value)}
+                    placeholder="例：ともだち"
+                    disabled={isLoading}
+                    className="mt-2 w-full rounded-2xl border border-slate-200 bg-white px-4 py-3 text-base font-bold text-slate-900 outline-none transition focus:border-indigo-400 focus:ring-4 focus:ring-indigo-100 disabled:bg-slate-50"
+                  />
+                </div>
+
+                <button
+                  type="button"
+                  onClick={handleCreateStage}
+                  disabled={isLoading}
+                  className="w-full rounded-2xl bg-indigo-600 px-4 py-3.5 text-sm font-black text-white shadow-lg shadow-indigo-200 transition hover:bg-indigo-700 disabled:cursor-not-allowed disabled:opacity-50"
+                >
+                  {isLoading ? 'ステージを確認中…' : 'ステージ作成'}
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => {
+                    setMode('menu');
+                    setStatusMessage('');
+                    setRoomKey('');
+                  }}
+                  className="w-full rounded-xl py-2 text-xs font-black text-slate-400 transition hover:text-slate-700"
+                >
+                  キャンセル
+                </button>
+              </>
+            ) : (
+              <div className="text-center">
+                <div className="mx-auto flex h-16 w-16 items-center justify-center rounded-full bg-indigo-50 text-3xl">
+                  ⏳
+                </div>
+                <div className="mt-4 text-xs font-black tracking-[0.18em] text-indigo-500">
+                  WAITING
+                </div>
+                <h3 className="mt-1 text-2xl font-black text-slate-950">
+                  相手を待っています
+                </h3>
+                <div className="mt-4 rounded-2xl border border-indigo-100 bg-indigo-50 p-4">
+                  <div className="text-[10px] font-black text-indigo-500">合言葉</div>
+                  <div className="mt-1 break-all text-2xl font-black tracking-widest text-indigo-950">
+                    {roomKey}
+                  </div>
+                </div>
+                <p className="mt-4 text-xs font-bold leading-relaxed text-slate-500">
+                  この画面を開いたまま、友達に合言葉を伝えてください。<br />
+                  相手が参加すると自動で対戦画面へ進みます。
+                </p>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setMode('menu');
+                    setIsWaitingForGuest(false);
+                    setStatusMessage('');
+                    setRoomKey('');
+                  }}
+                  className="mt-5 w-full rounded-xl py-2.5 text-xs font-black text-slate-400 transition hover:bg-slate-100 hover:text-slate-700"
+                >
+                  ステージをやめる
+                </button>
+              </div>
+            )}
+          </div>
+        )}
+
+        {mode === 'join' && (
+          <div className="mt-5 space-y-4">
+            <div>
+              <label className="block text-xs font-black text-slate-700">
+                合言葉を入力
+              </label>
+              <input
+                type="text"
+                value={roomKey}
+                onChange={(e) => setRoomKey(e.target.value)}
+                placeholder="例：ともだち"
+                disabled={isLoading}
+                className="mt-2 w-full rounded-2xl border border-slate-200 bg-white px-4 py-3 text-base font-bold text-slate-900 outline-none transition focus:border-emerald-400 focus:ring-4 focus:ring-emerald-100 disabled:bg-slate-50"
+              />
+            </div>
+
+            <button
+              type="button"
+              onClick={handleConfirmJoin}
+              disabled={isLoading}
+              className="w-full rounded-2xl bg-emerald-600 px-4 py-3.5 text-sm font-black text-white shadow-lg shadow-emerald-200 transition hover:bg-emerald-700 disabled:cursor-not-allowed disabled:opacity-50"
+            >
+              {isLoading ? 'ステージを確認中…' : 'ステージに入る'}
+            </button>
+
+            <button
+              type="button"
+              onClick={() => {
+                setMode('menu');
+                setStatusMessage('');
+                setRoomKey('');
+              }}
+              className="w-full rounded-xl py-2 text-xs font-black text-slate-400 transition hover:text-slate-700"
+            >
+              キャンセル
+            </button>
+          </div>
+        )}
+
+        {showConfirmModal && (
+          <div className="fixed inset-0 z-[80] flex items-center justify-center bg-slate-950/60 px-4 py-6 backdrop-blur-sm">
+            <div className="w-full max-w-xs rounded-3xl bg-white p-5 shadow-2xl">
+              <div className="text-center">
+                <div className="text-xs font-black tracking-[0.18em] text-emerald-500">
+                  JOIN STAGE
+                </div>
+                <h3 className="mt-1 text-lg font-black text-slate-950">
+                  このステージに入りますか？
+                </h3>
+                <p className="mt-3 text-xs font-bold leading-relaxed text-slate-500">
+                  合言葉
+                  <span className="mx-1 font-black text-emerald-600">
+                    「{roomKey}」
+                  </span>
+                  で参加します。
+                </p>
               </div>
 
-              <p className="text-xs text-gray-500 font-bold">
-                対戦相手の参加を待っています...
-              </p>
-            </div>
-          )}
-
-          <button
-            onClick={() => {
-              setMode('menu');
-              setIsWaitingForGuest(false);
-              setStatusMessage('');
-            }}
-            className="w-full py-1.5 text-xs text-gray-500 hover:underline font-bold cursor-pointer"
-          >
-            キャンセル
-          </button>
-        </div>
-      )}
-
-      {/* ステージ入室画面 */}
-      {mode === 'join' && (
-        <div className="space-y-4">
-          <div>
-            <label className="block text-xs font-bold text-gray-700 mb-1">
-              合言葉を入力
-            </label>
-
-            <input
-              type="text"
-              value={roomKey}
-              onChange={(e) =>
-                setRoomKey(e.target.value)
-              }
-              placeholder="例: ともだち"
-              disabled={isLoading}
-              className="w-full px-3 py-2 border rounded-xl text-sm bg-white text-gray-900 focus:ring-2 focus:ring-emerald-500"
-            />
-          </div>
-
-          <button
-            onClick={handleConfirmJoin}
-            disabled={isLoading}
-            className="w-full py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white font-bold rounded-xl text-sm transition cursor-pointer disabled:opacity-50"
-          >
-            {isLoading
-              ? '検索中...'
-              : 'ステージに入る'}
-          </button>
-
-          <button
-            onClick={() => {
-              setMode('menu');
-              setStatusMessage('');
-            }}
-            className="w-full py-1.5 text-xs text-gray-500 hover:underline font-bold cursor-pointer"
-          >
-            キャンセル
-          </button>
-        </div>
-      )}
-
-      {/* 確認ダイアログ */}
-      {showConfirmModal && (
-        <div className="fixed inset-0 bg-black/50 flex items-center justify-center p-4 z-50">
-          <div className="bg-white rounded-2xl p-5 max-w-xs w-full space-y-4 text-center shadow-xl">
-            <h3 className="font-bold text-gray-800 text-sm">
-              確認
-            </h3>
-
-            <p className="text-xs text-gray-600">
-              合言葉{' '}
-              <span className="font-bold text-indigo-600">
-                「{roomKey}」
-              </span>{' '}
-              で間違いないですか？
-            </p>
-
-            <div className="flex space-x-2 pt-2">
-              <button
-                onClick={() =>
-                  setShowConfirmModal(false)
-                }
-                className="flex-1 py-2 bg-gray-100 hover:bg-gray-200 text-gray-700 font-bold text-xs rounded-xl transition cursor-pointer"
-              >
-                いいえ
-              </button>
-
-              <button
-                onClick={handleJoinStage}
-                className="flex-1 py-2 bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs rounded-xl transition cursor-pointer"
-              >
-                はい
-              </button>
+              <div className="mt-5 grid grid-cols-2 gap-2">
+                <button
+                  type="button"
+                  onClick={() => setShowConfirmModal(false)}
+                  className="rounded-xl bg-slate-100 px-3 py-3 text-xs font-black text-slate-700 transition hover:bg-slate-200"
+                >
+                  いいえ
+                </button>
+                <button
+                  type="button"
+                  onClick={handleJoinStage}
+                  className="rounded-xl bg-emerald-600 px-3 py-3 text-xs font-black text-white transition hover:bg-emerald-700"
+                >
+                  はい
+                </button>
+              </div>
             </div>
           </div>
-        </div>
-      )}
+        )}
+      </div>
     </div>
   );
+
 }
