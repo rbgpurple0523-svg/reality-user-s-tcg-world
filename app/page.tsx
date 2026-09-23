@@ -413,31 +413,44 @@ export default function Home() {
         )}
 
         {currentView === 'coordinateSelect' && (
-          <div className="mx-auto flex min-h-0 w-full max-w-xl flex-1 flex-col px-3 py-3 sm:px-5">
-            <div className="shrink-0 text-center">
-              <div className="text-[9px] font-black tracking-[0.22em] text-indigo-500">CHARACTER CARD</div>
-              <h2 className="mt-1 text-xl font-black text-gray-950">コーデを選ぶ</h2>
-              <p className="mx-auto mt-1 max-w-md text-[10px] font-bold leading-5 text-gray-600">コーデは、キャラカードの4つのステータスの得意・不得意を決める「性能タイプ」です。</p>
+          <div className="mx-auto flex min-h-0 w-full max-w-5xl flex-1 flex-col text-gray-900">
+            <div className="shrink-0 border-b border-gray-200 px-3 py-2 sm:px-5">
+              <div className="flex items-center justify-between gap-3">
+                <div className="min-w-0">
+                  <div className="text-[9px] font-black tracking-[0.22em] text-pink-500">CHARACTER CARD</div>
+                  <h2 className="truncate text-lg font-black">キャラカードを作る</h2>
+                </div>
+                <button type="button" onClick={handleReturnToRegistrationEntry} className="shrink-0 rounded-xl bg-gray-100 px-3 py-2 text-[10px] font-black text-gray-700">← 戻る</button>
+              </div>
+
+              <div className="mt-2 grid grid-cols-[1fr_auto_1fr_auto_1fr] items-center gap-1.5 text-[9px] font-black">
+                <span className="rounded-full bg-pink-600 px-2 py-1 text-center text-white">① コーデ</span>
+                <span className="h-px bg-pink-200" />
+                <span className="rounded-full bg-gray-100 px-2 py-1 text-center text-gray-400">② カード編集</span>
+                <span className="h-px bg-pink-100" />
+                <span className="rounded-full bg-gray-100 px-2 py-1 text-center text-gray-400">③ 登録</span>
+              </div>
             </div>
 
-            <div className="mt-2 min-h-0 flex-1 overflow-hidden rounded-3xl border border-gray-200 bg-gray-50 shadow-sm">
+            <div className="min-h-0 flex-1 px-3 py-3 sm:px-5">
+              <div className="flex h-full min-h-0 flex-col">
+                <div className="shrink-0 text-center">
+                  <h3 className="text-base font-black text-gray-950">コーデを選ぶ</h3>
+                  <p className="mx-auto mt-1 max-w-md text-[10px] font-bold leading-5 text-gray-600">コーデは、キャラカードの4つのステータスの得意・不得意を決める「性能タイプ」です。</p>
+                </div>
+
+                <div className="mt-2 min-h-0 flex-1 overflow-hidden rounded-3xl border border-gray-200 bg-gray-50 shadow-sm">
               <CoordinateRadialMap
                 coordinates={COORDINATE_PRESETS}
                 entries={pickerEntries}
                 maxEntryLimit={pickerMaxEntryLimit}
                 initialSelectedId={selectedCoordinate?.id ?? null}
                 mode="picker"
-                onSelect={handleSelectCoordinate}
-              />
+                  onSelect={handleSelectCoordinate}
+                />
+                </div>
+              </div>
             </div>
-
-            <button
-              type="button"
-              onClick={handleReturnToRegistrationEntry}
-              className="mt-3 shrink-0 py-2 text-xs font-black text-gray-500 hover:text-gray-800"
-            >
-              ← 戻る
-            </button>
           </div>
         )}
 
