@@ -449,10 +449,19 @@ export default function SupportCardGenerator({ selectedEmotion, onBackToHub }: S
   const makeOwnerToken = () =>
     `token_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`;
 
+  const normalizeProfileUrl = (value: string) =>
+    value.trim().toLowerCase().replace(/\/$/, '');
+
   const validateBeforeConfirm = () => {
+    if (!profileUrl.trim() || !profileUrl.includes('reality.app/user/')) {
+      setErrorMessage('REALITYプロフURLを入力してください。');
+      setActiveEditor('basic');
+      return false;
+    }
+
     if (!userName.trim() || !imageDataUrl || !password.trim() || !effectName.trim()) {
-      setErrorMessage('カード名・画像・効果名・合言葉をすべて入力してください。');
-      if (!userName.trim() || !imageDataUrl || !password.trim()) {
+      setErrorMessage('カード画像・REALITYプロフURL・登録ユーザー名・合言葉・効果名をすべて入力してください。');
+      if (!userName.trim() || !imageDataUrl || !profileUrl.trim() || !password.trim()) {
         setActiveEditor('basic');
       } else {
         setActiveEditor('effect');
@@ -516,6 +525,19 @@ export default function SupportCardGenerator({ selectedEmotion, onBackToHub }: S
     const editingEntry = editingId
       ? currentEntries.find((entry) => entry.id === editingId)
       : undefined;
+
+    const normalizedProfileUrl = normalizeProfileUrl(profileUrl);
+    const duplicateSupportEntry = currentEntries.find((entry) =>
+      entry.cardType === 'emotion' &&
+      entry.id !== editingId &&
+      normalizeProfileUrl(entry.profileUrl || '') === normalizedProfileUrl,
+    );
+
+    if (duplicateSupportEntry) {
+      setErrorMessage('このREALITYプロフURLでは、すでにサポートカードが登録されています。1ユーザーにつき登録できるサポートカードは1枚です。');
+      setActiveEditor('basic');
+      return;
+    }
 
     const ownerToken = editingEntry?.ownerToken || makeOwnerToken();
     const now = new Date().toISOString();
@@ -651,7 +673,7 @@ export default function SupportCardGenerator({ selectedEmotion, onBackToHub }: S
   });
 
   const savedSupportEntries = entries.filter((entry) => entry.cardType === 'emotion');
-  const basicInfoComplete = Boolean(userName.trim() && imageDataUrl && password.trim());
+  const basicInfoComplete = Boolean(profileUrl.trim() && userName.trim() && imageDataUrl && password.trim());
   const effectComplete = Boolean(effectName.trim());
   const flavorComplete = Boolean(flavorText.trim());
 
@@ -723,22 +745,21 @@ export default function SupportCardGenerator({ selectedEmotion, onBackToHub }: S
                 <div className="flex items-center gap-3">
                   <div className="min-w-0 flex-1">
                     <div className="text-[9px] font-black tracking-[0.16em] text-purple-500">SELECTED EMOTION</div>
-                    <div className="mt-1 font-serif text-base font-black leading-relaxed text-purple-950">
-                      「{activeEmotion.emotionPhrase}」
+                    <div className="mt-1 text-[9px] font-black text-purple-700">性能</div>
+                    <div className="mt-0.5 text-sm font-black text-gray-950">
+                      {activeEmotion.statEffect}{activeEmotion.effectAmount ? ` ${activeEmotion.effectAmount}` : ''}
+                      <span className="ml-1 text-[8px] font-bold text-gray-500">{activeEmotion.target} / {activeEmotion.duration} / {activeEmotion.effectCategory}</span>
                     </div>
-                    <div className="mt-1 flex flex-wrap items-center gap-1.5">
-                      <span className="rounded-md bg-purple-600 px-2 py-1 text-[9px] font-black text-white">{activeEmotion.id}</span>
-                      <span className="text-[9px] font-black text-purple-900">{activeEmotion.name}</span>
-                      <span className="text-[8px] font-bold text-gray-500">{activeEmotion.target} / {activeEmotion.duration}</span>
-                    </div>
-                    <p className="mt-1 text-[9px] font-bold leading-4 text-purple-800">この「想い」をもとに、サポートカードの見た目と名前を整えます。</p>
+                    <div className="mt-1 text-[9px] leading-4 text-gray-600">{activeEmotion.description}</div>
+                    <div className="mt-2 text-sm font-serif font-black leading-relaxed text-purple-950">{activeEmotion.emotionPhrase}</div>
+                    <div className="mt-1 text-[8px] font-bold text-gray-400">仮カード名：{activeEmotion.name}</div>
                   </div>
                   <button
                     type="button"
                     onClick={() => setActiveModal('emotion')}
                     className="shrink-0 rounded-xl border border-purple-200 bg-white px-3 py-2 text-[9px] font-black text-purple-700 shadow-sm"
                   >
-                    想いを変える
+                    エモーションを変える
                   </button>
                 </div>
               </section>
@@ -766,7 +787,7 @@ export default function SupportCardGenerator({ selectedEmotion, onBackToHub }: S
                         {basicInfoComplete ? '入力済み' : '必須・未設定'}
                       </span>
                     </div>
-                    <div className="mt-1 text-[8px] font-bold text-indigo-700">反映：カード名・画像</div>
+                    <div className="mt-1 text-[8px] font-bold text-indigo-700">反映：画像・登録ユーザー情報</div>
                   </button>
 
                   <button type="button" onClick={() => setActiveEditor('effect')} className="rounded-2xl border-2 border-purple-100 bg-purple-50/60 p-3 text-left">
@@ -829,17 +850,9 @@ export default function SupportCardGenerator({ selectedEmotion, onBackToHub }: S
               <div className="min-h-0 flex-1 overflow-y-auto rounded-2xl border border-gray-200 bg-gray-50 p-3">
                 <div className="mx-auto w-full max-w-sm overflow-hidden rounded-[1.65rem] border-[5px] bg-white shadow-lg" style={{ borderColor: selectedColorHex }}>
                   <div className="border-b border-gray-100 px-4 pb-3 pt-4">
-                    <div className="flex items-start justify-between gap-3">
-                      <div className="min-w-0">
-                        <div className="text-[8px] font-black tracking-[0.18em] text-purple-500">SUPPORT CARD</div>
-                        <div className="mt-1 truncate text-xl font-black text-gray-950">{userName || 'カード名未設定'}</div>
-                        <div className="mt-1 flex flex-wrap items-center gap-1.5">
-                          <span className="rounded-md bg-purple-700 px-1.5 py-1 text-[8px] font-black text-white">{activeEmotion.id.toUpperCase()}</span>
-                          <span className="text-[9px] font-black text-gray-600">{activeEmotion.name}</span>
-                        </div>
-                      </div>
-                      <div className="shrink-0 rounded-xl border border-gray-200 bg-gray-50 px-2 py-1 text-[8px] font-black text-gray-500">PREVIEW</div>
-                    </div>
+                    <div className="text-[8px] font-black tracking-[0.18em] text-purple-500">SUPPORT CARD</div>
+                    <div className="mt-1 text-xl font-black text-gray-950">{effectName || '効果名未設定'}</div>
+                    <div className="mt-1 text-[9px] font-bold text-gray-500">{activeEmotion.statEffect}{activeEmotion.effectAmount ? ` ${activeEmotion.effectAmount}` : ''} / {activeEmotion.target} / {activeEmotion.duration}</div>
                   </div>
 
                   <div className="p-3">
@@ -853,54 +866,43 @@ export default function SupportCardGenerator({ selectedEmotion, onBackToHub }: S
                   </div>
 
                   <div className="px-3 pb-3">
-                    <div className="rounded-2xl border border-purple-100 bg-purple-50/60 p-3">
-                      <div className="text-[9px] font-black tracking-[0.12em] text-purple-600">YOUR FEELING</div>
-                      <div className="mt-2 font-serif text-lg font-black leading-relaxed text-purple-950">「{activeEmotion.emotionPhrase}」</div>
-                      <div className="mt-2 flex items-center justify-between gap-3">
-                        <span className="text-[9px] font-black text-gray-600">効果名</span>
-                        <span className="text-right text-sm font-black text-purple-900">{effectName || '未設定'}</span>
-                      </div>
-                    </div>
-                  </div>
-
-                  <div className="px-3 pb-3">
                     <div className="rounded-2xl border border-gray-200 bg-gray-50 p-3">
-                      <div className="text-[9px] font-black tracking-[0.12em] text-gray-500">SUPPORT EFFECT</div>
+                      <div className="text-[9px] font-black tracking-[0.12em] text-gray-500">EFFECT</div>
                       <div className="mt-1 text-sm font-black text-gray-900">{activeEmotion.statEffect}{activeEmotion.effectAmount ? `（${activeEmotion.effectAmount}）` : ''}</div>
                       <div className="mt-1 text-[9px] font-bold text-gray-500">{activeEmotion.target} / {activeEmotion.duration} / {activeEmotion.effectCategory}</div>
                       <div className="mt-2 text-[10px] leading-4 text-gray-600">{activeEmotion.description}</div>
                     </div>
                   </div>
 
-                  <div className="border-t border-amber-100 bg-amber-50 px-4 py-3 text-center">
-                    <div className="text-[8px] font-black tracking-[0.12em] text-amber-700">FLAVOR</div>
-                    <div className={`mt-1 text-[10px] font-bold leading-4 ${flavorText.trim() ? 'text-amber-950' : 'text-amber-500'}`}>
-                      {flavorText.trim() || '一言未設定'}
+                  <div className="px-3 pb-3">
+                    <div className="rounded-2xl border border-amber-100 bg-amber-50 p-3">
+                      <div className="text-[9px] font-black tracking-[0.12em] text-amber-700">FLAVOR</div>
+                      <div className={`mt-1 text-[10px] font-bold leading-4 ${flavorText.trim() ? 'text-amber-950' : 'text-amber-500'}`}>
+                        {flavorText.trim() || '一言未設定'}
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="border-t border-gray-100 bg-white px-3 pb-3 pt-2">
+                    <div className="rounded-2xl border border-gray-200 bg-gray-50 p-3">
+                      <div className="text-[9px] font-black tracking-[0.12em] text-gray-500">REGISTERED USER</div>
+                      <div className="mt-1 text-sm font-black text-gray-950">{userName || '未設定'}</div>
+                      <div className="mt-3 text-[8px] font-black text-gray-400">REALITYプロフィールURL</div>
+                      <div className="mt-0.5 break-all text-[10px] font-bold text-gray-700">{profileUrl || '未設定'}</div>
+                    </div>
+                  </div>
+
+                  <div className="border-t border-gray-100 bg-white px-3 pb-4 pt-3">
+                    <div className="flex items-center justify-between gap-3 rounded-2xl border border-gray-200 bg-white p-3">
+                      <span className="text-[9px] font-black text-gray-500">カラー</span>
+                      <span className="inline-flex items-center gap-1.5 text-[9px] font-black text-gray-700">
+                        <span className="h-3 w-3 rounded-full border border-gray-300" style={{ backgroundColor: selectedColorHex }} />
+                        {selectedColorHex.toUpperCase()}
+                      </span>
                     </div>
                   </div>
                 </div>
 
-                <div className="mx-auto mt-3 w-full max-w-sm rounded-2xl border border-gray-200 bg-white p-3 text-[9px]">
-                  <div className="grid grid-cols-2 gap-2">
-                    <div className="rounded-xl bg-gray-50 p-2">
-                      <div className="font-black text-gray-400">カード名</div>
-                      <div className="mt-0.5 truncate font-black text-gray-800">{userName || '未設定'}</div>
-                    </div>
-                    <div className="rounded-xl bg-gray-50 p-2">
-                      <div className="font-black text-gray-400">カラー</div>
-                      <div className="mt-0.5 flex items-center gap-1.5 font-black text-gray-800">
-                        <span className="h-2.5 w-2.5 rounded-full border border-gray-200" style={{ backgroundColor: selectedColorHex }} />
-                        {selectedColorHex.toUpperCase()}
-                      </div>
-                    </div>
-                  </div>
-                  {profileUrl.trim() && (
-                    <div className="mt-2 rounded-xl bg-gray-50 p-2">
-                      <div className="font-black text-gray-400">REALITYプロフィールURL</div>
-                      <div className="mt-0.5 break-all font-bold text-gray-700">{profileUrl}</div>
-                    </div>
-                  )}
-                </div>
               </div>
             </div>
           )}
@@ -934,11 +936,6 @@ export default function SupportCardGenerator({ selectedEmotion, onBackToHub }: S
               {activeEditor === 'basic' && (
                 <div className="space-y-4 text-xs">
                   <div>
-                    <label className="mb-1 block font-bold">カード名 <span className="text-red-500">*</span></label>
-                    <input type="text" value={userName} onChange={(e) => setUserName(e.target.value)} maxLength={40} placeholder="例：みんなを応援するひとことカード" className="w-full rounded-xl border px-3 py-2.5" />
-                  </div>
-
-                  <div>
                     <label className="mb-1 block font-bold">カード画像 <span className="text-red-500">*</span></label>
                     <input type="file" accept="image/*" onChange={handleImageUpload} className="w-full text-xs" />
                     {imageDataUrl && (
@@ -949,9 +946,15 @@ export default function SupportCardGenerator({ selectedEmotion, onBackToHub }: S
                   </div>
 
                   <div>
-                    <label className="mb-1 block font-bold">REALITY プロフURL <span className="text-gray-400">任意</span></label>
-                    <input type="text" value={profileUrl} onChange={(e) => setProfileUrl(e.target.value)} placeholder="必要な場合のみ入力" className="w-full rounded-xl border px-3 py-2.5" />
-                    <p className="mt-1 text-[9px] leading-4 text-gray-500">サポートカードはアバター以外でも作れるため、この項目は任意です。</p>
+                    <label className="mb-1 block font-bold">REALITY プロフURL <span className="text-red-500">*</span></label>
+                    <input type="text" value={profileUrl} onChange={(e) => setProfileUrl(e.target.value)} placeholder="https://reality.app/user/xxxxxx" className="w-full rounded-xl border px-3 py-2.5" />
+                    <p className="mt-1 text-[9px] leading-4 text-gray-500">同じREALITYユーザーがサポートカードを複数登録することを防ぐために使用します。1ユーザーにつき1枚まで登録できます。</p>
+                  </div>
+
+                  <div>
+                    <label className="mb-1 block font-bold">登録ユーザー名 <span className="text-red-500">*</span></label>
+                    <input type="text" value={userName} onChange={(e) => setUserName(e.target.value)} maxLength={40} placeholder="例：わくわくさん" className="w-full rounded-xl border px-3 py-2.5" />
+                    <p className="mt-1 text-[9px] leading-4 text-gray-500">この名前を、サポートカードの登録ユーザーとして表示します。</p>
                   </div>
 
                   <div>
@@ -1021,7 +1024,7 @@ export default function SupportCardGenerator({ selectedEmotion, onBackToHub }: S
             <div className="flex shrink-0 items-center justify-between gap-3 border-b border-gray-200 px-4 py-3">
               <div>
                 <div className="text-[9px] font-black tracking-[0.16em] text-purple-500">EMOTION PICKER</div>
-                <div className="mt-0.5 text-sm font-black">「想い」か「性能」から選ぶ</div>
+                <div className="mt-0.5 text-sm font-black">エモーションを選ぶ</div>
               </div>
               <button type="button" onClick={() => setActiveModal(null)} className="rounded-lg bg-gray-100 px-2.5 py-1.5 text-xs font-black">✕</button>
             </div>
@@ -1033,14 +1036,14 @@ export default function SupportCardGenerator({ selectedEmotion, onBackToHub }: S
                   onClick={() => setPickerMode('feeling')}
                   className={`rounded-full px-4 py-2 text-[10px] font-black transition ${pickerMode === 'feeling' ? 'bg-purple-700 text-white shadow' : 'text-gray-500 hover:text-purple-700'}`}
                 >
-                  想い
+                  想いから選択
                 </button>
                 <button
                   type="button"
                   onClick={() => setPickerMode('performance')}
                   className={`rounded-full px-4 py-2 text-[10px] font-black transition ${pickerMode === 'performance' ? 'bg-purple-700 text-white shadow' : 'text-gray-500 hover:text-purple-700'}`}
                 >
-                  性能
+                  性能から選択
                 </button>
               </div>
 
@@ -1150,8 +1153,8 @@ export default function SupportCardGenerator({ selectedEmotion, onBackToHub }: S
                         <div className="flex items-center gap-3">
                           <img src={entry.imageDataUrl} alt="" className="h-12 w-12 rounded-xl object-cover" />
                           <div className="min-w-0 flex-1">
-                            <div className="truncate text-sm font-black">{entry.userName}</div>
-                            <div className="truncate text-[9px] font-bold text-purple-700">{emotion ? emotion.name : entry.presetId}</div>
+                            <div className="truncate text-sm font-black">{entry.customEffectName || emotion?.name || '効果名未設定'}</div>
+                            <div className="truncate text-[9px] font-bold text-purple-700">登録ユーザー：{entry.userName}</div>
                           </div>
                         </div>
 

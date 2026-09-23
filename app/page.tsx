@@ -12,7 +12,7 @@ import EntryHub, {
 import CoordinateRadialMap from '@/components/CoordinateRadialMap';
 import { COORDINATE_PRESETS } from '@/components/coordinatePresets';
 import { EMOTION_PRESETS } from '@/components/emotionPresets';
-import type { EmotionPreset } from '@/components/emotionPresets';
+import type { EmotionAxisKey, EmotionPreset } from '@/components/emotionPresets';
 import FriendMatchSetup from '@/components/FriendMatchSetup';
 
 type CurrentView =
@@ -51,6 +51,239 @@ function getMaxEntryLimit(entries: EntryRecord[]): number {
     : oneRate >= 0.5
       ? 2
       : 1;
+}
+
+type EmotionPickerMode = 'feeling' | 'performance';
+
+const EMOTION_AXIS_CONFIG: Record<
+  EmotionAxisKey,
+  { label: string; icon: string; x: number; y: number }
+> = {
+  challenge: { label: '挑戦', icon: '🔥', x: 50, y: 8 },
+  philosophy: { label: '哲学', icon: '◇', x: 88, y: 36 },
+  compassion: { label: '慈愛', icon: '♡', x: 70, y: 89 },
+  temptation: { label: '誘惑', icon: '✦', x: 30, y: 89 },
+  freedom: { label: '自由', icon: '🪽', x: 12, y: 36 },
+};
+
+const EMOTION_AXIS_ORDER: EmotionAxisKey[] = [
+  'challenge',
+  'philosophy',
+  'compassion',
+  'temptation',
+  'freedom',
+];
+
+const EMOTION_AXIS_RING_VALUES = [20, 40, 60, 80, 100];
+
+function getEmotionMapPosition(emotion: EmotionPreset): { x: number; y: number } {
+  const total = EMOTION_AXIS_ORDER.reduce(
+    (sum, axis) => sum + Math.max(0, Number(emotion.emotionAxes[axis] ?? 0)),
+    0,
+  );
+
+  if (total <= 0) return { x: 50, y: 49 };
+
+  const weighted = EMOTION_AXIS_ORDER.reduce(
+    (point, axis) => {
+      const weight = Math.max(0, Number(emotion.emotionAxes[axis] ?? 0));
+      const vertex = EMOTION_AXIS_CONFIG[axis];
+      return {
+        x: point.x + vertex.x * weight,
+        y: point.y + vertex.y * weight,
+      };
+    },
+    { x: 0, y: 0 },
+  );
+
+  const seed = emotion.id.split('').reduce((sum, char) => sum + char.charCodeAt(0), 0);
+  const jitterX = ((seed % 5) - 2) * 0.8;
+  const jitterY = (((seed * 7) % 5) - 2) * 0.65;
+
+  return {
+    x: Math.min(92, Math.max(8, weighted.x / total + jitterX)),
+    y: Math.min(91, Math.max(9, weighted.y / total + jitterY)),
+  };
+}
+
+function EmotionMiniMap({
+  selectedEmotionId,
+  onSelect,
+}: {
+  selectedEmotionId: string | null;
+  onSelect: (emotion: EmotionPreset) => void;
+}) {
+  const [hoveredEmotionId, setHoveredEmotionId] = useState<string | null>(null);
+
+  return (
+    <div className="w-full rounded-2xl border border-purple-100 bg-white p-2.5 shadow-sm">
+      <div className="mb-2 flex items-center justify-between gap-2">
+        <div className="text-[9px] font-black tracking-wide text-purple-700">想いのマップ</div>
+        <div className="text-[9px] font-bold text-gray-400">35種</div>
+      </div>
+      <div className="relative aspect-square overflow-hidden rounded-xl border border-purple-100 bg-[radial-gradient(circle_at_center,rgba(168,85,247,0.14),transparent_48%),linear-gradient(135deg,rgba(99,102,241,0.04),rgba(236,72,153,0.08))]">
+        <svg viewBox="0 0 100 100" className="absolute inset-0 h-full w-full" aria-hidden="true">
+          {EMOTION_AXIS_RING_VALUES.map((value) => {
+            const points = EMOTION_AXIS_ORDER.map((axis) => {
+              const vertex = EMOTION_AXIS_CONFIG[axis];
+              return [
+                50 + (vertex.x - 50) * (value / 100),
+                49 + (vertex.y - 49) * (value / 100),
+              ].join(',');
+            }).join(' ');
+            return <polygon key={value} points={points} fill="none" stroke="rgba(124,58,237,0.12)" strokeWidth="0.55" />;
+          })}
+          {EMOTION_AXIS_ORDER.map((axis) => {
+            const vertex = EMOTION_AXIS_CONFIG[axis];
+            return <line key={axis} x1="50" y1="49" x2={vertex.x} y2={vertex.y} stroke="rgba(124,58,237,0.16)" strokeWidth="0.55" />;
+          })}
+          <polygon points={EMOTION_AXIS_ORDER.map((axis) => `${EMOTION_AXIS_CONFIG[axis].x},${EMOTION_AXIS_CONFIG[axis].y}`).join(' ')} fill="rgba(139,92,246,0.04)" stroke="rgba(124,58,237,0.26)" strokeWidth="1" />
+          <circle cx="50" cy="49" r="1.2" fill="rgba(91,95,239,0.42)" />
+        </svg>
+
+        {EMOTION_AXIS_ORDER.map((axis) => {
+          const vertex = EMOTION_AXIS_CONFIG[axis];
+          return (
+            <div key={axis} className="absolute -translate-x-1/2 -translate-y-1/2 whitespace-nowrap text-center" style={{ left: `${vertex.x}%`, top: `${vertex.y}%` }}>
+              <div className="text-[12px] leading-none">{vertex.icon}</div>
+              <div className="mt-0.5 text-[8px] font-black text-purple-950">{vertex.label}</div>
+            </div>
+          );
+        })}
+
+        {EMOTION_PRESETS.map((emotion) => {
+          const position = getEmotionMapPosition(emotion);
+          const selected = emotion.id === selectedEmotionId;
+          return (
+            <button
+              key={emotion.id}
+              type="button"
+              onClick={() => onSelect(emotion)}
+              onMouseEnter={() => setHoveredEmotionId(emotion.id)}
+              onFocus={() => setHoveredEmotionId(emotion.id)}
+              onMouseLeave={() => setHoveredEmotionId(null)}
+              onBlur={() => setHoveredEmotionId(null)}
+              aria-label={`${emotion.emotionPhrase}｜${emotion.name}`}
+              title={`${emotion.emotionPhrase}｜${emotion.name}`}
+              className={`absolute h-3.5 w-3.5 -translate-x-1/2 -translate-y-1/2 rounded-full border-2 transition ${selected ? 'z-30 scale-150 border-white bg-purple-700 shadow-[0_0_0_4px_rgba(124,58,237,0.20),0_0_18px_rgba(124,58,237,0.75)]' : 'z-10 border-purple-100 bg-purple-500 shadow-[0_0_10px_rgba(124,58,237,0.45)] hover:scale-150 hover:bg-fuchsia-500'}`}
+              style={{ left: `${position.x}%`, top: `${position.y}%` }}
+            />
+          );
+        })}
+
+        {hoveredEmotionId && (() => {
+          const emotion = EMOTION_PRESETS.find((item) => item.id === hoveredEmotionId);
+          if (!emotion) return null;
+          const position = getEmotionMapPosition(emotion);
+          return (
+            <div className="pointer-events-none absolute z-40 max-w-[220px] -translate-x-1/2 -translate-y-full rounded-2xl border border-purple-200 bg-white/95 px-3 py-2.5 text-center shadow-xl backdrop-blur-sm" style={{ left: `${position.x}%`, top: `${Math.max(8, position.y - 3)}%` }}>
+              <div className="text-[9px] font-black text-purple-500">{emotion.name}</div>
+              <div className="mt-0.5 font-serif text-[11px] font-black leading-relaxed text-purple-950">{emotion.emotionPhrase}</div>
+              <div className="mt-1 text-[8px] font-bold text-gray-500">{emotion.statEffect}{emotion.effectAmount ? ` ${emotion.effectAmount}` : ''} / {emotion.duration}</div>
+            </div>
+          );
+        })()}
+      </div>
+      <p className="mt-2 text-[9px] font-bold leading-relaxed text-gray-500">ドットをタップして、そのエモーションを選択できます。</p>
+    </div>
+  );
+}
+
+function EmotionPicker({ onSelect }: { onSelect: (emotion: EmotionPreset) => void }) {
+  const [mode, setMode] = useState<EmotionPickerMode>('feeling');
+  const [search, setSearch] = useState('');
+  const [target, setTarget] = useState('ALL');
+  const [effect, setEffect] = useState('ALL');
+  const [duration, setDuration] = useState('ALL');
+
+  const filtered = EMOTION_PRESETS.filter((emotion) => {
+    if (search.trim()) {
+      const query = search.trim().toLowerCase();
+      const matches =
+        emotion.name.toLowerCase().includes(query) ||
+        emotion.statEffect.toLowerCase().includes(query) ||
+        emotion.description.toLowerCase().includes(query) ||
+        emotion.emotionPhrase.toLowerCase().includes(query);
+      if (!matches) return false;
+    }
+
+    if (mode === 'performance') {
+      if (target !== 'ALL' && emotion.target !== target) return false;
+      if (effect !== 'ALL' && emotion.effectCategory !== effect) return false;
+      if (duration !== 'ALL' && emotion.duration !== duration) return false;
+    }
+
+    return true;
+  });
+
+  return (
+    <div className="flex min-h-0 flex-1 flex-col overflow-hidden rounded-3xl border border-gray-200 bg-white shadow-sm">
+      <div className="shrink-0 border-b border-gray-100 px-4 py-3">
+        <div className="text-[9px] font-black tracking-[0.16em] text-purple-500">EMOTION PICKER</div>
+        <div className="mt-0.5 text-base font-black">エモーションを選ぶ</div>
+        <div className="mt-1 text-[9px] font-bold leading-4 text-gray-500">「想い」からでも、「性能」からでも選べます。</div>
+        <div className="mt-3 grid grid-cols-2 rounded-2xl border border-purple-100 bg-purple-50 p-1" role="group" aria-label="エモーション選択モード">
+          <button type="button" onClick={() => setMode('feeling')} className={`rounded-xl px-3 py-2 text-[10px] font-black transition ${mode === 'feeling' ? 'bg-purple-700 text-white shadow' : 'text-gray-500 hover:text-purple-700'}`}>想いから選択</button>
+          <button type="button" onClick={() => setMode('performance')} className={`rounded-xl px-3 py-2 text-[10px] font-black transition ${mode === 'performance' ? 'bg-purple-700 text-white shadow' : 'text-gray-500 hover:text-purple-700'}`}>性能から選択</button>
+        </div>
+      </div>
+
+      <div className="min-h-0 flex-1 overflow-y-auto p-3">
+        <div className="rounded-2xl border border-gray-200 bg-white p-3">
+          <input type="text" value={search} onChange={(e) => setSearch(e.target.value)} placeholder={mode === 'feeling' ? '想いの言葉を検索（任意）' : 'エモーション名・想い・効果を検索'} className="w-full rounded-xl border border-gray-200 bg-white px-3 py-2 text-xs" />
+
+          {mode === 'performance' && (
+            <div className="mt-2 grid grid-cols-1 gap-2 sm:grid-cols-3">
+              <select value={target} onChange={(e) => setTarget(e.target.value)} className="w-full rounded-lg border border-gray-200 bg-white px-2.5 py-2 text-[10px] font-bold text-purple-900">
+                <option value="ALL">対象：すべて</option>
+                <option value="自分">自分</option>
+                <option value="相手">相手</option>
+                <option value="自分・相手">自分・相手</option>
+              </select>
+              <select value={effect} onChange={(e) => setEffect(e.target.value)} className="w-full rounded-lg border border-gray-200 bg-white px-2.5 py-2 text-[10px] font-bold text-purple-900">
+                <option value="ALL">効果：すべて</option>
+                {Array.from(new Set(EMOTION_PRESETS.map((emotion) => emotion.effectCategory))).map((category) => <option key={category} value={category}>{category}</option>)}
+              </select>
+              <select value={duration} onChange={(e) => setDuration(e.target.value)} className="w-full rounded-lg border border-gray-200 bg-white px-2.5 py-2 text-[10px] font-bold text-purple-900">
+                <option value="ALL">時間：すべて</option>
+                <option value="一時">一時</option>
+                <option value="永続">永続</option>
+              </select>
+            </div>
+          )}
+        </div>
+
+        {mode === 'feeling' ? (
+          <div className="mx-auto mt-3 w-full max-w-md">
+            <EmotionMiniMap selectedEmotionId={null} onSelect={onSelect} />
+          </div>
+        ) : (
+          <div className="mt-3 space-y-2">
+            {filtered.length === 0 ? (
+              <div className="py-10 text-center text-xs font-bold text-gray-500">条件に一致するエモーションがありません。</div>
+            ) : (
+              filtered.map((emotion) => (
+                <button key={emotion.id} type="button" onClick={() => onSelect(emotion)} className="w-full rounded-2xl border border-gray-200 bg-white p-3 text-left transition hover:border-purple-300 hover:bg-purple-50">
+                  <div className="flex items-start justify-between gap-3">
+                    <div className="min-w-0">
+                      <div className="font-serif text-sm font-black leading-relaxed text-purple-950">{emotion.emotionPhrase}</div>
+                      <div className="mt-1 text-[10px] font-black text-gray-500">{emotion.name}</div>
+                    </div>
+                    <div className="shrink-0 rounded-xl bg-purple-50 px-2 py-1.5 text-right">
+                      <div className="text-[9px] font-black text-purple-800">{emotion.statEffect}</div>
+                      <div className="text-[9px] font-bold text-gray-500">{emotion.effectAmount || ''} / {emotion.duration}</div>
+                    </div>
+                  </div>
+                  <div className="mt-2 text-[9px] font-bold text-gray-500">対象：{emotion.target} ／ {emotion.effectCategory}</div>
+                  <div className="mt-1 text-[9px] leading-4 text-gray-600">{emotion.description}</div>
+                </button>
+              ))
+            )}
+          </div>
+        )}
+      </div>
+    </div>
+  );
 }
 
 function loadStoredEntries(): EntryRecord[] {
@@ -208,7 +441,9 @@ export default function Home() {
     (currentView === 'menu' ||
       currentView === 'cardRegisterSelect' ||
       currentView === 'coordinateSelect' ||
-      currentView === 'cardGen');
+      currentView === 'cardGen' ||
+      currentView === 'emotionSelect' ||
+      currentView === 'supportGen');
 
   if (showIntro) {
     return (
@@ -450,35 +685,20 @@ export default function Home() {
         )}
 
         {currentView === 'emotionSelect' && (
-          <div className="flex-1">
-            <div className="mx-auto w-full max-w-5xl px-5 py-6">
-              <div className="rounded-3xl border border-gray-200 bg-white p-5 shadow-sm">
-                <div className="flex items-start justify-between gap-3">
-                  <div>
+          <div className="flex min-h-0 flex-1 flex-col px-3 py-3 sm:px-5">
+            <div className="mx-auto flex min-h-0 w-full max-w-5xl flex-1 flex-col">
+              <div className="shrink-0 rounded-2xl border border-gray-200 bg-white p-3 shadow-sm">
+                <div className="flex items-center justify-between gap-3">
+                  <div className="min-w-0">
                     <div className="text-[9px] font-black tracking-[0.22em] text-purple-500">SUPPORT CARD</div>
-                    <h2 className="mt-1 text-2xl font-black">エモーションを選ぶ</h2>
-                    <p className="mt-2 text-xs text-gray-600">対象・効果・持続性など、ゲーム上の性能からエモーションを選べます。</p>
+                    <h2 className="mt-1 text-lg font-black">エモーションを選ぶ</h2>
                   </div>
-                  <button type="button" onClick={handleReturnToRegistrationEntry} className="rounded-xl bg-gray-100 px-3 py-2 text-[10px] font-black">← 戻る</button>
+                  <button type="button" onClick={handleReturnToRegistrationEntry} className="shrink-0 rounded-xl bg-gray-100 px-3 py-2 text-[10px] font-black text-gray-700">← 戻る</button>
                 </div>
               </div>
-              <div className="mt-4 grid grid-cols-1 gap-3 md:grid-cols-2">
-                {EMOTION_PRESETS.map((emotion) => (
-                  <button
-                    key={emotion.id}
-                    type="button"
-                    onClick={() => handleSelectEmotion(emotion)}
-                    className="rounded-2xl border border-gray-200 bg-white p-4 text-left shadow-sm transition hover:border-purple-300 hover:bg-purple-50"
-                  >
-                    <div className="flex flex-wrap gap-1">
-                      <span className="rounded-md bg-purple-100 px-2 py-1 text-[9px] font-black text-purple-800">{emotion.target}</span>
-                      <span className="rounded-md bg-purple-100 px-2 py-1 text-[9px] font-black text-purple-800">{emotion.effectCategory}</span>
-                      <span className="rounded-md bg-purple-100 px-2 py-1 text-[9px] font-black text-purple-800">{emotion.duration}</span>
-                    </div>
-                    <div className="mt-2 text-sm font-black">{emotion.name}</div>
-                    <div className="mt-1 text-[10px] leading-5 text-gray-600">{emotion.description}</div>
-                  </button>
-                ))}
+
+              <div className="mt-3 min-h-0 flex-1">
+                <EmotionPicker onSelect={handleSelectEmotion} />
               </div>
             </div>
           </div>
