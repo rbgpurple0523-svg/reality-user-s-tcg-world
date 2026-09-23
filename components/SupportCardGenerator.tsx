@@ -1,7 +1,12 @@
 'use client';
 
 import React, { useState, useEffect, ChangeEvent, FormEvent } from 'react';
-import { EMOTION_PRESETS, type EmotionAxisKey, type EmotionPreset } from './emotionPresets';
+import {
+  EMOTION_PRESETS,
+  getEmotionFlavorText,
+  type EmotionAxisKey,
+  type EmotionPreset,
+} from './emotionPresets';
 import type { EntryRecord } from './EntryHub';
 import {
   COLOR_PALETTE,
@@ -109,6 +114,127 @@ async function moderateCardTexts(texts: string[]): Promise<ModerationResult> {
   }
 }
 
+
+function EmotionMiniMap({
+  selectedEmotionId,
+  onSelect,
+}: {
+  selectedEmotionId: string;
+  onSelect: (emotion: EmotionPreset) => void;
+}) {
+  const [hoveredEmotionId, setHoveredEmotionId] = useState<string | null>(null);
+
+  return (
+    <div className="w-full max-w-[280px] rounded-2xl border border-purple-100 bg-white p-2.5 shadow-sm">
+      <div className="mb-2 flex items-center justify-between gap-2">
+        <div className="text-[9px] font-black tracking-wide text-purple-700">想いのマップ</div>
+        <div className="text-[9px] font-bold text-gray-400">35種</div>
+      </div>
+      <div className="relative aspect-square overflow-hidden rounded-xl border border-purple-100 bg-[radial-gradient(circle_at_center,rgba(168,85,247,0.14),transparent_48%),linear-gradient(135deg,rgba(99,102,241,0.04),rgba(236,72,153,0.08))]">
+        <svg viewBox="0 0 100 100" className="absolute inset-0 h-full w-full" aria-hidden="true">
+          {EMOTION_AXIS_RING_VALUES.map((value) => {
+            const points = EMOTION_AXIS_ORDER.map((axis) => {
+              const vertex = EMOTION_AXIS_CONFIG[axis];
+              return [
+                50 + (vertex.x - 50) * (value / 100),
+                49 + (vertex.y - 49) * (value / 100),
+              ].join(',');
+            }).join(' ');
+            return (
+              <polygon
+                key={value}
+                points={points}
+                fill="none"
+                stroke="rgba(124,58,237,0.12)"
+                strokeWidth="0.55"
+              />
+            );
+          })}
+          {EMOTION_AXIS_ORDER.map((axis) => {
+            const vertex = EMOTION_AXIS_CONFIG[axis];
+            return (
+              <line
+                key={axis}
+                x1="50"
+                y1="49"
+                x2={vertex.x}
+                y2={vertex.y}
+                stroke="rgba(124,58,237,0.16)"
+                strokeWidth="0.55"
+              />
+            );
+          })}
+          <polygon
+            points={EMOTION_AXIS_ORDER.map((axis) => `${EMOTION_AXIS_CONFIG[axis].x},${EMOTION_AXIS_CONFIG[axis].y}`).join(' ')}
+            fill="rgba(139,92,246,0.04)"
+            stroke="rgba(124,58,237,0.26)"
+            strokeWidth="1"
+          />
+          <circle cx="50" cy="49" r="1.2" fill="rgba(91,95,239,0.42)" />
+        </svg>
+
+        {EMOTION_AXIS_ORDER.map((axis) => {
+          const vertex = EMOTION_AXIS_CONFIG[axis];
+          return (
+            <div
+              key={axis}
+              className="absolute -translate-x-1/2 -translate-y-1/2 whitespace-nowrap text-center"
+              style={{ left: `${vertex.x}%`, top: `${vertex.y}%` }}
+            >
+              <div className="text-[12px] leading-none">{vertex.icon}</div>
+              <div className="mt-0.5 text-[8px] font-black text-purple-950">{vertex.label}</div>
+            </div>
+          );
+        })}
+
+        {EMOTION_PRESETS.map((emotion) => {
+          const position = getEmotionMapPosition(emotion);
+          const selected = emotion.id === selectedEmotionId;
+          return (
+            <button
+              key={emotion.id}
+              type="button"
+              onClick={() => onSelect(emotion)}
+              onMouseEnter={() => setHoveredEmotionId(emotion.id)}
+              onFocus={() => setHoveredEmotionId(emotion.id)}
+              onMouseLeave={() => setHoveredEmotionId(null)}
+              onBlur={() => setHoveredEmotionId(null)}
+              aria-label={`${emotion.emotionPhrase}｜${emotion.name}`}
+              title={`${emotion.emotionPhrase}｜${emotion.name}`}
+              className={`absolute h-2.5 w-2.5 -translate-x-1/2 -translate-y-1/2 rounded-full border transition ${
+                selected
+                  ? 'z-30 scale-150 border-white bg-purple-700 shadow-[0_0_0_3px_rgba(124,58,237,0.20),0_0_10px_rgba(124,58,237,0.75)]'
+                  : 'z-10 border-purple-100 bg-purple-500 shadow-[0_0_7px_rgba(124,58,237,0.42)] hover:scale-150 hover:bg-fuchsia-500'
+              }`}
+              style={{ left: `${position.x}%`, top: `${position.y}%` }}
+            />
+          );
+        })}
+
+        {hoveredEmotionId && (() => {
+          const emotion = EMOTION_PRESETS.find((item) => item.id === hoveredEmotionId);
+          if (!emotion) return null;
+          const position = getEmotionMapPosition(emotion);
+          return (
+            <div
+              className="pointer-events-none absolute z-40 max-w-[185px] -translate-x-1/2 -translate-y-full rounded-xl border border-purple-200 bg-white/95 px-2.5 py-2 text-center shadow-lg backdrop-blur-sm"
+              style={{ left: `${position.x}%`, top: `${Math.max(9, position.y - 3)}%` }}
+            >
+              <div className="text-[8px] font-black text-purple-500">{emotion.name}</div>
+              <div className="mt-0.5 font-serif text-[10px] font-black leading-relaxed text-purple-950">
+                {emotion.emotionPhrase}
+              </div>
+            </div>
+          );
+        })()}
+      </div>
+      <p className="mt-2 text-[9px] font-bold leading-relaxed text-gray-500">
+        ドットをタップして、登録する「想い」を選び直せます。
+      </p>
+    </div>
+  );
+}
+
 export default function SupportCardGenerator({ selectedEmotion, onBackToHub }: SupportCardGeneratorProps) {
   const [selectedEmotionId, setSelectedEmotionId] = useState<string>(
     selectedEmotion?.id || EMOTION_PRESETS[0]?.id || '',
@@ -136,7 +262,7 @@ export default function SupportCardGenerator({ selectedEmotion, onBackToHub }: S
   const [imageDataUrl, setImageDataUrl] = useState('');
   const [password, setPassword] = useState('');
   const [effectName, setEffectName] = useState(activeEmotion.name);
-  const [flavorText, setFlavorText] = useState(activeEmotion.emotionPhrase);
+  const [flavorText, setFlavorText] = useState(getEmotionFlavorText(activeEmotion));
   const [selectedColorHex, setSelectedColorHex] = useState('#22D3EE');
 
   const [entries, setEntries] = useState<EntryRecord[]>([]);
@@ -177,7 +303,7 @@ export default function SupportCardGenerator({ selectedEmotion, onBackToHub }: S
           setPassword(draft.password || '');
           if (draft.selectedEmotionId) setSelectedEmotionId(draft.selectedEmotionId);
           if (draft.effectName) setEffectName(draft.effectName);
-          setFlavorText(draft.flavorText || '');
+          setFlavorText(draft.flavorText || getEmotionFlavorText(activeEmotion));
           setSelectedColorHex(
             draft.colorHex && /^#[0-9a-fA-F]{6}$/.test(draft.colorHex)
               ? draft.colorHex.toUpperCase()
@@ -196,7 +322,7 @@ export default function SupportCardGenerator({ selectedEmotion, onBackToHub }: S
     if (selectedEmotion) {
       setSelectedEmotionId(selectedEmotion.id);
       setEffectName(selectedEmotion.name);
-      setFlavorText(selectedEmotion.emotionPhrase);
+      setFlavorText(getEmotionFlavorText(selectedEmotion));
     }
   }, [selectedEmotion]);
 
@@ -249,7 +375,7 @@ export default function SupportCardGenerator({ selectedEmotion, onBackToHub }: S
   const handleEmotionChange = (emotion: EmotionPreset) => {
     setSelectedEmotionId(emotion.id);
     setEffectName(emotion.name);
-    setFlavorText(emotion.emotionPhrase);
+    setFlavorText(getEmotionFlavorText(emotion));
     setHoveredEmotionId(emotion.id);
     setErrorMessage('');
   };
@@ -395,7 +521,7 @@ export default function SupportCardGenerator({ selectedEmotion, onBackToHub }: S
     setUserName('');
     setImageDataUrl('');
     setPassword('');
-    setFlavorText(activeEmotion.emotionPhrase);
+    setFlavorText(getEmotionFlavorText(activeEmotion));
     setSelectedColorHex('#22D3EE');
     setSelectedEmotionId(activeEmotion.id);
     setEffectName(activeEmotion.name);
@@ -508,7 +634,7 @@ export default function SupportCardGenerator({ selectedEmotion, onBackToHub }: S
             onClick={onBackToHub}
             className="text-xs font-bold px-3 py-1.5 bg-gray-100 hover:bg-gray-200 rounded-lg text-gray-600 transition cursor-pointer"
           >
-            ← 一覧に戻る
+            ← 戻る
           </button>
         )}
       </div>
@@ -617,8 +743,8 @@ export default function SupportCardGenerator({ selectedEmotion, onBackToHub }: S
           <div className="md:col-span-2"><label className="block font-bold text-gray-700 mb-1">アバター画像 <span className="text-red-500">*</span></label><input type="file" accept="image/*" onChange={handleImageUpload} className="w-full text-gray-700 file:mr-2 file:rounded file:border-0 file:bg-purple-50 file:px-3 file:py-1.5 file:text-xs file:font-semibold file:text-purple-700 hover:file:bg-purple-100 cursor-pointer" /></div>
           <div className="rounded-2xl border border-gray-100 bg-gray-50 p-3 md:col-span-2"><label className="block font-bold text-gray-700 mb-1">イメージカラー</label><p className="text-[10px] text-gray-500">カードの雰囲気を表す色です。ゲーム用のカラータイプは選んだ色から自動判定されます。</p><div className="mt-3 flex flex-wrap gap-2">{COLOR_PALETTE.map((color) => <button key={color} type="button" onClick={() => handleColorChange(color)} aria-label={`カラー ${color}`} className={`h-8 w-8 rounded-full border-2 transition ${selectedColorHex.toUpperCase() === color.toUpperCase() ? 'border-gray-900 ring-2 ring-offset-1 ring-gray-300' : 'border-white shadow-sm'}`} style={{ backgroundColor: color }} />)}</div><div className="mt-3 flex flex-col gap-2 sm:flex-row sm:items-center"><input type="color" value={selectedColorHex} onChange={(e) => handleColorChange(e.target.value)} aria-label="自由な色を選択" className="h-11 w-16 cursor-pointer rounded-lg border border-gray-300 bg-white p-1" /><div className="text-[10px] text-gray-500">HEX {selectedColorHex.toUpperCase()} / {getColorTypeLabel(selectedColorType)}</div></div></div>
           <div><label className="block font-bold text-gray-700 mb-1">効果名称設定（1つ・変更可能） <span className="text-red-500">*</span></label><input type="text" value={effectName} onChange={(e) => setEffectName(e.target.value)} maxLength={40} className="w-full rounded-lg border bg-white px-3 py-2 font-bold text-purple-900 focus:ring-2 focus:ring-purple-500" /><p className="mt-1 text-[10px] text-gray-500">エモーションの性能名称だけを自分らしく変更できます。</p></div>
-          <div><label className="block font-bold text-gray-700 mb-1">選択したエモーション</label><div className="rounded-xl border border-purple-100 bg-purple-50 p-3"><div className="font-black text-purple-950">{selectedEmotionPreview.name}</div><div className="mt-1 text-[10px] font-bold text-gray-500">{selectedEmotionPreview.target} / {selectedEmotionPreview.duration} / {selectedEmotionPreview.effectCategory}</div></div></div>
-          <div className="md:col-span-2"><label className="block font-bold text-gray-700 mb-1">カードに刻む一言（フレーバーテキスト）</label><textarea value={flavorText} onChange={(e) => setFlavorText(e.target.value)} rows={3} maxLength={120} placeholder={activeEmotion.emotionPhrase} className="w-full resize-none rounded-xl border bg-white px-3 py-2 focus:ring-2 focus:ring-purple-500" /><p className="mt-1 text-[10px] text-gray-500">選択した「想い」が初期値として入ります。自分の言葉に変えることもできます。この文章は対戦画面でも表示されます。</p></div>
+          <div className="md:col-span-2"><label className="block font-bold text-gray-700 mb-2">選択したエモーション</label><div className="grid grid-cols-1 gap-4 rounded-2xl border border-purple-100 bg-purple-50/50 p-3 md:grid-cols-[minmax(0,280px)_1fr] md:items-center"><EmotionMiniMap selectedEmotionId={selectedEmotionPreview.id} onSelect={handleEmotionChange} /><div className="min-w-0 rounded-2xl border border-white bg-white p-4 shadow-sm"><div className="text-[9px] font-black tracking-wide text-purple-500">今の「想い」</div><div className="mt-1 font-serif text-lg font-black leading-relaxed text-purple-950">「{selectedEmotionPreview.emotionPhrase}」</div><div className="mt-3 text-sm font-black text-gray-900">{selectedEmotionPreview.name}</div><div className="mt-1 text-[10px] font-bold text-gray-500">{selectedEmotionPreview.target} / {selectedEmotionPreview.duration} / {selectedEmotionPreview.effectCategory}</div><div className="mt-2 text-[10px] leading-relaxed text-gray-600">{selectedEmotionPreview.description}</div></div></div></div>
+          <div className="md:col-span-2"><label className="block font-bold text-gray-700 mb-1">カードに刻む一言（フレーバーテキスト）</label><textarea value={flavorText} onChange={(e) => setFlavorText(e.target.value)} rows={3} maxLength={120} placeholder={getEmotionFlavorText(activeEmotion)} className="w-full resize-none rounded-xl border bg-white px-3 py-2 focus:ring-2 focus:ring-purple-500" /><p className="mt-1 text-[10px] text-gray-500">選択した「想い」が初期値として入ります。自分の言葉に変えることもできます。この文章は対戦画面でも表示されます。</p></div>
           <div className="md:col-span-2"><label className="block font-bold text-gray-700 mb-1">編集・削除用の合言葉（パスワード） <span className="text-red-500">*</span></label><input type="password" placeholder="後からの編集・削除に使用します" value={password} onChange={(e) => setPassword(e.target.value)} className="w-full rounded-lg border bg-white px-3 py-2 focus:ring-2 focus:ring-purple-500" /></div>
           <div className="pt-1 md:col-span-2"><button type="submit" disabled={isModerating} className="w-full rounded-2xl bg-purple-600 py-3 text-white font-black shadow transition hover:bg-purple-700 disabled:cursor-wait disabled:bg-purple-300">{isModerating ? '安全確認中…' : editingId ? 'エントリー内容を更新する' : 'この想いでサポートカードをエントリーして保存'}</button></div>
         </form>
