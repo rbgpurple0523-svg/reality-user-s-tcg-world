@@ -791,7 +791,7 @@ export default function Home() {
           <DeckBuilder
             initialDeckId={editingDeckId}
             onGoToCpuBattle={editingDeckId ? handleReturnToMenu : handleStartCpuBattle}
-            battleButtonLabel={editingDeckId ? '⚔️ 対戦へ戻る' : '⚔️ CPU対戦へ'}
+            battleButtonLabel={editingDeckId ? '⚔️ 対戦へ戻る※自動保存されます' : '⚔️ CPU対戦で試す※自動保存されます'}
             onGoToEntryHub={() => setCurrentView('entryHub')}
           />
         )}

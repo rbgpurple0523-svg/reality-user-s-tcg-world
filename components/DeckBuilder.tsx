@@ -99,7 +99,7 @@ export default function DeckBuilder({ onGoToCpuBattle, onGoToBattle, initialDeck
   
   const [decks, setDecks] = useState<Deck[]>([]);
   const [selectedDeckId, setSelectedDeckId] = useState<string | null>(null);
-  const [deckName, setDeckName] = useState<string>('新規デッキ');
+  const [deckName, setDeckName] = useState<string>('新しいチーム');
   
   const [vanguardId, setVanguardId] = useState<string | null>(null);
   const [centerId, setCenterId] = useState<string | null>(null);
@@ -451,7 +451,7 @@ export default function DeckBuilder({ onGoToCpuBattle, onGoToBattle, initialDeck
 
   const resetToNewDeck = () => {
     setSelectedDeckId(null);
-    setDeckName(`デッキ ${decks.length + 1}`);
+    setDeckName('新しいチーム');
     setVanguardId(null);
     setCenterId(null);
     setGeneralId(null);
@@ -1117,9 +1117,9 @@ export default function DeckBuilder({ onGoToCpuBattle, onGoToBattle, initialDeck
             <div className="mb-2 flex items-end justify-between gap-3">
               <div>
                 <div className="text-[9px] font-black tracking-[0.16em] text-indigo-500">CHARACTER LINEUP</div>
-                <h2 className="mt-0.5 text-sm font-black text-indigo-950">3つのクラス</h2>
+                <h2 className="mt-0.5 text-sm font-black text-indigo-950">キャラカード</h2>
               </div>
-              <div className="text-[9px] font-bold text-gray-500">枠をタップ → キャラを選ぶ</div>
+              <div className="text-[9px] font-bold text-gray-500">各クラスの枠をタップ → キャラを選ぶ</div>
             </div>
 
             <div className="grid grid-cols-3 gap-2">
@@ -1195,15 +1195,15 @@ export default function DeckBuilder({ onGoToCpuBattle, onGoToBattle, initialDeck
               {groupedSupportCards.length === 0 ? (
                 <div className="flex h-16 items-center justify-center text-[10px] font-bold text-gray-400">「カードを選ぶ」から追加してください</div>
               ) : (
-                <div className="flex min-w-max gap-2">
+                <div className="grid grid-flow-col grid-rows-2 auto-cols-[76px] gap-2 min-w-max">
                   {groupedSupportCards.map(({ id, count, data }) => data ? (
-                    <div key={id} className="w-28 shrink-0 rounded-xl border bg-white p-1.5 shadow-sm" style={{ borderColor: data.colorHex || '#e9d5ff' }}>
-                      <div className="relative h-20 overflow-hidden rounded-lg bg-gray-100">
-                        {data.imageDataUrl ? <img src={data.imageDataUrl} alt="" className="h-full w-full object-cover" /> : <div className="flex h-full items-center justify-center text-[8px] text-gray-400">画像なし</div>}
-                        <span className="absolute right-1 top-1 rounded-full bg-gray-950/75 px-1.5 py-0.5 text-[8px] font-black text-white">×{count}</span>
+                    <div key={id} className="w-[76px] shrink-0 rounded-xl border bg-white p-1 shadow-sm" style={{ borderColor: data.colorHex || '#e9d5ff' }}>
+                      <div className="relative h-14 overflow-hidden rounded-lg bg-gray-100">
+                        {data.imageDataUrl ? <img src={data.imageDataUrl} alt="" className="h-full w-full object-cover" /> : <div className="flex h-full items-center justify-center text-[7px] text-gray-400">画像なし</div>}
+                        <span className="absolute right-0.5 top-0.5 rounded-full bg-gray-950/75 px-1 py-0.5 text-[7px] font-black text-white">×{count}</span>
                       </div>
-                      <div className="mt-1 truncate text-[9px] font-black text-gray-900">{data.name}</div>
-                      <button type="button" onClick={() => handleRemoveSingleSupport(id)} className="mt-1 w-full rounded-lg bg-gray-50 py-1 text-[8px] font-black text-gray-500 hover:bg-red-50 hover:text-red-600">1枚減らす</button>
+                      <div className="mt-1 line-clamp-2 min-h-[22px] text-[8px] font-black leading-tight text-gray-900">{data.name}</div>
+                      <button type="button" onClick={() => handleRemoveSingleSupport(id)} className="mt-1 w-full rounded-lg bg-gray-50 py-0.5 text-[7px] font-black text-gray-500 hover:bg-red-50 hover:text-red-600">1枚減らす</button>
                     </div>
                   ) : null)}
                 </div>
@@ -1211,7 +1211,7 @@ export default function DeckBuilder({ onGoToCpuBattle, onGoToBattle, initialDeck
             </div>
           </section>
 
-          <div className="mt-3 grid shrink-0 grid-cols-[1fr_auto] gap-2">
+          <div className="mt-3 grid shrink-0 grid-cols-2 gap-2">
             <button
               type="button"
               onClick={handleSaveDeck}
@@ -1226,7 +1226,7 @@ export default function DeckBuilder({ onGoToCpuBattle, onGoToBattle, initialDeck
                 handleSaveDeck();
                 goToCpuBattle?.();
               }}
-              className="rounded-2xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-[11px] font-black text-emerald-800 transition hover:bg-emerald-100"
+              className="rounded-2xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm font-black text-emerald-800 transition hover:bg-emerald-100"
             >
               {battleButtonLabel.replace(/^⚔️\s*/, '')}
             </button>
@@ -1322,8 +1322,10 @@ export default function DeckBuilder({ onGoToCpuBattle, onGoToBattle, initialDeck
                 </div>
                 <button type="button" onClick={() => setIsSupportFilterOpen(false)} className="rounded-xl bg-gray-100 px-3 py-2 text-[10px] font-black text-gray-700">閉じる</button>
               </div>
-              <div className="mt-2 flex flex-wrap gap-2">
-                <input type="text" value={supSearchQuery} onChange={(e) => setSupSearchQuery(e.target.value)} placeholder="カード名・効果で検索" className="min-w-0 flex-1 rounded-xl border border-gray-200 px-3 py-2 text-[10px]" />
+              <div className="mt-3 space-y-2">
+                <label className="block text-[9px] font-black text-gray-500" htmlFor="support-card-search">カード名・効果から探す</label>
+                <input id="support-card-search" type="text" value={supSearchQuery} onChange={(e) => setSupSearchQuery(e.target.value)} placeholder="カード名・効果を入力して検索" className="w-full rounded-xl border border-gray-200 px-4 py-3 text-sm outline-none focus:border-purple-400 focus:ring-2 focus:ring-purple-100" />
+                <div className="flex flex-wrap gap-2">
                 {availableSupportCategories.length > 0 && availableSupportCategories.map(category => (
                   <button
                     key={category}
@@ -1334,6 +1336,7 @@ export default function DeckBuilder({ onGoToCpuBattle, onGoToBattle, initialDeck
                     {category}
                   </button>
                 ))}
+                </div>
               </div>
               <div className="mt-2 flex items-center justify-between text-[9px] font-bold text-gray-400">
                 <span>{filteredSupportCards.length}件</span>
@@ -1345,7 +1348,7 @@ export default function DeckBuilder({ onGoToCpuBattle, onGoToBattle, initialDeck
               {filteredSupportCards.length === 0 ? (
                 <div className="rounded-2xl border border-dashed border-gray-200 bg-gray-50 py-12 text-center text-xs font-bold text-gray-400">条件に一致するサポートカードがありません。</div>
               ) : (
-                <div className="grid grid-cols-2 gap-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5">
+                <div className="grid grid-cols-4 gap-2">
                   {filteredSupportCards.map(sup => {
                     const currentCount = supportIds.filter(id => id === sup.id).length;
                     const full = supportIds.length >= 18 || currentCount >= 2;
@@ -1354,7 +1357,7 @@ export default function DeckBuilder({ onGoToCpuBattle, onGoToBattle, initialDeck
                       <div key={sup.id} className={`rounded-2xl border p-2 transition ${full ? 'border-gray-200 bg-gray-100 opacity-55' : 'border-gray-200 bg-white hover:border-purple-300'}`}>
                         <button type="button" disabled={full} onClick={() => handleAddSupport(sup.id)} className="w-full text-left disabled:cursor-not-allowed">
                           <div className="overflow-hidden rounded-xl border-2 bg-gray-100" style={{ borderColor: sup.colorHex || '#e9d5ff' }}>
-                            {sup.imageDataUrl ? <img src={sup.imageDataUrl} alt="" className="h-28 w-full object-cover" /> : <div className="flex h-28 items-center justify-center text-[8px] text-gray-400">画像なし</div>}
+                            {sup.imageDataUrl ? <img src={sup.imageDataUrl} alt="" className="h-24 w-full object-cover" /> : <div className="flex h-24 items-center justify-center text-[8px] text-gray-400">画像なし</div>}
                           </div>
                           <div className="mt-1 line-clamp-2 text-[9px] font-black text-gray-950">{sup.name}</div>
                           <div className="mt-1 text-[8px] font-bold text-gray-500">{meta.statEffect || sup.category || 'サポート効果'}</div>
