@@ -1,8 +1,6 @@
 'use client';
 
 import React, { useMemo, useState } from 'react';
-import CardGenerator from './CardGenerator';
-import SupportCardGenerator from './SupportCardGenerator';
 import { EMOTION_PRESETS } from './emotionPresets';
 import type { EmotionPreset } from './emotionPresets';
 
@@ -58,11 +56,23 @@ export interface EntryRecord {
 
 interface EntryHubProps {
   onBackToMenu?: () => void;
+  onGoToDeckBuilder?: () => void;
+  onStartCharacterRegistration?: (
+    preset?: CoordinatePreset,
+  ) => void;
+  onStartSupportRegistration?: (
+    preset?: EmotionPreset,
+  ) => void;
 }
 
 const ENTRIES_KEY = 'reality_world_entries';
 
-export default function EntryHub({ onBackToMenu }: EntryHubProps) {
+export default function EntryHub({
+  onBackToMenu,
+  onGoToDeckBuilder,
+  onStartCharacterRegistration,
+  onStartSupportRegistration,
+}: EntryHubProps) {
   const [activeTab, setActiveTab] = useState<'coordinate' | 'emotion'>('coordinate');
   const [entries, setEntries] = useState<EntryRecord[]>(() => {
     if (typeof window === 'undefined') return [];
@@ -79,20 +89,6 @@ export default function EntryHub({ onBackToMenu }: EntryHubProps) {
   const [emoTargetFilter, setEmoTargetFilter] = useState('ALL');
   const [emoStatFilter, setEmoStatFilter] = useState('ALL');
   const [emoDurationFilter, setEmoDurationFilter] = useState('ALL');
-
-  const [activeGenerator, setActiveGenerator] = useState<{
-    type: 'coordinate' | 'emotion';
-    preset: CoordinatePreset | EmotionPreset;
-  } | null>(null);
-
-  const reloadEntries = () => {
-    try {
-      const saved = localStorage.getItem(ENTRIES_KEY);
-      setEntries(saved ? JSON.parse(saved) : []);
-    } catch {
-      setEntries([]);
-    }
-  };
 
   const getEntryCount = (presetId: string) =>
     entries.filter((entry) => entry.presetId === presetId).length;
@@ -165,37 +161,6 @@ export default function EntryHub({ onBackToMenu }: EntryHubProps) {
     [emoTargetFilter, emoStatFilter, emoDurationFilter],
   );
 
-  if (activeGenerator) {
-    if (activeGenerator.type === 'coordinate') {
-      return (
-        <CardGenerator
-          selectedCoordinate={activeGenerator.preset as CoordinatePreset}
-          onBackToHub={() => {
-            reloadEntries();
-            if (onBackToMenu) {
-              onBackToMenu();
-              return;
-            }
-            setActiveGenerator(null);
-          }}
-        />
-      );
-    }
-    return (
-      <SupportCardGenerator
-        selectedEmotion={activeGenerator.preset as EmotionPreset}
-        onBackToHub={() => {
-            reloadEntries();
-            if (onBackToMenu) {
-              onBackToMenu();
-              return;
-            }
-            setActiveGenerator(null);
-          }}
-      />
-    );
-  }
-
   return (
     <div className="max-w-5xl mx-auto p-6 space-y-6 text-gray-900 bg-gray-50 min-h-screen rounded-2xl">
       <div className="bg-white p-6 rounded-2xl border border-gray-200 shadow-sm space-y-4">
@@ -206,15 +171,44 @@ export default function EntryHub({ onBackToMenu }: EntryHubProps) {
               公式に用意された性能枠へ、自分のアバターを登録します。性能そのものは編集できません。
             </p>
           </div>
-          {onBackToMenu && (
-            <button
-              type="button"
-              onClick={onBackToMenu}
-              className="px-3 py-2 rounded-lg bg-gray-100 hover:bg-gray-200 text-xs font-bold"
-            >
-              ← メニューへ
-            </button>
-          )}
+          <div className="flex flex-wrap items-center justify-end gap-2">
+            {onGoToDeckBuilder && (
+              <button
+                type="button"
+                onClick={onGoToDeckBuilder}
+                className="px-3 py-2 rounded-lg bg-indigo-50 hover:bg-indigo-100 text-indigo-700 text-xs font-bold border border-indigo-100"
+              >
+                🃏 デッキを構築する
+              </button>
+            )}
+            {onStartCharacterRegistration && (
+              <button
+                type="button"
+                onClick={() => onStartCharacterRegistration()}
+                className="px-3 py-2 rounded-lg bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-bold"
+              >
+                👤 キャラカードを登録
+              </button>
+            )}
+            {onStartSupportRegistration && (
+              <button
+                type="button"
+                onClick={() => onStartSupportRegistration()}
+                className="px-3 py-2 rounded-lg bg-purple-600 hover:bg-purple-700 text-white text-xs font-bold"
+              >
+                ✨ サポートカードを登録
+              </button>
+            )}
+            {onBackToMenu && (
+              <button
+                type="button"
+                onClick={onBackToMenu}
+                className="px-3 py-2 rounded-lg bg-gray-100 hover:bg-gray-200 text-xs font-bold"
+              >
+                ← メニューへ
+              </button>
+            )}
+          </div>
         </div>
 
         <div className="grid grid-cols-3 gap-2 pt-2 border-t border-gray-100 text-xs">
@@ -256,7 +250,7 @@ export default function EntryHub({ onBackToMenu }: EntryHubProps) {
               <input
                 value={coordSearchFilter}
                 onChange={(e) => setCoordSearchFilter(e.target.value)}
-                placeholder="a〜y / 傾向で検索"
+                placeholder="P-1〜A-1 / 傾向で検索"
                 className="px-3 py-2 border rounded-lg bg-white min-w-52"
               />
               <select
@@ -289,7 +283,7 @@ export default function EntryHub({ onBackToMenu }: EntryHubProps) {
                           <button
                             key={coordinate.id}
                             type="button"
-                            onClick={() => setActiveGenerator({ type: 'coordinate', preset: coordinate })}
+                            onClick={() => onStartCharacterRegistration?.(coordinate)}
                             className="w-full rounded-lg border border-indigo-100 bg-white px-2 py-2 text-left text-[9px] hover:border-indigo-400 hover:bg-indigo-50"
                           >
                             <div className="font-black text-indigo-900">
@@ -308,12 +302,12 @@ export default function EntryHub({ onBackToMenu }: EntryHubProps) {
                   <button
                     type="button"
                     onClick={() => {
-                      const y = COORDINATE_PRESETS.find((coordinate) => coordinate.code === 'y');
-                      if (y) setActiveGenerator({ type: 'coordinate', preset: y });
+                      const balanced = COORDINATE_PRESETS.find((coordinate) => coordinate.code === 'a1');
+                      if (balanced) onStartCharacterRegistration?.(balanced);
                     }}
                     className="w-full rounded-lg border border-purple-200 bg-purple-50 p-2 text-left text-xs hover:bg-purple-100"
                   >
-                    <span className="font-black">Y</span>：体力＝知略＝器用＝特技（均等型）
+                    <span className="font-black">A-1</span>：体力＝知略＝器用＝特技（均等型）
                   </button>
                 </div>
               </div>
@@ -369,7 +363,7 @@ export default function EntryHub({ onBackToMenu }: EntryHubProps) {
                     <button
                       type="button"
                       disabled={isFull}
-                      onClick={() => setActiveGenerator({ type: 'coordinate', preset: coordinate })}
+                      onClick={() => onStartCharacterRegistration?.(coordinate)}
                       className={`w-full py-2.5 rounded-lg text-xs font-bold ${isFull ? 'bg-gray-100 text-gray-400 cursor-not-allowed' : 'bg-indigo-600 hover:bg-indigo-700 text-white'}`}
                     >
                       {isFull ? 'エントリー満員' : 'このコーデを選んでエントリーする'}
@@ -467,7 +461,7 @@ export default function EntryHub({ onBackToMenu }: EntryHubProps) {
                     <button
                       type="button"
                       disabled={isFull}
-                      onClick={() => setActiveGenerator({ type: 'emotion', preset: emotion })}
+                      onClick={() => onStartSupportRegistration?.(emotion)}
                       className={`w-full py-2.5 rounded-lg text-xs font-bold ${isFull ? 'bg-gray-100 text-gray-400 cursor-not-allowed' : 'bg-purple-600 hover:bg-purple-700 text-white'}`}
                     >
                       {isFull ? 'エントリー満員' : 'このエモーションを選んでエントリーする'}
