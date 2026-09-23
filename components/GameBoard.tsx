@@ -20,7 +20,11 @@ import {
 import { CHARACTER_SAMPLE_CARDS } from './characterSampleCards';
 import { COORDINATE_PRESETS } from './coordinatePresets';
 import { createVirtualSupportCards, VIRTUAL_SUPPORT_PREFIX } from './supportSampleCards';
-import { EMOTION_PRESETS, type EmotionPreset } from './emotionPresets';
+import {
+  EMOTION_PRESETS,
+  getEmotionPerformanceBadges,
+  type EmotionPreset,
+} from './emotionPresets';
 
 import BattleEffectLayer, {
   isBattlePreResultEffectPlaying,
@@ -697,6 +701,7 @@ void ensureAnonymousAuth()
   // 相手の手札・山札枚数。オンラインではFirebaseから同期し、CPU戦ではCPUのローカル状態を表示する。
   const [opponentHandCount, setOpponentHandCount] = useState(0);
   const [opponentDeckCount, setOpponentDeckCount] = useState(0);
+  const [supportHandContainerWidth, setSupportHandContainerWidth] = useState(0);
   const lastActionRef = useRef<string>('');
   const lastSkillActionRef = useRef<string>('');
   const lastObservedBattlePhaseRef = useRef<string>('');
@@ -724,12 +729,28 @@ const currentUserUidRef =
 const roomCloseRedirectRef =
   useRef<number | null>(null);
 const supportSubmitInProgressRef = useRef(false);
+const supportHandContainerRef = useRef<HTMLDivElement | null>(null);
 const supportDealTimerRef = useRef<number | null>(null);
 const supportRevealTimerRef = useRef<number | null>(null);
 const supportPointerStartRef = useRef<{ index: number; y: number } | null>(null);
 const supportClickSuppressRef = useRef(false);
 const myActiveCardAnchorRef = useRef<HTMLDivElement | null>(null);
 const opponentActiveCardAnchorRef = useRef<HTMLDivElement | null>(null);
+
+  useEffect(() => {
+    const element = supportHandContainerRef.current;
+    if (!element || typeof ResizeObserver === 'undefined') return;
+
+    const updateWidth = () => {
+      setSupportHandContainerWidth(element.getBoundingClientRect().width);
+    };
+
+    updateWidth();
+    const observer = new ResizeObserver(updateWidth);
+    observer.observe(element);
+
+    return () => observer.disconnect();
+  }, []);
 
   const addLog = (message: string) => setLog((prev) => [...prev, message]);
 
@@ -6717,27 +6738,6 @@ const field =
               </div>
             </div>
 
-            <div className="lg:hidden sticky top-1 z-30 rounded-xl border border-indigo-200 bg-white/95 p-2 shadow-md backdrop-blur">
-              <div className="grid grid-cols-2 gap-2">
-                <div className="flex items-center gap-2 rounded-lg bg-indigo-50 px-2 py-1.5">
-                  <img src={myActiveAvatar.card.imageDataUrl} alt="" className="h-10 w-8 rounded-md bg-white object-contain" />
-                  <div className="min-w-0">
-                    <div className="truncate text-[10px] font-black text-indigo-800">自分</div>
-                    <div className="truncate text-[10px] font-bold text-slate-700">{myActiveAvatar.card.userName}</div>
-                    <div className="text-sm font-black text-indigo-700">{mySideActiveClassScore}スコア</div>
-                  </div>
-                </div>
-                <div className="flex items-center gap-2 rounded-lg bg-rose-50 px-2 py-1.5">
-                  <img src={oppActiveAvatar.card.imageDataUrl} alt="" className="h-10 w-8 rounded-md bg-white object-contain" />
-                  <div className="min-w-0">
-                    <div className="truncate text-[10px] font-black text-rose-700">相手</div>
-                    <div className="truncate text-[10px] font-bold text-slate-700">{oppActiveAvatar.card.userName}</div>
-                    <div className="text-sm font-black text-rose-700">{opponentSideActiveClassScore}スコア</div>
-                  </div>
-                </div>
-              </div>
-            </div>
-
             {/* ===== ④ サポートカード ===== */}
             <section className="rounded-2xl border border-white/60 bg-white/75 p-3 shadow-lg backdrop-blur-md">
               <div className="flex flex-wrap items-center justify-between gap-2">
@@ -6760,95 +6760,209 @@ const field =
                 タップ1回で確認、もう一度タップで使用。上へスワイプでも使用できます。
               </div>
 
-              <div className="mt-3 flex gap-2 overflow-x-auto pb-2 pt-2 touch-pan-x">
-                {myHand.length === 0 ? (
-                  <div className="py-4 text-xs font-bold opacity-40">手札がありません。</div>
-                ) : (
-                  myHand.map((card, index) => {
-                    const isSelected = selectedSupportCardIndex === index;
-                    const isRevealing = revealingSupportCardIndexes.includes(index);
-                    return (
-                      <button
-                        key={`${card.id}_${index}`}
-                        type="button"
-                        disabled={!myTurn}
-                        onPointerDown={(event) => {
-                          if (!myTurn) return;
-                          supportPointerStartRef.current = { index, y: event.clientY };
-                        }}
-                        onPointerUp={(event) => {
-                          if (!myTurn) return;
-                          const startPoint = supportPointerStartRef.current;
-                          supportPointerStartRef.current = null;
-                          if (!startPoint || startPoint.index !== index) return;
-                          if (event.clientY - startPoint.y <= -45) {
-                            supportClickSuppressRef.current = true;
-                            setSelectedSupportCardIndex(null);
-                            void handleUseSupportCard(card, index);
-                            window.setTimeout(() => { supportClickSuppressRef.current = false; }, 50);
-                          }
-                        }}
-                        onPointerCancel={() => { supportPointerStartRef.current = null; }}
-                        onClick={() => {
-                          if (!myTurn || supportClickSuppressRef.current) return;
-                          if (selectedSupportCardIndex === index) {
-                            setSelectedSupportCardIndex(null);
-                            void handleUseSupportCard(card, index);
-                            return;
-                          }
-                          setSelectedSupportCardIndex(index);
-                        }}
-                        className={`relative w-[78px] shrink-0 rounded-xl border bg-white p-1.5 text-left shadow-md transition duration-200 sm:w-[86px] ${
-                          !myTurn ? 'cursor-not-allowed opacity-50' : 'cursor-pointer hover:border-indigo-400'
-                        } ${
-                          isSelected ? '-translate-y-3 border-indigo-500 ring-2 ring-indigo-200' : 'border-slate-200'
-                        }`}
-                      >
-                        <BattleCardReveal
-                          revealed={!isRevealing}
-                          width={66}
-                          height={92}
-                          className="mx-auto"
-                          colorHex={getBattleVisualColorHex(myActiveAvatar.card)}
-                        >
-                          {getSupportImage(card) ? (
-                            <img src={getSupportImage(card)} alt="" className="h-full w-full rounded-xl bg-white object-contain p-0.5" />
-                          ) : (
-                            <div className="flex h-full items-center justify-center text-2xl">🃏</div>
-                          )}
-                        </BattleCardReveal>
-                        <div className="mt-1 flex items-center justify-center gap-1">
-                          <span className="flex h-5 w-5 items-center justify-center rounded-full bg-indigo-100 text-[10px]">✨</span>
-                          <span className="max-w-[54px] truncate text-[9px] font-black">{card.name}</span>
-                        </div>
-                      </button>
-                    );
-                  })
-                )}
-              </div>
+              {(() => {
+                const selectedCard =
+                  selectedSupportCardIndex !== null
+                    ? myHand[selectedSupportCardIndex]
+                    : undefined;
+                const selectedPreset = selectedCard
+                  ? getEmotionPresetForCard(selectedCard)
+                  : undefined;
+                const selectedBadges = selectedPreset
+                  ? getEmotionPerformanceBadges(selectedPreset)
+                  : undefined;
 
-              {selectedSupportCardIndex !== null && myHand[selectedSupportCardIndex] && (
-                <div className="mt-1 rounded-2xl border border-indigo-200 bg-indigo-50/80 p-3">
-                  <div className="flex items-start gap-3">
-                    <BattleCardReveal
-                      revealed
-                      width={74}
-                      height={104}
-                      colorHex={getBattleVisualColorHex(myActiveAvatar.card)}
-                    >
-                      {getSupportImage(myHand[selectedSupportCardIndex]) ? (
-                        <img src={getSupportImage(myHand[selectedSupportCardIndex])} alt="" className="h-full w-full rounded-xl bg-white object-contain p-0.5" />
-                      ) : (
-                        <div className="flex h-full items-center justify-center text-3xl">🃏</div>
-                      )}
-                    </BattleCardReveal>
-                    <div className="min-w-0 flex-1">
-                      <div className="text-sm font-black text-indigo-950">{myHand[selectedSupportCardIndex].name}</div>
-                      <div className="mt-1 text-xs font-bold leading-relaxed text-slate-700">{myHand[selectedSupportCardIndex].description}</div>
+                return (
+                  <div
+                    className={
+                      selectedCard
+                        ? 'mt-3 grid grid-cols-[minmax(0,56%)_minmax(0,44%)] items-start gap-3'
+                        : 'mt-3'
+                    }
+                  >
+                    {selectedCard && selectedPreset && selectedBadges && (
+                      <div className="min-w-0 rounded-2xl border border-indigo-200 bg-indigo-50/90 p-3 shadow-sm">
+                        <div className="flex flex-col gap-3 sm:flex-row sm:items-start">
+                          <div className="shrink-0 self-center sm:self-start">
+                            <BattleCardReveal
+                            revealed
+                            width={74}
+                            height={104}
+                            colorHex={getBattleVisualColorHex(myActiveAvatar.card)}
+                          >
+                            {getSupportImage(selectedCard) ? (
+                              <img
+                                src={getSupportImage(selectedCard)}
+                                alt=""
+                                className="h-full w-full rounded-xl bg-white object-contain p-0.5"
+                              />
+                            ) : (
+                              <div className="flex h-full items-center justify-center text-3xl">🃏</div>
+                            )}
+                            </BattleCardReveal>
+                          </div>
+                          <div className="min-w-0 flex-1">
+                            <div className="text-sm font-black text-indigo-950">{selectedCard.name}</div>
+                            <div className="mt-2 flex flex-wrap gap-1">
+                              {[
+                                selectedBadges.target,
+                                selectedBadges.duration,
+                                selectedBadges.effect,
+                              ].map((badge, badgeIndex) => (
+                                <span
+                                  key={`${badge.label}_${badgeIndex}`}
+                                  title={badge.description}
+                                  className="inline-flex min-w-7 items-center justify-center rounded-md border border-indigo-200 bg-white px-1.5 py-0.5 text-[10px] font-black text-indigo-900"
+                                >
+                                  {badge.label}
+                                </span>
+                              ))}
+                            </div>
+                            <div className="mt-2 text-xs font-black leading-relaxed text-slate-800">
+                              {selectedCard.description || selectedPreset.description}
+                            </div>
+                          </div>
+                        </div>
+
+                        <div className="mt-3 grid grid-cols-1 gap-1.5 text-[10px] font-bold text-slate-700">
+                          <div className="rounded-lg border border-indigo-100 bg-white/80 px-2 py-1.5">
+                            <span className="font-black text-indigo-900">対象：</span>
+                            {selectedBadges.target.description}
+                          </div>
+                          <div className="rounded-lg border border-indigo-100 bg-white/80 px-2 py-1.5">
+                            <span className="font-black text-indigo-900">期限：</span>
+                            {selectedPreset.duration === '一時'
+                              ? 'このターン＋次の1ターンの間有効。'
+                              : 'このクラスの終了まで有効。次のクラスには持ち越さない。'}
+                          </div>
+                          <div className="rounded-lg border border-indigo-100 bg-white/80 px-2 py-1.5">
+                            <span className="font-black text-indigo-900">性能：</span>
+                            {selectedPreset.statEffect}
+                            {selectedPreset.effectAmount ? `（${selectedPreset.effectAmount}）` : ''}
+                          </div>
+                          {selectedPreset.note && (
+                            <div className="rounded-lg border border-indigo-100 bg-white/80 px-2 py-1.5">
+                              <span className="font-black text-indigo-900">補足：</span>
+                              {selectedPreset.note}
+                            </div>
+                          )}
+                        </div>
+                      </div>
+                    )}
+
+                    <div className={selectedCard ? 'min-w-0' : ''}>
+                      {(() => {
+                        const cardWidth = 82;
+                        const cardGap = 8;
+                        const naturalWidth =
+                          myHand.length * cardWidth +
+                          Math.max(0, myHand.length - 1) * cardGap;
+                        const overlap =
+                          myHand.length > 1 &&
+                          supportHandContainerWidth > 0 &&
+                          naturalWidth > supportHandContainerWidth
+                            ? (naturalWidth - supportHandContainerWidth) / (myHand.length - 1)
+                            : 0;
+
+                        return (
+                          <div
+                            ref={supportHandContainerRef}
+                            className="flex items-center justify-end overflow-hidden pb-2 pt-2"
+                          >
+                        {myHand.length === 0 ? (
+                          <div className="py-4 text-xs font-bold opacity-40">手札がありません。</div>
+                        ) : (
+                          myHand.map((card, index) => {
+                            const isSelected = selectedSupportCardIndex === index;
+                            const isRevealing = revealingSupportCardIndexes.includes(index);
+                            const preset = getEmotionPresetForCard(card);
+                            const badges = preset
+                              ? getEmotionPerformanceBadges(preset)
+                              : undefined;
+
+                            return (
+                              <button
+                                key={`${card.id}_${index}`}
+                                type="button"
+                                disabled={!myTurn}
+                                onPointerDown={(event) => {
+                                  if (!myTurn) return;
+                                  supportPointerStartRef.current = { index, y: event.clientY };
+                                }}
+                                onPointerUp={(event) => {
+                                  if (!myTurn) return;
+                                  const startPoint = supportPointerStartRef.current;
+                                  supportPointerStartRef.current = null;
+                                  if (!startPoint || startPoint.index !== index) return;
+                                  if (event.clientY - startPoint.y <= -45) {
+                                    supportClickSuppressRef.current = true;
+                                    setSelectedSupportCardIndex(null);
+                                    void handleUseSupportCard(card, index);
+                                    window.setTimeout(() => { supportClickSuppressRef.current = false; }, 50);
+                                  }
+                                }}
+                                onPointerCancel={() => { supportPointerStartRef.current = null; }}
+                                onClick={() => {
+                                  if (!myTurn || supportClickSuppressRef.current) return;
+                                  if (selectedSupportCardIndex === index) {
+                                    setSelectedSupportCardIndex(null);
+                                    void handleUseSupportCard(card, index);
+                                    return;
+                                  }
+                                  setSelectedSupportCardIndex(index);
+                                }}
+                                style={{
+                                  marginLeft: index === 0 ? 0 : -overlap,
+                                  zIndex: isSelected ? myHand.length + 10 : index + 1,
+                                }}
+                                className={`relative w-[82px] shrink-0 rounded-xl border bg-white p-1.5 text-left shadow-md transition duration-200 ${
+                                  !myTurn ? 'cursor-not-allowed opacity-50' : 'cursor-pointer hover:border-indigo-400'
+                                } ${
+                                  isSelected ? '-translate-y-3 border-indigo-500 ring-2 ring-indigo-200' : 'border-slate-200'
+                                }`}
+                              >
+                                <BattleCardReveal
+                                  revealed={!isRevealing}
+                                  width={70}
+                                  height={98}
+                                  className="mx-auto"
+                                  colorHex={getBattleVisualColorHex(myActiveAvatar.card)}
+                                >
+                                  {getSupportImage(card) ? (
+                                    <img src={getSupportImage(card)} alt="" className="h-full w-full rounded-xl bg-white object-contain p-0.5" />
+                                  ) : (
+                                    <div className="flex h-full items-center justify-center text-2xl">🃏</div>
+                                  )}
+                                </BattleCardReveal>
+
+                                {badges && (
+                                  <div className="mt-1 flex justify-center gap-0.5">
+                                    {[badges.target, badges.duration, badges.effect].map((badge, badgeIndex) => (
+                                      <span
+                                        key={`${badge.label}_${badgeIndex}`}
+                                        title={badge.description}
+                                        className="inline-flex h-4 min-w-4 items-center justify-center rounded-[4px] border border-slate-200 bg-slate-50 px-0.5 text-[8px] font-black leading-none text-slate-700"
+                                      >
+                                        {badge.label}
+                                      </span>
+                                    ))}
+                                  </div>
+                                )}
+
+                                <div className="mt-1 text-center">
+                                  <span className="block truncate text-[9px] font-black">{card.name}</span>
+                                </div>
+                              </button>
+                            );
+                          })
+                        )}
+                          </div>
+                        );
+                      })()}
                     </div>
                   </div>
-                </div>
-              )}
+                );
+              })()}
             </section>
 
             {/* ===== ⑤ 現在キャラ固有の4技 ===== */}

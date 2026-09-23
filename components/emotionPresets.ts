@@ -29,6 +29,53 @@ export interface EmotionPreset {
   note?: string;
 }
 
+export type EmotionPerformanceBadge = {
+  label: string;
+  description: string;
+};
+
+export type EmotionPerformanceBadges = {
+  target: EmotionPerformanceBadge;
+  duration: EmotionPerformanceBadge;
+  effect: EmotionPerformanceBadge;
+};
+
+export const getEmotionPerformanceBadges = (
+  preset: EmotionPreset,
+): EmotionPerformanceBadges => {
+  const target =
+    preset.target === '自分'
+      ? { label: '自', description: '自分への効果' }
+      : preset.target === '相手'
+        ? { label: '相', description: '相手への効果' }
+        : { label: '両', description: '自分と相手への効果' };
+
+  const duration =
+    preset.duration === '一時'
+      ? { label: '単', description: 'このターンを含む一時的な効果' }
+      : { label: '永', description: 'このクラス中有効な効果' };
+
+  const effectMap: Record<EmotionEffectCategory, EmotionPerformanceBadge> = {
+    体力: { label: '体', description: '体力に影響' },
+    知略: { label: '知', description: '知略に影響' },
+    器用: { label: '器', description: '器用に影響' },
+    特技: { label: '特', description: '特技に影響' },
+    全ステータス: { label: '全', description: '全ステータスに影響' },
+    スコア: { label: '点', description: 'スコアに影響' },
+    サポートカード使用数: { label: '制', description: 'サポートカード使用数に影響' },
+    ドロー: { label: '引', description: 'ドロー枚数に影響' },
+    'ステータスコピー・平均化': { label: '写', description: 'ステータスのコピー・平均化' },
+    効果反射: { label: '反', description: 'サポート効果を反射' },
+    技封印: { label: '封', description: '技の使用を封印' },
+  };
+
+  return {
+    target,
+    duration,
+    effect: effectMap[preset.effectCategory],
+  };
+};
+
 export const EMOTION_PRESETS: EmotionPreset[] = [
   {
     id: 'emo_01', name: '栄養ドリンク', duration: '一時', target: '自分',
