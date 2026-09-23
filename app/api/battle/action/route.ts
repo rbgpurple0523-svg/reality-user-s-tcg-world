@@ -99,6 +99,9 @@ type SupportCardState = {
   name?: string;
   description?: string;
   presetId?: string;
+  flavorText?: string;
+  colorHex?: string;
+  colorType?: string;
 };
 
 type BattleAction = {
@@ -2344,6 +2347,14 @@ export async function POST(
                 preset.id,
               supportName:
                 preset.name,
+              supportFlavorText:
+                typeof supportCard.flavorText === 'string'
+                  ? supportCard.flavorText.trim().slice(0, 120)
+                  : '',
+              supportColorHex:
+                typeof supportCard.colorHex === 'string' && /^#[0-9a-fA-F]{6}$/.test(supportCard.colorHex)
+                  ? supportCard.colorHex.toUpperCase()
+                  : undefined,
               actorScoreDelta:
                 actualActorScoreDelta,
               targetScoreDelta:
@@ -2364,6 +2375,14 @@ export async function POST(
                 requestedSupportCardId,
               supportPresetId:
                 preset.id,
+              supportFlavorText:
+                typeof supportCard.flavorText === 'string'
+                  ? supportCard.flavorText.trim().slice(0, 120)
+                  : '',
+              supportColorHex:
+                typeof supportCard.colorHex === 'string' && /^#[0-9a-fA-F]{6}$/.test(supportCard.colorHex)
+                  ? supportCard.colorHex.toUpperCase()
+                  : undefined,
               submittedAt:
                 processedAt,
               supportCardConsumed: true,
@@ -2444,6 +2463,14 @@ export async function POST(
                 preset.id,
               supportName:
                 preset.name,
+              supportFlavorText:
+                typeof supportCard.flavorText === 'string'
+                  ? supportCard.flavorText.trim().slice(0, 120)
+                  : '',
+              supportColorHex:
+                typeof supportCard.colorHex === 'string' && /^#[0-9a-fA-F]{6}$/.test(supportCard.colorHex)
+                  ? supportCard.colorHex.toUpperCase()
+                  : undefined,
               actorScoreDelta:
                 actualActorScoreDelta,
               targetScoreDelta:

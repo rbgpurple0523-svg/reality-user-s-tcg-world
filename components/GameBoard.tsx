@@ -310,6 +310,7 @@ type EntryRecordWithSkills = {
   color?: string;
   colorHex?: string;
   colorType?: string;
+  flavorText?: string;
   archetype?: string;
   hp?: number;
   ap?: number;
@@ -918,7 +919,7 @@ const getSupportBattleTarget = (
           ? card.id.slice(VIRTUAL_SUPPORT_PREFIX.length)
           : undefined),
     }));
-    const realSupports: SupportCard[] = emotionEntries.map((entry) => {
+    const realSupports: Array<SupportCard & SupportCardDisplayMeta & { imageDataUrl?: string; presetId?: string }> = emotionEntries.map((entry) => {
       const name = entry.customEffectName || entry.userName || 'サポート';
       return {
         id: entry.id,
@@ -926,7 +927,10 @@ const getSupportBattleTarget = (
         description: entry.effect || entry.description || '',
         imageDataUrl: entry.imageDataUrl || `/support_sample/${encodeURIComponent(name)}.jpg`,
         presetId: entry.presetId,
-      } as SupportCard & { imageDataUrl: string; presetId?: string };
+        flavorText: entry.flavorText || '',
+        colorHex: entry.colorHex,
+        colorType: entry.colorType,
+      };
     });
     return [...virtualSupports, ...realSupports];
   };
@@ -2573,6 +2577,12 @@ useEffect(() => {
 // 現在のFirestore状態とゲームルールから結果を計算する。
 // =========================================================
 
+type SupportCardDisplayMeta = {
+  flavorText?: string;
+  colorHex?: string;
+  colorType?: string;
+};
+
 type BattleActionPayload = {
   actionId?: string;
 
@@ -2607,6 +2617,8 @@ type BattleActionPayload = {
 
   supportCardId?: string;
   supportPresetId?: string;
+  supportFlavorText?: string;
+  supportColorHex?: string;
 };
 
 const submitTurnDrawAction = async (
@@ -3239,10 +3251,12 @@ const handleIncomingActionRef =
         ? EMOTION_PRESETS.find((emotion) => emotion.id === action.supportPresetId)
         : undefined;
 
-      const supportCard: SupportCard = {
+      const supportCard: SupportCard & SupportCardDisplayMeta = {
         id: action.supportCardId || 'support',
         name: preset?.name || 'サポートカード',
         description: preset?.description || '',
+        flavorText: action.supportFlavorText || '',
+        colorHex: action.supportColorHex,
       };
 
       await playSupportPreResultEffect({
@@ -3250,13 +3264,14 @@ const handleIncomingActionRef =
         cardName: supportCard.name,
         imageUrl: getSupportImage(supportCard),
         targetPositions: getSupportTargetPositions(),
-        dialogue: preset?.description,
-        colorHex: undefined,
+        dialogue: supportCard.flavorText || preset?.description,
+        colorHex: supportCard.colorHex,
         target: getSupportBattleTarget(preset, false),
       });
 
       addLog(
         `相手がサポート「${supportCard.name}」を使用しました。` +
+          (supportCard.flavorText ? `「${supportCard.flavorText}」` : '') +
           (preset?.description ? ` ${preset.description}` : ''),
       );
 
@@ -4504,6 +4519,12 @@ if (!actionSubmitted) {
     return preset ? `/support_sample/${encodeURIComponent(preset.name)}.jpg` : undefined;
   };
 
+  const getSupportFlavorText = (card: SupportCard) =>
+    (card as SupportCard & SupportCardDisplayMeta).flavorText || '';
+
+  const getSupportColorHex = (card: SupportCard) =>
+    (card as SupportCard & SupportCardDisplayMeta).colorHex || undefined;
+
   const getSupportDetailDescription = (preset: EmotionPreset) => {
     const targetLabel =
       preset.target === '自分'
@@ -5485,8 +5506,8 @@ const handleUseSupportCard = async (
       cardName: card.name,
       imageUrl: getSupportImage(card),
       targetPositions: getSupportTargetPositions(),
-      dialogue: supportPreset?.description,
-      colorHex: undefined,
+      dialogue: getSupportFlavorText(card) || supportPreset?.description,
+      colorHex: getSupportColorHex(card),
       target: getSupportBattleTarget(
         supportPreset,
         true,
@@ -7071,7 +7092,7 @@ const field =
                                       width={70}
                                       height={98}
                                       className="mx-auto"
-                                      colorHex={getBattleVisualColorHex(myActiveAvatar.card)}
+                                      colorHex={getSupportColorHex(card) || getBattleVisualColorHex(myActiveAvatar.card)}
                                     >
                                       {getSupportImage(card) ? (
                                         <img
@@ -7128,6 +7149,14 @@ const field =
                           <div className="mt-2 text-xs font-bold leading-relaxed text-slate-800">
                             {getSupportDetailDescription(selectedPreset)}
                           </div>
+                          {getSupportFlavorText(selectedCard) && (
+                            <div className="mt-2 rounded-xl border border-purple-200 bg-white p-2.5">
+                              <div className="text-[10px] font-black text-purple-900">💬 フレーバーテキスト</div>
+                              <div className="mt-1 text-[11px] leading-relaxed text-slate-700 whitespace-pre-wrap">
+                                {getSupportFlavorText(selectedCard)}
+                              </div>
+                            </div>
+                          )}
                         </>
                       ) : (
                         <div className="mt-5 text-xs font-bold leading-relaxed text-slate-500">
