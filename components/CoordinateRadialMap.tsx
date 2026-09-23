@@ -287,6 +287,7 @@ export default function CoordinateRadialMap({
   };
 
   const isEntryMode = mode === 'entry';
+  const isPickerMode = mode === 'picker';
   const displaySvgSize = isEntryMode ? 520 : SVG_SIZE;
   const displayOuterRadius = isEntryMode ? 205 : OUTER_RADIUS;
   const displayInnerRadius = isEntryMode ? 105 : INNER_RADIUS;
@@ -563,6 +564,33 @@ export default function CoordinateRadialMap({
       </div>
 
       {selectedCoordinate && (
+        isPickerMode ? (
+          <section className="px-3 py-2">
+            <div className="flex items-center justify-between gap-2">
+              <div className="min-w-0">
+                <div className="text-[9px] font-black tracking-[0.14em] text-indigo-500">SELECTED</div>
+                <div className="mt-0.5 flex items-center gap-2">
+                  <span className="shrink-0 rounded-md bg-indigo-100 px-2 py-1 text-[10px] font-black text-indigo-800">{getCoordinateDisplayCode(selectedCoordinate)}</span>
+                  <h4 className="truncate text-sm font-black text-indigo-950">{selectedCoordinate.name}</h4>
+                </div>
+                <div className="mt-1 truncate text-[9px] font-black text-indigo-800">{getRankText(selectedCoordinate)}</div>
+                <div className="mt-1 text-[9px] font-bold text-gray-500">エントリー {selectedCount} / {maxEntryLimit}人{selectedIsLocked ? ' ・ 満員' : ''}</div>
+              </div>
+              <button
+                type="button"
+                disabled={selectedIsLocked}
+                onClick={handleActionClick}
+                className={`shrink-0 rounded-xl px-3 py-2.5 text-[10px] font-black transition ${
+                  selectedIsLocked
+                    ? 'bg-gray-200 text-gray-400 cursor-not-allowed'
+                    : 'bg-indigo-600 text-white hover:bg-indigo-700'
+                }`}
+              >
+                {selectedIsLocked ? '満員' : 'このコーデを選ぶ'}
+              </button>
+            </div>
+          </section>
+        ) : (
         <section className="rounded-3xl border border-indigo-200 bg-indigo-50 p-5 sm:p-6">
           <div className="flex flex-col lg:flex-row lg:items-start lg:justify-between gap-6">
             <div className="flex-1">
@@ -588,7 +616,7 @@ export default function CoordinateRadialMap({
                 {selectedIsFull && (
                   <div className="mt-1 text-[10px] font-black text-red-600">現在のエントリー上限に達しています</div>
                 )}
-                {mode === 'picker' && !selectedIsFull && (
+                {!selectedIsFull && (
                   <div className="mt-1 text-[10px] text-gray-500">このコーデは現在エントリーできます。</div>
                 )}
               </div>
@@ -652,6 +680,7 @@ export default function CoordinateRadialMap({
             </button>
           </div>
         </section>
+        )
       )}
     </div>
   );

@@ -9,7 +9,6 @@ import {
   getColorTypeFromHex,
   getColorTypeLabel,
   getLegacyColorHex,
-  hexToRgb,
 } from './colorTypes';
 
 interface CardGeneratorProps {
@@ -28,19 +27,12 @@ type DraftData = {
   password: string;
   selectedCoordinateId: string | null;
   customSkills: [string, string, string, string];
-  skillVoices?: [string, string, string, string];
   flavorText?: string;
   colorHex?: string;
   colorType?: import('./colorTypes').ColorType;
 };
 
 const emptySkills: [string, string, string, string] = ['', '', '', ''];
-const emptySkillVoices: [string, string, string, string] = ['', '', '', ''];
-
-function getDefaultSkillVoice(skillName: string): string {
-  return `『${skillName}』！`;
-}
-
 function getStoredEntries(): EntryRecord[] {
   try {
     const saved = localStorage.getItem(ENTRIES_KEY);
@@ -136,12 +128,6 @@ export default function CardGenerator({ selectedCoordinate, onBackToHub }: CardG
         selectedCoordinate.defaultSkills[2],
         selectedCoordinate.defaultSkills[3],
       ]);
-      setSkillVoices([
-        getDefaultSkillVoice(selectedCoordinate.defaultSkills[0]),
-        getDefaultSkillVoice(selectedCoordinate.defaultSkills[1]),
-        getDefaultSkillVoice(selectedCoordinate.defaultSkills[2]),
-        getDefaultSkillVoice(selectedCoordinate.defaultSkills[3]),
-      ]);
       setFlavorText('');
     }
   }, [selectedCoordinate]);
@@ -154,14 +140,9 @@ export default function CardGenerator({ selectedCoordinate, onBackToHub }: CardG
   const [imageDataUrl, setImageDataUrl] = useState('');
   const [password, setPassword] = useState('');
   const [customSkills, setCustomSkills] = useState<[string, string, string, string]>(emptySkills);
-  const [skillVoices, setSkillVoices] = useState<[string, string, string, string]>(emptySkillVoices);
   const [flavorText, setFlavorText] = useState('');
   const [selectedColorHex, setSelectedColorHex] = useState('#22D3EE');
 
-  const selectedColorRgb = useMemo(
-    () => hexToRgb(selectedColorHex),
-    [selectedColorHex],
-  );
   const selectedColorType = useMemo(
     () => getColorTypeFromHex(selectedColorHex),
     [selectedColorHex],
@@ -177,6 +158,8 @@ export default function CardGenerator({ selectedCoordinate, onBackToHub }: CardG
   const [draftAvailable, setDraftAvailable] = useState(false);
   const [draftChecked, setDraftChecked] = useState(false);
   const [isModerating, setIsModerating] = useState(false);
+
+  const [activeEditor, setActiveEditor] = useState<'basic' | 'skills' | 'color' | 'flavor' | 'saved' | null>(null);
 
   const maxEntryLimit = useMemo(
     () => getMaxEntryLimit(entries),
@@ -210,7 +193,6 @@ export default function CardGenerator({ selectedCoordinate, onBackToHub }: CardG
       Boolean(password) ||
       Boolean(currentCoordinate) ||
       customSkills.some(Boolean) ||
-      skillVoices.some(Boolean) ||
       Boolean(flavorText);
 
     try {
@@ -227,7 +209,6 @@ export default function CardGenerator({ selectedCoordinate, onBackToHub }: CardG
         password,
         selectedCoordinateId: currentCoordinate?.id ?? null,
         customSkills,
-        skillVoices,
         flavorText,
         colorHex: selectedColorHex,
         colorType: selectedColorType,
@@ -237,7 +218,7 @@ export default function CardGenerator({ selectedCoordinate, onBackToHub }: CardG
     } catch {
       // localStorageが利用できない場合も入力自体は継続可能。
     }
-  }, [profileUrl, userName, imageDataUrl, password, currentCoordinate, customSkills, skillVoices, flavorText, selectedColorHex, draftChecked]);
+  }, [profileUrl, userName, imageDataUrl, password, currentCoordinate, customSkills, flavorText, selectedColorHex, draftChecked]);
 
   const restoreDraft = () => {
     try {
@@ -257,16 +238,6 @@ export default function CardGenerator({ selectedCoordinate, onBackToHub }: CardG
           ? [draft.customSkills[0], draft.customSkills[1], draft.customSkills[2], draft.customSkills[3]]
           : preset?.defaultSkills ?? emptySkills;
       setCustomSkills(restoredSkills);
-      setSkillVoices(
-        draft.skillVoices?.length === 4
-          ? [draft.skillVoices[0], draft.skillVoices[1], draft.skillVoices[2], draft.skillVoices[3]]
-          : [
-              getDefaultSkillVoice(restoredSkills[0] || preset?.defaultSkills[0] || '技1'),
-              getDefaultSkillVoice(restoredSkills[1] || preset?.defaultSkills[1] || '技2'),
-              getDefaultSkillVoice(restoredSkills[2] || preset?.defaultSkills[2] || '技3'),
-              getDefaultSkillVoice(restoredSkills[3] || preset?.defaultSkills[3] || '技4'),
-            ],
-      );
       setFlavorText(draft.flavorText ?? '');
       setSelectedColorHex(
         draft.colorHex && /^#[0-9a-fA-F]{6}$/.test(draft.colorHex)
@@ -299,12 +270,6 @@ export default function CardGenerator({ selectedCoordinate, onBackToHub }: CardG
       preset.defaultSkills[2],
       preset.defaultSkills[3],
     ]);
-    setSkillVoices([
-      getDefaultSkillVoice(preset.defaultSkills[0]),
-      getDefaultSkillVoice(preset.defaultSkills[1]),
-      getDefaultSkillVoice(preset.defaultSkills[2]),
-      getDefaultSkillVoice(preset.defaultSkills[3]),
-    ]);
     setErrorMessage('');
   };
 
@@ -324,28 +289,13 @@ export default function CardGenerator({ selectedCoordinate, onBackToHub }: CardG
   };
 
   const handleSkillChange = (index: number, value: string) => {
-    const previousSkill = customSkills[index];
     setCustomSkills((prev) => {
       const next = [...prev] as [string, string, string, string];
       next[index] = value;
       return next;
     });
-    setSkillVoices((prev) => {
-      const next = [...prev] as [string, string, string, string];
-      if (next[index] === getDefaultSkillVoice(previousSkill)) {
-        next[index] = getDefaultSkillVoice(value || `技${index + 1}`);
-      }
-      return next;
-    });
   };
 
-  const handleSkillVoiceChange = (index: number, value: string) => {
-    setSkillVoices((prev) => {
-      const next = [...prev] as [string, string, string, string];
-      next[index] = value;
-      return next;
-    });
-  };
 
   // ---------------------------------------------------------
   // 保存
@@ -385,7 +335,6 @@ export default function CardGenerator({ selectedCoordinate, onBackToHub }: CardG
     const moderationTexts = [
       userName.trim(),
       ...customSkills.map((skill) => skill.trim()),
-      ...skillVoices.map((voice) => voice.trim()),
       flavorText.trim(),
     ];
 
@@ -431,12 +380,6 @@ export default function CardGenerator({ selectedCoordinate, onBackToHub }: CardG
       customSkills[3].trim(),
     ];
 
-    const normalizedSkillVoices: [string, string, string, string] = [
-      skillVoices[0].trim() || getDefaultSkillVoice(normalizedCustomSkills[0]),
-      skillVoices[1].trim() || getDefaultSkillVoice(normalizedCustomSkills[1]),
-      skillVoices[2].trim() || getDefaultSkillVoice(normalizedCustomSkills[2]),
-      skillVoices[3].trim() || getDefaultSkillVoice(normalizedCustomSkills[3]),
-    ];
 
     const newEntry: EntryRecord = {
       id: editingId || `entry_${Date.now()}`,
@@ -449,7 +392,6 @@ export default function CardGenerator({ selectedCoordinate, onBackToHub }: CardG
       passwordHash: password,
       firstUser: editingEntry?.firstUser || userName.trim(),
       customSkills: normalizedCustomSkills,
-      skillVoices: normalizedSkillVoices,
       flavorText: flavorText.trim(),
       colorHex: selectedColorHex,
       colorType: getColorTypeFromHex(selectedColorHex),
@@ -474,7 +416,7 @@ export default function CardGenerator({ selectedCoordinate, onBackToHub }: CardG
     setEntries(updated);
     setAuthorizedIds((prev) => ({ ...prev, [newEntry.id]: true }));
     setEditingId(null);
-    setSuccessMessage(editingEntry ? '✨ キャラカードを更新しました！' : '✨ キャラカードをエントリーしました！');
+    setSuccessMessage(editingEntry ? '✨ キャラカードを更新しました！' : '✨ キャラカードを登録しました！');
 
     try {
       localStorage.removeItem(DRAFT_KEY);
@@ -520,16 +462,6 @@ export default function CardGenerator({ selectedCoordinate, onBackToHub }: CardG
         ? [entry.customSkills[0], entry.customSkills[1], entry.customSkills[2], entry.customSkills[3]]
         : preset?.defaultSkills ?? emptySkills;
     setCustomSkills(restoredSkills);
-    setSkillVoices(
-      entry.skillVoices?.length === 4
-        ? [entry.skillVoices[0], entry.skillVoices[1], entry.skillVoices[2], entry.skillVoices[3]]
-        : [
-            getDefaultSkillVoice(restoredSkills[0] || preset?.defaultSkills[0] || '技1'),
-            getDefaultSkillVoice(restoredSkills[1] || preset?.defaultSkills[1] || '技2'),
-            getDefaultSkillVoice(restoredSkills[2] || preset?.defaultSkills[2] || '技3'),
-            getDefaultSkillVoice(restoredSkills[3] || preset?.defaultSkills[3] || '技4'),
-          ],
-    );
     setFlavorText(entry.flavorText ?? '');
     setSelectedColorHex(
       entry.colorHex && /^#[0-9a-fA-F]{6}$/.test(entry.colorHex)
@@ -538,7 +470,7 @@ export default function CardGenerator({ selectedCoordinate, onBackToHub }: CardG
     );
     setEditingId(entry.id);
     setErrorMessage('');
-    window.scrollTo({ top: 0, behavior: 'smooth' });
+    setActiveEditor('basic');
   };
 
   const handleDelete = (entry: EntryRecord) => {
@@ -564,281 +496,220 @@ export default function CardGenerator({ selectedCoordinate, onBackToHub }: CardG
   };
 
   return (
-    <div className="max-w-5xl mx-auto p-6 bg-white rounded-2xl border border-gray-200 shadow-lg space-y-8 text-gray-900">
-      <div className="flex justify-between items-center border-b pb-4 gap-4">
-        <div>
-          <span className="text-xs font-bold px-2.5 py-1 rounded-full bg-pink-100 text-pink-800">1-1 キャラカードとしてエントリー</span>
-          <h2 className="text-xl font-extrabold mt-2">キャラカード・アバターエントリー</h2>
-          <p className="text-xs text-gray-500 mt-1">コーデは公式25種から選択。性能と4技の効果は固定です。</p>
+    <div className="mx-auto flex h-full min-h-0 w-full max-w-5xl flex-col text-gray-900">
+      <div className="shrink-0 border-b border-gray-200 px-3 py-2 sm:px-5">
+        <div className="flex items-center justify-between gap-3">
+          <div className="min-w-0">
+            <div className="text-[9px] font-black tracking-[0.22em] text-pink-500">CHARACTER CARD</div>
+            <h2 className="truncate text-lg font-black">キャラカードを作る</h2>
+          </div>
+          {onBackToHub && (
+            <button type="button" onClick={onBackToHub} className="shrink-0 rounded-xl bg-gray-100 px-3 py-2 text-[10px] font-black text-gray-700">
+              ← 戻る
+            </button>
+          )}
         </div>
-        {onBackToHub && (
-          <button type="button" onClick={onBackToHub} className="text-xs font-bold px-3 py-2 bg-gray-100 hover:bg-gray-200 rounded-lg">
-            ← 戻る
-          </button>
-        )}
+
+        <div className="mt-2 grid grid-cols-[auto_1fr_auto] items-center gap-2 text-[9px] font-black">
+          <span className="rounded-full bg-pink-100 px-2.5 py-1 text-pink-800">① コーデ</span>
+          <span className="h-px bg-pink-200" />
+          <span className="rounded-full bg-pink-600 px-2.5 py-1 text-white">② カード編集</span>
+        </div>
+        <div className="mt-1 text-right text-[9px] font-bold text-gray-400">③ 登録で完成</div>
       </div>
 
       {draftAvailable && !editingId && (
-        <div className="p-4 rounded-xl border border-amber-200 bg-amber-50 flex flex-wrap items-center justify-between gap-3 text-xs">
-          <div>
-            <div className="font-bold text-amber-900">前回の続きが保存されています</div>
-            <div className="text-amber-800 mt-0.5">入力中だった内容を復元できます。</div>
-          </div>
-          <div className="flex gap-2">
-            <button type="button" onClick={restoreDraft} className="px-3 py-2 rounded-lg bg-amber-600 text-white font-bold">続きから作成する</button>
-            <button type="button" onClick={discardDraft} className="px-3 py-2 rounded-lg bg-white border border-amber-300 font-bold text-amber-900">破棄</button>
+        <div className="mx-3 mt-2 shrink-0 rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-[10px] sm:mx-5">
+          <div className="flex items-center justify-between gap-2">
+            <div className="font-bold text-amber-900">前回の続きがあります</div>
+            <div className="flex gap-1.5">
+              <button type="button" onClick={restoreDraft} className="rounded-lg bg-amber-600 px-2.5 py-1.5 font-black text-white">復元</button>
+              <button type="button" onClick={discardDraft} className="rounded-lg border border-amber-300 bg-white px-2.5 py-1.5 font-black text-amber-900">破棄</button>
+            </div>
           </div>
         </div>
       )}
 
-      {errorMessage && <div className="p-3 text-xs text-red-700 bg-red-50 border border-red-200 rounded-lg">{errorMessage}</div>}
-      {successMessage && <div className="p-3 text-xs text-green-700 bg-green-50 border border-green-200 rounded-lg">{successMessage}</div>}
-
-      <CoordinateRadialMap
-        coordinates={COORDINATE_PRESETS}
-        entries={entries}
-        maxEntryLimit={maxEntryLimit}
-        initialSelectedId={currentCoordinate?.id ?? null}
-        mode="picker"
-        onSelect={selectCoordinatePreset}
-      />
-
-      {!currentCoordinate && (
-        <div className="text-[11px] text-red-600 font-bold text-center -mt-2">
-          コーデを選択すると、性能と4技がプレビューに反映されます。
+      {(errorMessage || successMessage) && (
+        <div className={`mx-3 mt-2 shrink-0 rounded-xl border px-3 py-2 text-[10px] font-bold sm:mx-5 ${errorMessage ? 'border-red-200 bg-red-50 text-red-700' : 'border-green-200 bg-green-50 text-green-700'}`} role={errorMessage ? 'alert' : 'status'}>
+          {errorMessage || successMessage}
         </div>
       )}
 
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
-        {/* 入力 */}
-        <div className="space-y-5">
-          <form onSubmit={handleSubmit} className="space-y-4 text-xs">
-            <div>
-              <label className="block font-bold text-gray-700 mb-1">REALITY プロフURL <span className="text-red-500">*</span></label>
-              <input type="text" placeholder="https://reality.app/user/xxxxxx" value={profileUrl} onChange={(e) => setProfileUrl(e.target.value)} className="w-full px-3 py-2 border rounded-lg bg-white" />
-            </div>
-
-            <div>
-              <label className="block font-bold text-gray-700 mb-1">アバター名 <span className="text-red-500">*</span></label>
-              <input type="text" placeholder="例：キャラ太郎" value={userName} onChange={(e) => setUserName(e.target.value)} maxLength={40} className="w-full px-3 py-2 border rounded-lg bg-white" />
-            </div>
-
-            <div>
-              <label className="block font-bold text-gray-700 mb-1">アバター画像 <span className="text-red-500">*</span></label>
-              <input type="file" accept="image/*" onChange={handleImageUpload} className="w-full text-gray-700" />
-            </div>
-
-            <div className="pt-3 border-t border-gray-100 space-y-3">
-              <div>
-                <label className="block font-bold text-gray-700 mb-1">カードカラー</label>
-                <p className="text-[10px] text-gray-500">好きな色を選べます。色そのものとは別に、ゲーム用のカラータイプを自動判定して保持します。</p>
-              </div>
-
-              <div className="flex flex-wrap gap-2">
-                {COLOR_PALETTE.map((color) => (
-                  <button
-                    key={color}
-                    type="button"
-                    onClick={() => handleColorChange(color)}
-                    aria-label={`カラー ${color}`}
-                    className={`h-8 w-8 rounded-full border-2 transition ${selectedColorHex.toUpperCase() === color.toUpperCase() ? 'border-gray-900 ring-2 ring-offset-1 ring-gray-300' : 'border-white shadow-sm'}`}
-                    style={{ backgroundColor: color }}
-                  />
-                ))}
-              </div>
-
-              <div className="flex flex-col sm:flex-row sm:items-center gap-3 rounded-xl border border-gray-200 bg-gray-50 p-3">
-                <div className="flex items-center gap-3">
-                  <input
-                    type="color"
-                    value={selectedColorHex}
-                    onChange={(e) => handleColorChange(e.target.value)}
-                    aria-label="自由な色を選択"
-                    className="h-12 w-16 cursor-pointer rounded-lg border border-gray-300 bg-white p-1"
-                  />
-                  <div>
-                    <div className="text-[11px] font-black text-gray-700">自由な色を選択</div>
-                    <div className="text-[10px] text-gray-500">HEX {selectedColorHex.toUpperCase()}</div>
-                    <div className="text-[10px] text-gray-500">RGB {selectedColorRgb.r}, {selectedColorRgb.g}, {selectedColorRgb.b}</div>
-                  </div>
-                </div>
-
-                <div className="sm:ml-auto rounded-lg bg-white border border-gray-200 px-3 py-2">
-                  <div className="text-[10px] text-gray-500">カラータイプ</div>
-                  <div className="mt-0.5 flex items-center gap-2 text-sm font-black text-gray-900">
-                    <span className="inline-block h-3 w-3 rounded-full border border-gray-300" style={{ backgroundColor: selectedColorHex }} />
-                    {getColorTypeLabel(selectedColorType)}
-                  </div>
-                  <div className="text-[10px] text-gray-400">内部値: {selectedColorType.toUpperCase()}</div>
-                </div>
-              </div>
-            </div>
-
-            <div className="pt-3 border-t border-gray-100 space-y-4">
-              <div>
-                <label className="block font-bold text-gray-700">所持ワザ設定（4つ） <span className="text-red-500">*</span></label>
-                <p className="text-[10px] text-gray-500 mt-1">技名は変更できます。使用時のセリフは技名に合わせたデフォルトが入り、自由に変更できます。</p>
-              </div>
-              {[0, 1, 2, 3].map((index) => (
-                <div key={index} className="rounded-xl border border-pink-100 bg-pink-50/40 p-3 space-y-2">
-                  <div className="font-bold text-pink-700">技{index + 1}</div>
-                  <div>
-                    <label className="block text-[10px] font-bold text-gray-600 mb-1">技名</label>
-                    <input disabled={!currentCoordinate} type="text" value={customSkills[index]} onChange={(e) => handleSkillChange(index, e.target.value)} maxLength={40} className="w-full px-3 py-2 border rounded-lg bg-white disabled:bg-gray-100" />
-                  </div>
-                  <div>
-                    <label className="block text-[10px] font-bold text-gray-600 mb-1">使用時のセリフ</label>
-                    <input disabled={!currentCoordinate} type="text" value={skillVoices[index]} onChange={(e) => handleSkillVoiceChange(index, e.target.value)} maxLength={100} className="w-full px-3 py-2 border rounded-lg bg-white disabled:bg-gray-100" placeholder={currentCoordinate ? getDefaultSkillVoice(customSkills[index] || `技${index + 1}`) : ''} />
-                  </div>
-                  <div className="rounded-lg bg-white/80 border border-gray-100 px-3 py-2">
-                    <div className="text-[10px] font-bold text-gray-500 mb-0.5">効果説明（固定）</div>
-                    <div className="text-[11px] text-gray-600 leading-relaxed">{currentCoordinate?.skillDescriptions[index] ?? 'コーデを選択すると表示されます。'}</div>
-                  </div>
-                </div>
-              ))}
-            </div>
-
-            <div className="pt-3 border-t border-gray-100">
-              <label className="block font-bold text-gray-700 mb-1">カードの一言（フレーバーテキスト）</label>
-              <textarea value={flavorText} onChange={(e) => setFlavorText(e.target.value)} rows={3} maxLength={120} placeholder="このキャラらしい一言をどうぞ。" className="w-full px-3 py-2 border rounded-lg bg-white resize-none" />
-              <p className="text-[10px] text-gray-500 mt-1">キャラクターの雰囲気や個性が伝わる一言です。最大120文字。</p>
-            </div>
-
-            <div className="pt-3 border-t border-gray-100">
-              <label className="block font-bold text-gray-700 mb-1">編集・削除用の合言葉 <span className="text-red-500">*</span></label>
-              <input type="password" placeholder="後からの編集・削除に使用します" value={password} onChange={(e) => setPassword(e.target.value)} className="w-full px-3 py-2 border rounded-lg bg-white" />
-              <p className="text-[10px] text-gray-500 mt-1">同じ端末では作成者トークンにより、次回から合言葉入力を省略できます。</p>
-            </div>
-
-            {errorMessage && (
-              <div className="p-3 rounded-lg border border-red-200 bg-red-50 text-xs font-bold text-red-700" role="alert">
-                {errorMessage}
-              </div>
-            )}
-
-            <button type="submit" disabled={isModerating} className="w-full py-2.5 bg-pink-600 hover:bg-pink-700 disabled:bg-pink-300 disabled:cursor-wait text-white font-bold rounded-xl shadow">
-              {isModerating ? '安全確認中…' : editingId ? 'エントリー内容を更新する' : 'カードをエントリーして保存'}
-            </button>
-          </form>
-        </div>
-
-        {/* プレビュー */}
-        <div>
-          <h2 className="text-lg font-bold mb-3">ライブプレビュー</h2>
-          <div className="p-4 border-4 border-pink-400 rounded-2xl bg-white shadow-md max-w-sm mx-auto space-y-3">
+      <form onSubmit={handleSubmit} className="flex min-h-0 flex-1 flex-col">
+        <div className="grid min-h-0 flex-1 grid-cols-[minmax(0,1fr)_minmax(120px,180px)] gap-3 px-3 py-3 sm:grid-cols-[minmax(0,1fr)_220px] sm:gap-4 sm:px-5">
+          <div className="min-h-0 rounded-2xl border border-gray-200 bg-gray-50 p-3 sm:p-4">
             {!currentCoordinate ? (
-              <div className="min-h-96 flex flex-col items-center justify-center text-center text-gray-400 text-xs gap-2">
+              <div className="flex h-full min-h-[260px] flex-col items-center justify-center text-center text-xs text-gray-400">
                 <div className="text-4xl">👗</div>
-                <div className="font-bold">コーデ未選択</div>
-                <div>左側からコーデを選択してください。</div>
+                <div className="mt-2 font-black">コーデ未選択</div>
+                <div className="mt-1">前の画面でコーデを選んでください。</div>
               </div>
             ) : (
-              <>
-                <div className="flex justify-between items-center">
-                  <span className="font-bold px-2.5 py-1 rounded bg-pink-600 text-white text-xs">{currentCoordinate.code.toUpperCase()}</span>
-                  <span className="text-xs font-bold text-gray-700">{currentCoordinate.archetype}</span>
-                </div>
-
-                <div className="text-center">
-                  <h3 className="font-extrabold text-gray-900 text-xl">{userName || 'ユーザー名'}</h3>
-                  <p className="text-xs font-semibold text-pink-600 mt-0.5">👗 {currentCoordinate.name}</p>
-                </div>
-
-                <div className="w-full h-64 bg-gray-100 border border-gray-200 rounded-xl overflow-hidden flex items-center justify-center">
-                  {imageDataUrl ? <img src={imageDataUrl} alt="Avatar" className="w-full h-full object-cover" /> : <span className="text-gray-400 text-xs">画像を選択すると表示されます</span>}
-                </div>
-
-                {profileUrl && (
-                  <div className="text-[10px] text-indigo-600 truncate px-2 text-center">
-                    🔗 <a href={profileUrl} target="_blank" rel="noopener noreferrer" className="underline">{profileUrl}</a>
+              <div className="flex h-full min-h-0 flex-col">
+                <div className="flex items-start justify-between gap-3">
+                  <div className="min-w-0">
+                    <div className="flex items-center gap-2">
+                      <span className="rounded-md bg-pink-600 px-2 py-1 text-[9px] font-black text-white">{currentCoordinate.code.toUpperCase()}</span>
+                      <span className="truncate text-sm font-black">{currentCoordinate.name}</span>
+                    </div>
+                    <div className="mt-1 text-[9px] font-bold text-gray-500">{currentCoordinate.tendency}</div>
                   </div>
-                )}
+                  <button type="button" onClick={() => setActiveEditor('saved')} className="shrink-0 rounded-lg border border-gray-200 bg-white px-2 py-1.5 text-[9px] font-black text-gray-600">自分のカード</button>
+                </div>
 
-                <div className="rounded-xl border border-gray-200 bg-gray-50 p-3">
-                  <div className="h-2 rounded-full" style={{ backgroundColor: selectedColorHex }} />
-                  <div className="mt-2 flex items-center justify-between gap-3 text-[10px]">
-                    <span className="font-bold text-gray-600">カードカラー {selectedColorHex.toUpperCase()}</span>
-                    <span className="font-black text-gray-900">{getColorTypeLabel(selectedColorType)}</span>
+                <div className="mt-3 min-h-0 flex-1 overflow-hidden rounded-2xl border-4 border-pink-400 bg-white shadow-sm">
+                  <div className="flex h-full min-h-0 flex-col p-2.5">
+                    <div className="flex items-center justify-between gap-2 text-[9px] font-black">
+                      <span className="rounded bg-pink-600 px-2 py-1 text-white">{currentCoordinate.code.toUpperCase()}</span>
+                      <span className="text-gray-600">{currentCoordinate.archetype}</span>
+                    </div>
+                    <div className="mt-2 text-center">
+                      <div className="truncate text-base font-black">{userName || 'ユーザー名'}</div>
+                      <div className="mt-0.5 truncate text-[9px] font-bold text-pink-600">{currentCoordinate.name}</div>
+                    </div>
+                    <div className="mt-2 min-h-0 flex-1 overflow-hidden rounded-xl bg-gray-100">
+                      {imageDataUrl ? <img src={imageDataUrl} alt="Avatar" className="h-full w-full object-cover" /> : <div className="flex h-full items-center justify-center text-[9px] font-bold text-gray-400">画像を設定してください</div>}
+                    </div>
+                    <div className="mt-2 grid grid-cols-2 gap-1 text-[8px] font-black text-gray-700">
+                      <div className="rounded bg-gray-50 px-1.5 py-1">体力 {currentCoordinate.stats.hp}</div>
+                      <div className="rounded bg-gray-50 px-1.5 py-1">知略 {currentCoordinate.stats.intellect}</div>
+                      <div className="rounded bg-gray-50 px-1.5 py-1">器用 {currentCoordinate.stats.dexterity}</div>
+                      <div className="rounded bg-gray-50 px-1.5 py-1">特技 {currentCoordinate.stats.charm}</div>
+                    </div>
+                    <div className="mt-2 rounded-lg bg-pink-50 px-2 py-1.5 text-[8px] leading-4 text-gray-700">
+                      <div className="font-black text-pink-800">所持スキル</div>
+                      {customSkills.map((skill, index) => <div key={index} className="truncate">{index + 1}. {skill || currentCoordinate.defaultSkills[index]}</div>)}
+                    </div>
+                    <div className="mt-2 rounded-lg bg-amber-50 px-2 py-1.5 text-[8px] leading-4 text-amber-950">
+                      <div className="font-black text-amber-700">カードの一言</div>
+                      <div className="truncate">{flavorText || 'このキャラらしい一言'}</div>
+                    </div>
                   </div>
                 </div>
 
-                <div className="text-xs bg-gray-50 border p-3 rounded-lg grid grid-cols-2 gap-2">
-                  <div>体力：<b>{currentCoordinate.stats.hp}</b></div>
-                  <div>知略：<b>{currentCoordinate.stats.intellect}</b></div>
-                  <div>特技：<b>{currentCoordinate.stats.charm}</b></div>
-                  <div>器用：<b>{currentCoordinate.stats.dexterity}</b></div>
+                <div className="mt-3 grid grid-cols-2 gap-2 sm:grid-cols-4">
+                  <button type="button" onClick={() => setActiveEditor('basic')} className="rounded-xl border border-gray-200 bg-white px-2 py-2 text-[9px] font-black">基本情報</button>
+                  <button type="button" onClick={() => setActiveEditor('skills')} className="rounded-xl border border-gray-200 bg-white px-2 py-2 text-[9px] font-black">スキルを編集</button>
+                  <button type="button" onClick={() => setActiveEditor('color')} className="rounded-xl border border-gray-200 bg-white px-2 py-2 text-[9px] font-black">カラー</button>
+                  <button type="button" onClick={() => setActiveEditor('flavor')} className="rounded-xl border border-gray-200 bg-white px-2 py-2 text-[9px] font-black">一言</button>
                 </div>
+              </div>
+            )}
+          </div>
 
-                <div className="text-xs bg-pink-50 border border-pink-100 p-3 rounded-lg space-y-3">
-                  <div className="font-bold text-pink-900">⚔️ 所持ワザ</div>
-                  {[0, 1, 2, 3].map((index) => {
-                    const skillName = customSkills[index] || currentCoordinate.defaultSkills[index];
-                    const skillVoice = skillVoices[index] || getDefaultSkillVoice(skillName);
+          <div className="min-h-0 rounded-2xl border border-gray-200 bg-white p-2.5 sm:p-3">
+            <div className="text-[8px] font-black tracking-wider text-gray-400">PREVIEW</div>
+            <div className="mt-2 aspect-[3/4] w-full overflow-hidden rounded-xl border border-gray-200 bg-gray-50">
+              {imageDataUrl ? <img src={imageDataUrl} alt="" className="h-full w-full object-cover" /> : <div className="flex h-full items-center justify-center px-2 text-center text-[8px] font-bold text-gray-400">アバター画像</div>}
+            </div>
+            <div className="mt-2 truncate text-center text-[10px] font-black">{userName || 'ユーザー名'}</div>
+            <div className="mt-1 truncate text-center text-[8px] font-bold text-pink-600">{currentCoordinate?.name || 'コーデ未選択'}</div>
+            <div className="mt-2 h-2 rounded-full" style={{ backgroundColor: selectedColorHex }} />
+            <div className="mt-1 text-center text-[8px] font-bold text-gray-500">{getColorTypeLabel(selectedColorType)}</div>
+          </div>
+        </div>
+
+        <div className="shrink-0 border-t border-gray-200 bg-white px-3 py-2.5 sm:px-5">
+          <button type="submit" disabled={isModerating || !currentCoordinate} className="w-full rounded-2xl bg-pink-600 px-4 py-3 text-sm font-black text-white shadow disabled:cursor-wait disabled:bg-pink-300">
+            {isModerating ? '安全確認中…' : editingId ? 'このカードを更新する' : 'このカードで参加する'}
+          </button>
+        </div>
+      </form>
+
+      {activeEditor && (
+        <div className="fixed inset-0 z-[70] flex items-center justify-center bg-slate-950/60 p-3 backdrop-blur-sm">
+          <div className="flex max-h-[88dvh] w-full max-w-md flex-col overflow-hidden rounded-3xl bg-white shadow-2xl">
+            <div className="flex shrink-0 items-center justify-between gap-3 border-b border-gray-200 px-4 py-3">
+              <div className="text-sm font-black">
+                {activeEditor === 'basic' && '基本情報を編集'}
+                {activeEditor === 'skills' && 'スキルを編集'}
+                {activeEditor === 'color' && 'カードカラーを設定'}
+                {activeEditor === 'flavor' && 'カードの一言を編集'}
+                {activeEditor === 'saved' && '自分のキャラカード'}
+              </div>
+              <button type="button" onClick={() => setActiveEditor(null)} className="rounded-lg bg-gray-100 px-2.5 py-1.5 text-xs font-black">✕</button>
+            </div>
+
+            <div className="min-h-0 overflow-y-auto p-4">
+              {activeEditor === 'basic' && (
+                <div className="space-y-4 text-xs">
+                  <div><label className="mb-1 block font-bold">アバター名 <span className="text-red-500">*</span></label><input type="text" value={userName} onChange={(e) => setUserName(e.target.value)} maxLength={40} placeholder="例：キャラ太郎" className="w-full rounded-xl border px-3 py-2.5" /></div>
+                  <div><label className="mb-1 block font-bold">REALITY プロフURL <span className="text-red-500">*</span></label><input type="text" value={profileUrl} onChange={(e) => setProfileUrl(e.target.value)} placeholder="https://reality.app/user/xxxxxx" className="w-full rounded-xl border px-3 py-2.5" /></div>
+                  <div><label className="mb-1 block font-bold">アバター画像 <span className="text-red-500">*</span></label><input type="file" accept="image/*" onChange={handleImageUpload} className="w-full text-xs" /></div>
+                  <div><label className="mb-1 block font-bold">編集・削除用の合言葉 <span className="text-red-500">*</span></label><input type="password" value={password} onChange={(e) => setPassword(e.target.value)} placeholder="後からの編集・削除に使用します" className="w-full rounded-xl border px-3 py-2.5" /><p className="mt-1 text-[9px] text-gray-500">同じ端末では作成者トークンにより省略できます。</p></div>
+                </div>
+              )}
+
+              {activeEditor === 'skills' && currentCoordinate && (
+                <div className="space-y-3 text-xs">
+                  <p className="text-[10px] font-bold text-gray-500">コーデごとの効果説明は固定。スキル名だけ自分らしく変更できます。</p>
+                  {[0, 1, 2, 3].map((index) => (
+                    <div key={index} className="rounded-2xl border border-pink-100 bg-pink-50/50 p-3">
+                      <div className="font-black text-pink-700">スキル{index + 1}</div>
+                      <input type="text" value={customSkills[index]} onChange={(e) => handleSkillChange(index, e.target.value)} maxLength={40} className="mt-2 w-full rounded-xl border px-3 py-2.5" />
+                      <div className="mt-2 rounded-xl bg-white px-3 py-2 text-[10px] leading-5 text-gray-600">{currentCoordinate.skillDescriptions[index]}</div>
+                    </div>
+                  ))}
+                </div>
+              )}
+
+              {activeEditor === 'color' && (
+                <div className="space-y-4">
+                  <div className="flex flex-wrap gap-2">
+                    {COLOR_PALETTE.map((color) => <button key={color} type="button" onClick={() => handleColorChange(color)} aria-label={`カラー ${color}`} className={`h-10 w-10 rounded-full border-2 ${selectedColorHex.toUpperCase() === color.toUpperCase() ? 'border-gray-900 ring-2 ring-offset-1 ring-gray-300' : 'border-white shadow-sm'}`} style={{ backgroundColor: color }} />)}
+                  </div>
+                  <div className="rounded-2xl border border-gray-200 bg-gray-50 p-3">
+                    <label className="mb-2 block text-[10px] font-black">自由な色</label>
+                    <input type="color" value={selectedColorHex} onChange={(e) => handleColorChange(e.target.value)} className="h-12 w-16 cursor-pointer rounded-lg border bg-white p-1" />
+                    <div className="mt-2 text-[10px] font-bold text-gray-600">{selectedColorHex.toUpperCase()} / {getColorTypeLabel(selectedColorType)}</div>
+                  </div>
+                </div>
+              )}
+
+              {activeEditor === 'flavor' && (
+                <div>
+                  <label className="mb-1 block text-xs font-bold">カードの一言</label>
+                  <textarea value={flavorText} onChange={(e) => setFlavorText(e.target.value)} rows={6} maxLength={120} placeholder="このキャラらしい一言をどうぞ。" className="w-full resize-none rounded-2xl border px-3 py-3 text-sm" />
+                  <p className="mt-1 text-[9px] text-gray-500">最大120文字。</p>
+                </div>
+              )}
+
+              {activeEditor === 'saved' && (
+                <div className="space-y-3">
+                  {entries.filter((entry) => entry.cardType === 'coordinate').length === 0 ? (
+                    <div className="py-10 text-center text-xs text-gray-500">まだキャラカードはありません。</div>
+                  ) : entries.filter((entry) => entry.cardType === 'coordinate').map((entry) => {
+                    const preset = COORDINATE_PRESETS.find((item) => item.id === entry.presetId);
+                    const canEdit = Boolean(authorizedIds[entry.id] || creatorTokens[entry.id]);
                     return (
-                      <div key={index} className="rounded-lg bg-white/80 border border-pink-100 p-2.5">
-                        <div className="font-bold text-pink-700">技{index + 1}：{skillName}</div>
-                        <div className="mt-1 text-[11px] font-semibold text-gray-800">使用時のセリフ：{skillVoice}</div>
-                        <div className="mt-1 text-[10px] text-gray-600">{currentCoordinate.skillDescriptions[index]}</div>
+                      <div key={entry.id} className="rounded-2xl border bg-gray-50 p-3">
+                        <div className="flex items-center gap-3">
+                          <img src={entry.imageDataUrl} alt="" className="h-12 w-12 rounded-xl object-cover" />
+                          <div className="min-w-0 flex-1">
+                            <div className="truncate text-sm font-black">{entry.userName}</div>
+                            <div className="truncate text-[9px] font-bold text-pink-700">{preset ? `${preset.code.toUpperCase()} / ${preset.name}` : entry.presetId}</div>
+                          </div>
+                        </div>
+                        <div className="mt-2 flex gap-2">
+                          <button type="button" onClick={() => handleEdit(entry)} className={`flex-1 rounded-xl px-3 py-2 text-[10px] font-black ${canEdit ? 'bg-indigo-600 text-white' : 'bg-gray-200 text-gray-700'}`}>{canEdit ? '編集' : '所有者認証 → 編集'}</button>
+                          <button type="button" onClick={() => handleDelete(entry)} className={`flex-1 rounded-xl px-3 py-2 text-[10px] font-black ${canEdit ? 'bg-red-600 text-white' : 'bg-gray-200 text-gray-700'}`}>{canEdit ? '削除' : '所有者認証 → 削除'}</button>
+                        </div>
                       </div>
                     );
                   })}
                 </div>
+              )}
+            </div>
 
-                <div className="rounded-xl border border-amber-200 bg-amber-50 p-3">
-                  <div className="text-[10px] font-bold text-amber-700">💬 カードの一言</div>
-                  <div className="mt-1 text-sm leading-relaxed text-amber-950 min-h-10">
-                    {flavorText || 'このキャラらしい一言がここに入ります。'}
-                  </div>
-                </div>
-              </>
+            {activeEditor !== 'saved' && (
+              <div className="shrink-0 border-t border-gray-200 p-3">
+                <button type="button" onClick={() => setActiveEditor(null)} className="w-full rounded-xl bg-gray-900 py-2.5 text-xs font-black text-white">完了</button>
+              </div>
             )}
           </div>
         </div>
-      </div>
-
-      {/* エントリー済み一覧 */}
-      <div className="pt-6 border-t border-gray-200 space-y-4">
-        <div>
-          <h3 className="font-bold text-base">自分のエントリーカード一覧</h3>
-          <p className="text-[10px] text-gray-500 mt-1">この端末で作成したカードは、作成者トークンが残っているため自動的に編集・削除できます。</p>
-        </div>
-
-        {entries.filter((entry) => entry.cardType === 'coordinate').length === 0 ? (
-          <p className="text-xs text-gray-500">まだエントリーされたキャラカードはありません。</p>
-        ) : (
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-            {entries.filter((entry) => entry.cardType === 'coordinate').map((entry) => {
-              const preset = COORDINATE_PRESETS.find((item) => item.id === entry.presetId);
-              const canEdit = Boolean(authorizedIds[entry.id] || creatorTokens[entry.id]);
-              return (
-                <div key={entry.id} className="p-4 border rounded-xl bg-gray-50 space-y-3">
-                  <div className="flex items-center gap-3">
-                    <img src={entry.imageDataUrl} alt="" className="w-14 h-14 rounded-lg object-cover flex-shrink-0" />
-                    <div className="min-w-0">
-                      <div className="font-bold truncate">{entry.userName}</div>
-                      <div className="text-xs text-pink-700 font-bold">{preset ? `${preset.code.toUpperCase()} / ${preset.name}` : entry.presetId}</div>
-                      <div className="flex items-center gap-2 text-[10px] text-gray-600">
-                        <span className="inline-block h-3 w-3 rounded-full border border-gray-300" style={{ backgroundColor: entry.colorHex || getLegacyColorHex(entry.color) }} />
-                        <span>{entry.colorType ? getColorTypeLabel(entry.colorType) : 'カラータイプ未設定'}</span>
-                        {entry.colorHex && <span className="text-gray-400">{entry.colorHex.toUpperCase()}</span>}
-                      </div>
-                      <div className="text-[10px] text-gray-500 truncate">{entry.profileUrl}</div>
-                    </div>
-                  </div>
-                  <div className="flex gap-2">
-                    <button type="button" onClick={() => handleEdit(entry)} className={`flex-1 px-3 py-2 rounded-lg text-xs font-bold ${canEdit ? 'bg-indigo-600 text-white hover:bg-indigo-700' : 'bg-gray-200 text-gray-700 hover:bg-gray-300'}`}>
-                      {canEdit ? '編集' : '所有者認証 → 編集'}
-                    </button>
-                    <button type="button" onClick={() => handleDelete(entry)} className={`flex-1 px-3 py-2 rounded-lg text-xs font-bold ${canEdit ? 'bg-red-600 text-white hover:bg-red-700' : 'bg-gray-200 text-gray-700 hover:bg-gray-300'}`}>
-                      {canEdit ? '削除' : '所有者認証 → 削除'}
-                    </button>
-                  </div>
-                </div>
-              );
-            })}
-          </div>
-        )}
-      </div>
+      )}
     </div>
   );
 }
