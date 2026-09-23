@@ -24,7 +24,6 @@ type DraftData = {
   profileUrl: string;
   userName: string;
   imageDataUrl: string;
-  password: string;
   selectedCoordinateId: string | null;
   customSkills: [string, string, string, string];
   flavorText?: string;
@@ -236,7 +235,6 @@ export default function CardGenerator({
       Boolean(profileUrl) ||
       Boolean(userName) ||
       Boolean(imageDataUrl) ||
-      Boolean(password) ||
       Boolean(currentCoordinate) ||
       customSkills.some(Boolean) ||
       Boolean(flavorText);
@@ -252,7 +250,6 @@ export default function CardGenerator({
         profileUrl,
         userName,
         imageDataUrl,
-        password,
         selectedCoordinateId: currentCoordinate?.id ?? null,
         customSkills,
         flavorText,
@@ -264,7 +261,7 @@ export default function CardGenerator({
     } catch {
       // localStorageが利用できない場合も入力自体は継続可能。
     }
-  }, [profileUrl, userName, imageDataUrl, password, currentCoordinate, customSkills, flavorText, selectedColorHex, draftChecked]);
+  }, [profileUrl, userName, imageDataUrl, currentCoordinate, customSkills, flavorText, selectedColorHex, draftChecked]);
 
   const restoreDraft = () => {
     try {
@@ -277,7 +274,7 @@ export default function CardGenerator({
       setProfileUrl(draft.profileUrl ?? '');
       setUserName(draft.userName ?? '');
       setImageDataUrl(draft.imageDataUrl ?? '');
-      setPassword(draft.password ?? '');
+      setPassword('');
       setCurrentCoordinate(preset);
       const restoredSkills: [string, string, string, string] =
         draft.customSkills?.length === 4
@@ -304,6 +301,22 @@ export default function CardGenerator({
       localStorage.removeItem(DRAFT_KEY);
     } catch {}
     setDraftAvailable(false);
+  };
+
+  const handleBackButton = () => {
+    if (registrationStep === 3) {
+      setRegistrationStep(2);
+      setErrorMessage('');
+      setSuccessMessage('');
+      return;
+    }
+
+    if (onChangeCoordinate) {
+      onChangeCoordinate();
+      return;
+    }
+
+    onBackToHub?.();
   };
 
   // ---------------------------------------------------------
@@ -584,7 +597,7 @@ export default function CardGenerator({
           </div>
           <div className="flex shrink-0 items-center gap-1.5">
             {onBackToHub && (
-              <button type="button" onClick={onBackToHub} className="rounded-xl bg-gray-100 px-3 py-2 text-[10px] font-black text-gray-700">← 戻る</button>
+              <button type="button" onClick={handleBackButton} className="rounded-xl bg-gray-100 px-3 py-2 text-[10px] font-black text-gray-700">← 戻る</button>
             )}
           </div>
         </div>
@@ -715,10 +728,10 @@ export default function CardGenerator({
                       <div className="flex min-w-0 flex-col items-center">
                         <MiniRadarChart stats={currentCoordinate.stats} />
                         <div className="mt-1 grid w-full grid-cols-1 gap-1 text-[8px] font-black text-gray-600">
-                          <div className="flex items-center justify-between"><span>体力 / Power</span><span>{currentCoordinate.stats.hp}</span></div>
-                          <div className="flex items-center justify-between"><span>知略 / Wisdom</span><span>{currentCoordinate.stats.intellect}</span></div>
-                          <div className="flex items-center justify-between"><span>器用 / Technique</span><span>{currentCoordinate.stats.dexterity}</span></div>
-                          <div className="flex items-center justify-between"><span>特技 / Skill</span><span>{currentCoordinate.stats.charm}</span></div>
+                          <div className="flex items-center justify-between"><span>体力</span><span>{currentCoordinate.stats.hp}</span></div>
+                          <div className="flex items-center justify-between"><span>知略</span><span>{currentCoordinate.stats.intellect}</span></div>
+                          <div className="flex items-center justify-between"><span>器用</span><span>{currentCoordinate.stats.dexterity}</span></div>
+                          <div className="flex items-center justify-between"><span>特技</span><span>{currentCoordinate.stats.charm}</span></div>
                         </div>
                       </div>
                     )}
@@ -738,12 +751,12 @@ export default function CardGenerator({
                     </div>
                   </div>
 
-                  {flavorText.trim() && (
-                    <div className="border-t border-amber-100 bg-amber-50 px-4 py-3 text-center">
-                      <div className="text-[8px] font-black tracking-[0.12em] text-amber-700">FLAVOR</div>
-                      <div className="mt-1 text-[10px] font-bold leading-4 text-amber-950">{flavorText.trim()}</div>
+                  <div className="border-t border-amber-100 bg-amber-50 px-4 py-3 text-center">
+                    <div className="text-[8px] font-black tracking-[0.12em] text-amber-700">FLAVOR</div>
+                    <div className={`mt-1 text-[10px] font-bold leading-4 ${flavorText.trim() ? 'text-amber-950' : 'text-amber-500'}`}>
+                      {flavorText.trim() || '一言未設定'}
                     </div>
-                  )}
+                  </div>
                 </div>
 
                 <div className="mx-auto mt-3 grid w-full max-w-sm grid-cols-2 gap-2 text-[8px] font-bold text-gray-500">

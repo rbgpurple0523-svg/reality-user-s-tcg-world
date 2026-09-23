@@ -434,11 +434,6 @@ export default function Home() {
 
             <div className="min-h-0 flex-1 px-3 py-3 sm:px-5">
               <div className="flex h-full min-h-0 flex-col">
-                <div className="shrink-0 text-center">
-                  <h3 className="text-base font-black text-gray-950">コーデを選ぶ</h3>
-                  <p className="mx-auto mt-1 max-w-md text-[10px] font-bold leading-5 text-gray-600">コーデは、キャラカードの4つのステータスの得意・不得意を決める「性能タイプ」です。</p>
-                </div>
-
                 <div className="mt-2 min-h-0 flex-1 overflow-hidden rounded-3xl border border-gray-200 bg-gray-50 shadow-sm">
               <CoordinateRadialMap
                 coordinates={COORDINATE_PRESETS}

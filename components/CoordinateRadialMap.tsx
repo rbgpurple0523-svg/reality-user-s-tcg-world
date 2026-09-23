@@ -23,12 +23,6 @@ const STAT_LABELS: Record<StatKey, string> = {
   charm: '特技',
 };
 
-const STAT_ENGLISH_LABELS: Record<StatKey, string> = {
-  hp: 'Power',
-  intellect: 'Wisdom',
-  dexterity: 'Technique',
-  charm: 'Skill',
-};
 
 const RADIAL_CODES = [
   'p1', 'p2', 'p3', 'p4', 'p5', 'p6',
@@ -135,7 +129,7 @@ function getRankText(coordinate: CoordinatePreset) {
   }
 
   return getStatsRank(coordinate)
-    .map((key) => `${STAT_LABELS[key]} / ${STAT_ENGLISH_LABELS[key]}`)
+    .map((key) => STAT_LABELS[key])
     .join(' ＞ ');
 }
 
@@ -214,17 +208,17 @@ function RadarChart({
             <text x={center} y={size - 15} textAnchor="middle" fontSize="9" fontWeight="800" fill="currentColor">器用</text>
             <text x={center} y={size - 5} textAnchor="middle" fontSize="7" fontWeight="700" fill="currentColor" opacity="0.7">Technique</text>
             <text x="4" y={center - 1} textAnchor="start" fontSize="9" fontWeight="800" fill="currentColor">特技</text>
-            <text x="4" y={center + 10} textAnchor="start" fontSize="7" fontWeight="700" fill="currentColor" opacity="0.7">Skill</text>
+            <text x="4" y={center + 10} textAnchor="start" fontSize="7" fontWeight="700" fill="currentColor" opacity="0.7">Special</text>
           </>
         )}
       </svg>
 
       {showLabels && (
         <div className="mt-1 grid grid-cols-2 gap-x-6 gap-y-1 text-xs font-bold text-gray-700">
-          <span>体力 / Power {stats.hp}</span>
-          <span>知略 / Wisdom {stats.intellect}</span>
-          <span>器用 / Technique {stats.dexterity}</span>
-          <span>特技 / Skill {stats.charm}</span>
+          <span>体力 {stats.hp}</span>
+          <span>知略 {stats.intellect}</span>
+          <span>器用 {stats.dexterity}</span>
+          <span>特技 {stats.charm}</span>
         </div>
       )}
     </div>
@@ -365,7 +359,7 @@ export default function CoordinateRadialMap({
                 <text x={center} y={displaySvgSize - 20} textAnchor="middle" fontSize="14" fontWeight="900" fill="#111827">器用</text>
                 <text x={center} y={displaySvgSize - 7} textAnchor="middle" fontSize="9" fontWeight="700" fill="#6b7280">Technique</text>
                 <text x={8} y={center - 5} textAnchor="start" fontSize="14" fontWeight="900" fill="#111827">特技</text>
-                <text x={8} y={center + 9} textAnchor="start" fontSize="9" fontWeight="700" fill="#6b7280">Skill</text>
+                <text x={8} y={center + 9} textAnchor="start" fontSize="9" fontWeight="700" fill="#6b7280">Special</text>
 
                 {RADIAL_CODES.map((code, index) => {
                   const coordinate = coordinateMap.get(code);
