@@ -594,7 +594,15 @@ export default function Home() {
                 onClick={handleStartDeckBuilderFromMenu}
                 className="rounded-2xl border border-gray-200 bg-gray-50 px-5 py-5 text-left shadow-sm transition hover:bg-gray-100"
               >
-                <div className="text-base font-black text-gray-900">🃏 チームを構築する</div>
+                <div className="text-base font-black text-gray-900">🃏 チームを編成する</div>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => setCurrentView('entryHub')}
+                className="rounded-2xl border border-purple-200 bg-purple-50 px-5 py-5 text-left shadow-sm transition hover:bg-purple-100"
+              >
+                <div className="text-base font-black text-purple-950">🗂️ カードライブラリ</div>
               </button>
 
               <button
@@ -784,6 +792,7 @@ export default function Home() {
             initialDeckId={editingDeckId}
             onGoToCpuBattle={editingDeckId ? handleReturnToMenu : handleStartCpuBattle}
             battleButtonLabel={editingDeckId ? '⚔️ 対戦へ戻る' : '⚔️ CPU対戦へ'}
+            onGoToEntryHub={() => setCurrentView('entryHub')}
           />
         )}
 

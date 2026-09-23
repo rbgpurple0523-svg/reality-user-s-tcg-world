@@ -20,6 +20,7 @@ export interface EntryRecord {
   effect?: string;
   imageUrl?: string;
   imageDataUrl?: string;
+  colorHex?: string;
   color?: string;
   archetype?: string;
   hp?: number;
@@ -45,6 +46,7 @@ export interface AvatarCard {
   color: string;
   archetype: string;
   imageDataUrl?: string;
+  colorHex?: string;
   hp?: number;
   ap?: number;
   intellect?: number;
@@ -63,6 +65,7 @@ export interface SupportCard {
   cost?: number;
   category?: string;
   imageDataUrl?: string;
+  colorHex?: string;
   presetId?: string;
   isVirtual?: boolean;
 }
@@ -85,14 +88,10 @@ interface DeckBuilderProps {
   onGoToBattle?: () => void;
   initialDeckId?: string | null;
   battleButtonLabel?: string;
+  onGoToEntryHub?: () => void;
 }
 
-export default function DeckBuilder({
-  onGoToCpuBattle,
-  onGoToBattle,
-  initialDeckId = null,
-  battleButtonLabel = '⚔ CPU対戦へ'
-}: DeckBuilderProps) {
+export default function DeckBuilder({ onGoToCpuBattle, onGoToBattle, initialDeckId = null, battleButtonLabel = '⚔️ CPU対戦へ', onGoToEntryHub }: DeckBuilderProps) {
   // 既存の呼び出し側が onGoToCpuBattle / onGoToBattle のどちらでも動くよう互換性を維持します。
   const goToCpuBattle = onGoToCpuBattle ?? onGoToBattle;
   const [cards, setCards] = useState<AvatarCard[]>([]);
@@ -132,6 +131,7 @@ export default function DeckBuilder({
   const [selectedSupportDetail, setSelectedSupportDetail] = useState<SupportCard | null>(null);
   const [selectedCharacterDetail, setSelectedCharacterDetail] = useState<AvatarCard | null>(null);
   const [isDeckDashboardOpen, setIsDeckDashboardOpen] = useState<boolean>(false);
+  const [isOtherMenuOpen, setIsOtherMenuOpen] = useState<boolean>(false);
   const SUPPORT_PAGE_SIZE = 20;
 
   // 保存済みデッキと現在の編集内容を比較し、未保存変更があるかをリアルタイム判定します。
@@ -219,6 +219,7 @@ export default function DeckBuilder({
             color: e.color || e.type || 'ノーマル',
             archetype: e.archetype || e.rarity || '一般',
             imageDataUrl: e.imageDataUrl || e.imageUrl || '',
+            colorHex: e.colorHex,
             hp: e.hp,
             ap: e.ap,
             intellect: e.ap,
@@ -585,7 +586,7 @@ export default function DeckBuilder({
       return false;
     }
     if (!vanguardId || !centerId || !generalId) {
-      setMessage('⚠️ 先鋒・中堅・大将のすべての枠にキャラカードをセットしてください。');
+      setMessage('⚠️ フェザークラス・オーロラクラス・スタークラスのすべてにキャラカードをセットしてください。');
       return false;
     }
     if (supportIds.length !== 18) {
@@ -629,7 +630,7 @@ export default function DeckBuilder({
       setMessage('✅ デッキを上書き保存しました。');
     } else {
       saveDeckWithName(deckName, null);
-      setMessage('🎉 新しいデッキを保存しました！');
+      setMessage('🎉 新しいチームを保存しました！');
     }
   };
 
@@ -674,7 +675,7 @@ export default function DeckBuilder({
   };
 
   const handleDuplicateDeck = () => {
-    const baseName = deckName.trim() || '新規デッキ';
+    const baseName = deckName.trim() || '新規チーム';
     let newName = `${baseName} のコピー`;
     let suffix = 2;
     while (decks.some(d => d.name.trim() === newName)) {
@@ -708,7 +709,7 @@ export default function DeckBuilder({
       setDecks(updated);
       localStorage.setItem(STORAGE_DECKS_KEY, JSON.stringify(updated));
       resetToNewDeck();
-      setMessage('🗑️ デッキを削除しました。');
+      setMessage('🗑️ チームを削除しました。');
     }
   };
 
@@ -809,12 +810,12 @@ export default function DeckBuilder({
           setSupportIds(importedData.deck.supportCardIds || []);
           setSelectedDeckId(null);
 
-          setMessage('🎉 ファイルからデッキを復元しました！');
+          setMessage('🎉 ファイルからチームを復元しました！');
         } else {
           throw new Error('形式が不正です');
         }
       } catch (err) {
-        setMessage('❌ ファイルの読み込みに失敗しました。正しいJSONファイルかご確認ください。');
+        setMessage('❌ ファイルの読み込みに失敗しました。正しいチームJSONかご確認ください。');
       }
     };
     reader.readAsText(file);
@@ -828,8 +829,6 @@ export default function DeckBuilder({
     charm: card.charm ?? 20,
   });
 
-  type DistributionGroup = string[] & { __value?: number };
-
   const getArchetypeDistribution = (card: AvatarCard) => {
     const stats = getCharacterStats(card);
     const labels: Array<[string, number]> = [
@@ -839,18 +838,16 @@ export default function DeckBuilder({
       ['特技', stats.charm],
     ];
     const sorted = [...labels].sort((a, b) => b[1] - a[1]);
-    const groups: DistributionGroup[] = [];
+    const groups: Array<{ labels: string[]; value: number }> = [];
     sorted.forEach(([label, value]) => {
       const last = groups[groups.length - 1];
-      if (last && last.__value === value) {
-        last.push(label);
+      if (last && last.value === value) {
+        last.labels.push(label);
       } else {
-        const group = [label] as DistributionGroup;
-        group.__value = value;
-        groups.push(group);
+        groups.push({ labels: [label], value });
       }
     });
-    return groups.map(group => group.join('＝')).join('＞');
+    return groups.map(group => group.labels.join('＝')).join('＞');
   };
 
   const getCharacterSeason = (card: AvatarCard) => {
@@ -1058,812 +1055,478 @@ export default function DeckBuilder({
   const activeCharFilterCount = selectedColors.length + selectedArchetypes.length + (charSearchQuery ? 1 : 0);
 
   return (
-    <div className="max-w-4xl mx-auto p-6 space-y-8 text-gray-900">
-      {message && (
-        <div className="p-3 text-sm font-bold text-indigo-900 bg-indigo-50 border border-indigo-200 rounded-lg">
-          {message}
-        </div>
-      )}
-
-      {/* 上部: 保存済みデッキ選択 & 一括操作 */}
-      <div className="bg-white p-5 rounded-xl border border-gray-200 shadow-sm flex flex-wrap gap-4 items-center justify-between">
-        <div className="flex items-center space-x-2 overflow-x-auto py-1">
-          <span className="text-sm font-bold text-gray-700 whitespace-nowrap">デッキ選択:</span>
-          {decks.map(d => (
+    <div className="flex h-full min-h-0 flex-col bg-gray-50 text-gray-900">
+      <div className="shrink-0 border-b border-gray-200 bg-white px-4 py-3 shadow-sm sm:px-5">
+        <div className="mx-auto flex w-full max-w-5xl items-center justify-between gap-3">
+          <div className="min-w-0">
+            <div className="text-[9px] font-black tracking-[0.24em] text-indigo-500">TEAM BUILDER</div>
+            <h1 className="mt-0.5 truncate text-xl font-black text-indigo-950">チームを編成する</h1>
+          </div>
+          <div className="flex shrink-0 items-center gap-2">
             <button
-              key={d.id}
-              onClick={() => loadDeckToEditor(d)}
-              className={`px-3 py-1.5 rounded-lg text-xs font-bold transition whitespace-nowrap cursor-pointer ${
-                selectedDeckId === d.id ? 'bg-indigo-600 text-white shadow' : 'bg-gray-100 hover:bg-gray-200 text-gray-700'
-              }`}
+              type="button"
+              onClick={() => setIsDeckDashboardOpen(true)}
+              className="rounded-xl border border-indigo-200 bg-indigo-50 px-3 py-2 text-[10px] font-black text-indigo-800 transition hover:bg-indigo-100"
             >
-              {d.name}
+              チーム分析
             </button>
-          ))}
-          <button onClick={resetToNewDeck} className="px-3 py-1.5 rounded-lg text-xs font-bold border border-dashed text-gray-600 hover:bg-gray-50 cursor-pointer">
-            ＋ 新規作成
-          </button>
-        </div>
-
-        <div className="flex items-center space-x-2">
-          {decks.length > 0 && (
             <button
-              onClick={handleExportAllDecks}
-              className="px-3 py-1.5 bg-emerald-700 hover:bg-emerald-800 text-white text-xs font-bold rounded-lg transition cursor-pointer"
-              title="保存されている全デッキを一括ダウンロード"
+              type="button"
+              onClick={() => setIsOtherMenuOpen(true)}
+              className="rounded-xl border border-gray-200 bg-white px-3 py-2 text-[10px] font-black text-gray-600 transition hover:bg-gray-50"
+              aria-label="その他"
             >
-              📦 全デッキ一括出力 ({decks.length})
+              ••• その他
             </button>
+          </div>
+        </div>
+      </div>
+
+      <div className="min-h-0 flex-1 overflow-hidden">
+        <div className="mx-auto flex h-full min-h-0 w-full max-w-5xl flex-col px-3 py-3 sm:px-5">
+          {message && (
+            <div className="mb-2 shrink-0 rounded-2xl border border-indigo-200 bg-indigo-50 px-3 py-2 text-[10px] font-black text-indigo-900" role="status">
+              {message}
+            </div>
           )}
 
-          <label className="px-3 py-1.5 bg-gray-800 hover:bg-gray-900 text-white text-xs font-bold rounded-lg cursor-pointer transition">
-            📂 JSONインポート
-            <input type="file" accept=".json" onChange={handleImportDeck} className="hidden" />
-          </label>
-        </div>
-      </div>
-
-      {/* デッキ編集枠 */}
-      <div className="bg-white p-6 rounded-xl border border-gray-200 shadow-sm space-y-6">
-        <div className="flex flex-wrap gap-4 justify-between items-end border-b pb-4">
-          <div className="flex-1 min-w-[220px]">
-            <label className="block text-xs font-black text-gray-600 mb-1">デッキ名</label>
-            <input
-              type="text"
-              value={deckName}
-              onChange={(e) => setDeckName(e.target.value)}
-              className="w-full max-w-md text-xl font-bold px-3 py-1.5 border rounded-lg focus:ring-2 focus:ring-indigo-500 bg-white text-gray-900"
-              placeholder="デッキ名"
-            />
-          </div>
-          <div className="flex space-x-2 flex-wrap gap-y-2">
-            <button onClick={handleSaveDeck} className="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white text-sm font-bold rounded-lg shadow cursor-pointer">
-              {selectedDeckId ? '💾 上書き保存' : '💾 保存'}
-            </button>
-            <button onClick={handleOpenSaveAs} className="px-4 py-2 bg-purple-600 hover:bg-purple-700 text-white text-sm font-bold rounded-lg shadow cursor-pointer">
-              📝 名前を付けて保存
-            </button>
-            <button onClick={handleDuplicateDeck} className="px-3 py-2 bg-amber-500 hover:bg-amber-600 text-white text-sm font-bold rounded-lg shadow cursor-pointer" title="この構成をもとに複製して新しいデッキを作成">
-              📋 複製
-            </button>
-            <button onClick={handleExportDeck} className="px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white text-sm font-bold rounded-lg shadow cursor-pointer">
-              📤 出力
-            </button>
-            {selectedDeckId && (
-              <button onClick={() => handleDeleteDeck(selectedDeckId)} className="px-3 py-2 bg-red-100 hover:bg-red-200 text-red-700 text-sm font-bold rounded-lg cursor-pointer">
-                削除
-              </button>
-            )}
-          </div>
-        </div>
-
-        {/* キャラカード指定枠 */}
-        <div>
-          <h3 className="text-sm font-bold text-gray-800 mb-1">【キャラカード】（先鋒・中堅・大将 各1枚）</h3>
-          <p className="text-xs text-gray-500 mb-3">枠をクリックして選択するか、下のキャラをドラッグ＆ドロップで配置できます。</p>
-          
-          <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-            {(['vanguard', 'center', 'general'] as PositionRole[]).map((role) => {
-              const label = role === 'vanguard' ? '先鋒' : role === 'center' ? '中堅' : '大将';
-              const cardId = role === 'vanguard' ? vanguardId : role === 'center' ? centerId : generalId;
-              const card = getCard(cardId);
-              const isTargeting = selectedTargetRole === role;
-
-              return (
-                <div
-                  key={role}
-                  onClick={() => handleSlotClick(role)}
-                  onDragOver={handleDragOver}
-                  onDrop={(e) => handleDrop(e, role)}
-                  className={`border-2 rounded-xl p-3 text-center transition cursor-pointer relative ${
-                    isTargeting 
-                      ? 'border-indigo-600 bg-indigo-100 ring-2 ring-indigo-400' 
-                      : 'border-indigo-200 bg-indigo-50/30 hover:border-indigo-400'
-                  }`}
-                >
-                  <div className="font-bold text-xs text-indigo-800 mb-2">
-                    ⚔️ {label} {isTargeting && <span className="text-indigo-600">(選択中)</span>}
-                  </div>
-
-                  {card ? (
-                    <div className="relative group">
-                      <button
-                        onClick={(e) => handleRemoveCard(e, role)}
-                        className="absolute -top-2 -right-2 bg-red-500 text-white rounded-full w-5 h-5 text-xs font-bold hover:bg-red-600 z-10"
-                      >
-                        ×
-                      </button>
-                      <button
-                        onClick={(e) => { e.stopPropagation(); setSelectedCharacterDetail(card); }}
-                        className="absolute -top-2 -left-2 bg-white border border-gray-300 text-gray-600 rounded-full w-6 h-6 text-xs font-black hover:bg-indigo-50 hover:text-indigo-600 z-10"
-                        title="キャラカード詳細"
-                        aria-label={`${card.userName}の詳細`}
-                      >ⓘ</button>
-                      {card.imageDataUrl ? (
-                        <div className="w-full h-28 rounded-lg mb-1 bg-gray-50 border border-gray-100 flex items-center justify-center overflow-hidden">
-                          <img src={card.imageDataUrl} alt={card.userName} className="max-w-full max-h-full object-contain pointer-events-none" />
-                        </div>
-                      ) : (
-                        <div className="w-full h-28 bg-gray-200 rounded-lg mb-1 flex items-center justify-center text-xs text-gray-400">No Image</div>
-                      )}
-                      <div className="font-bold text-sm text-gray-900">{card.userName}</div>
-                      <div className="text-[10px] text-gray-500">{card.color} / {card.archetype}</div>
-                      <div className="text-[10px] font-bold text-gray-700">{getArchetypeDistribution(card)}</div>
-                      <div className="text-[10px] text-gray-500">好きな季節：{getCharacterSeason(card)}</div>
-                    </div>
-                  ) : (
-                    <div className="h-32 border-2 border-dashed border-gray-300 rounded-lg flex flex-col items-center justify-center text-xs text-gray-400">
-                      <span>{isTargeting ? '下のキャラを選択' : '未セット'}</span>
-                      <span className="text-[10px] mt-1 text-gray-400">(クリックまたはD&D)</span>
-                    </div>
-                  )}
-                </div>
-              );
-            })}
-          </div>
-        </div>
-
-      </div>
-
-      {/* 下部: カード選択エリア */}
-      <div className="space-y-8">
-        {/* 2. 選択できるキャラカード一覧セクション */}
-        <div className="space-y-3">
-          <div className="flex flex-wrap justify-between items-center gap-2">
-            <div className="flex items-center space-x-2">
-              <h2 className="text-sm font-bold text-gray-800">
-                キャラカード一覧 ({filteredCards.length} / {cards.length}件)
-              </h2>
-              <button
-                onClick={() => setIsCharFilterOpen(!isCharFilterOpen)}
-                className={`px-2.5 py-1 text-xs font-bold rounded-lg border transition flex items-center space-x-1 cursor-pointer ${
-                  activeCharFilterCount > 0 
-                    ? 'bg-indigo-600 text-white border-indigo-600' 
-                    : 'bg-white text-gray-700 border-gray-300 hover:bg-gray-50'
-                }`}
-              >
-                <span>🔍 絞り込み</span>
-                {activeCharFilterCount > 0 && (
-                  <span className="bg-white text-indigo-600 rounded-full px-1.5 text-[10px] font-black">
-                    {activeCharFilterCount}
-                  </span>
-                )}
-                <span>{isCharFilterOpen ? '▲' : '▼'}</span>
-              </button>
-            </div>
-            <span className="text-xs text-gray-500">クリックまたはドラッグ＆ドロップ</span>
-          </div>
-
-          {/* キャラ用絞り込み展開パネル */}
-          {isCharFilterOpen && (
-            <div className="p-3 bg-indigo-50/50 border border-indigo-100 rounded-xl space-y-3">
-              <div>
+          <section className="shrink-0 rounded-3xl border border-gray-200 bg-white p-3 shadow-sm sm:p-4">
+            <div className="flex items-center justify-between gap-3">
+              <div className="min-w-0 flex-1">
+                <div className="text-[9px] font-black tracking-[0.14em] text-gray-400">TEAM NAME</div>
                 <input
                   type="text"
-                  value={charSearchQuery}
-                  onChange={(e) => setCharSearchQuery(e.target.value)}
-                  placeholder="キャラ名や属性で検索..."
-                  className="w-full text-xs px-3 py-1.5 border rounded-lg bg-white text-gray-900 focus:ring-1 focus:ring-indigo-500"
+                  value={deckName}
+                  onChange={(e) => setDeckName(e.target.value)}
+                  className="mt-1 w-full rounded-xl border border-gray-200 bg-white px-3 py-2 text-base font-black text-gray-950 outline-none focus:border-indigo-400 focus:ring-2 focus:ring-indigo-100"
+                  placeholder="チーム名"
+                  aria-label="チーム名"
                 />
               </div>
-
-              {availableColors.length > 0 && (
-                <div className="flex items-center space-x-2 text-xs">
-                  <span className="font-bold text-gray-600 whitespace-nowrap">カラー:</span>
-                  <div className="flex flex-wrap gap-1">
-                    {availableColors.map(color => (
-                      <button
-                        key={color}
-                        onClick={() => toggleColorFilter(color)}
-                        className={`px-2 py-0.5 rounded text-[11px] font-bold transition border cursor-pointer ${
-                          selectedColors.includes(color)
-                            ? 'bg-indigo-600 text-white border-indigo-600'
-                            : 'bg-white text-gray-700 border-gray-200 hover:bg-gray-100'
-                        }`}
-                      >
-                        {color}
-                      </button>
-                    ))}
-                  </div>
+              <div className="shrink-0 text-right">
+                <div className="text-[9px] font-black tracking-[0.14em] text-gray-400">編成状況</div>
+                <div className={`mt-1 text-sm font-black ${vanguardId && centerId && generalId ? 'text-emerald-600' : 'text-amber-600'}`}>
+                  キャラ {[vanguardId, centerId, generalId].filter(Boolean).length}/3
                 </div>
-              )}
-
-              {availableArchetypes.length > 0 && (
-                <div className="flex items-center space-x-2 text-xs">
-                  <span className="font-bold text-gray-600 whitespace-nowrap">タイプ:</span>
-                  <div className="flex flex-wrap gap-1">
-                    {availableArchetypes.map(arch => (
-                      <button
-                        key={arch}
-                        onClick={() => toggleArchetypeFilter(arch)}
-                        className={`px-2 py-0.5 rounded text-[11px] font-bold transition border cursor-pointer ${
-                          selectedArchetypes.includes(arch)
-                            ? 'bg-indigo-600 text-white border-indigo-600'
-                            : 'bg-white text-gray-700 border-gray-200 hover:bg-gray-100'
-                        }`}
-                      >
-                        {arch}
-                      </button>
-                    ))}
-                  </div>
-                </div>
-              )}
-
-              {activeCharFilterCount > 0 && (
-                <div className="text-right">
-                  <button onClick={clearCharFilters} className="text-[11px] text-red-600 hover:underline font-bold cursor-pointer">
-                    条件リセット
-                  </button>
-                </div>
-              )}
+                <div className={`text-[10px] font-black ${supportIds.length === 18 ? 'text-emerald-600' : 'text-amber-600'}`}>サポート {supportIds.length}/18</div>
+              </div>
             </div>
-          )}
+          </section>
 
-          {/* キャラカードグリッド */}
-          {filteredCards.length === 0 ? (
-            <div className="p-6 text-center bg-gray-50 border border-dashed rounded-xl text-xs text-gray-400">
-              条件に一致するキャラカードがありません
+          <section className="mt-3 shrink-0 rounded-3xl border border-indigo-100 bg-indigo-50/50 p-3 shadow-sm sm:p-4">
+            <div className="mb-2 flex items-end justify-between gap-3">
+              <div>
+                <div className="text-[9px] font-black tracking-[0.16em] text-indigo-500">CHARACTER LINEUP</div>
+                <h2 className="mt-0.5 text-sm font-black text-indigo-950">3つのクラス</h2>
+              </div>
+              <div className="text-[9px] font-bold text-gray-500">枠をタップ → キャラを選ぶ</div>
             </div>
-          ) : (
-            <div className="grid grid-cols-2 sm:grid-cols-4 md:grid-cols-6 gap-3">
-              {filteredCards.map((card) => {
-                const isAssigned = [vanguardId, centerId, generalId].includes(card.id);
-                const isSelected = selectedCardId === card.id;
 
+            <div className="grid grid-cols-3 gap-2">
+              {([
+                ['vanguard', 'フェザークラス', vanguardId],
+                ['center', 'オーロラクラス', centerId],
+                ['general', 'スタークラス', generalId],
+              ] as Array<[PositionRole, string, string | null]>).map(([role, label, cardId]) => {
+                const card = getCard(cardId);
+                const isTargeting = selectedTargetRole === role;
                 return (
-                  <div
-                    key={card.id}
-                    draggable={!isAssigned}
-                    onDragStart={(e) => handleDragStart(e, card.id)}
-                    onClick={() => handleCardClick(card.id)}
-                    className={`p-2 border rounded-xl transition text-center select-none ${
-                      isAssigned
-                        ? 'bg-gray-100 border-gray-300 cursor-not-allowed'
-                        : isSelected
-                        ? 'bg-indigo-50 border-indigo-600 ring-2 ring-indigo-400 cursor-pointer'
-                        : 'bg-white hover:border-indigo-400 border-gray-200 cursor-grab active:cursor-grabbing'
+                  <button
+                    key={role}
+                    type="button"
+                    onClick={() => {
+                      setSelectedTargetRole(role);
+                      setSelectedCardId(null);
+                      setSelectedCharacterDetail(null);
+                    }}
+                    className={`min-w-0 rounded-2xl border-2 p-2 text-left transition ${
+                      isTargeting ? 'border-indigo-500 bg-white ring-2 ring-indigo-200' : 'border-white bg-white/80 hover:border-indigo-200'
                     }`}
+                    aria-label={`${label}にキャラカードを設定`}
                   >
-                    {card.imageDataUrl ? (
-                      <div className="w-full h-20 rounded-lg mb-1 bg-gray-50 border border-gray-100 flex items-center justify-center overflow-hidden">
-                        <img src={card.imageDataUrl} alt={card.userName} className="max-w-full max-h-full object-contain pointer-events-none" />
+                    <div className="text-center text-[9px] font-black text-indigo-700">{label}</div>
+                    {card ? (
+                      <div className="mt-2">
+                        <div className="overflow-hidden rounded-xl border-2 bg-white" style={{ borderColor: card.colorHex || '#dbeafe' }}>
+                          {card.imageDataUrl ? (
+                            <img src={card.imageDataUrl} alt="" className="h-28 w-full object-cover" />
+                          ) : (
+                            <div className="flex h-28 items-center justify-center bg-gray-100 text-[9px] text-gray-400">画像なし</div>
+                          )}
+                        </div>
+                        <div className="mt-1 truncate text-center text-[10px] font-black text-gray-950">{card.userName}</div>
+                        <div className="mt-0.5 text-center text-[8px] font-bold text-gray-400">詳しく見る／変更</div>
                       </div>
                     ) : (
-                      <div className="w-full h-20 bg-gray-200 rounded-lg mb-1 flex items-center justify-center text-[10px] text-gray-400">No Image</div>
+                      <div className={`mt-2 flex h-36 flex-col items-center justify-center rounded-xl border-2 border-dashed ${isTargeting ? 'border-indigo-300 bg-indigo-50 text-indigo-700' : 'border-gray-300 bg-gray-50 text-gray-400'}`}>
+                        <span className="text-lg">＋</span>
+                        <span className="mt-1 text-[9px] font-black">キャラを選ぶ</span>
+                      </div>
                     )}
-                    <div className="text-xs font-bold truncate">{card.userName}</div>
-                    <div className="text-[10px] text-gray-500">{card.color} / {card.archetype}</div>
-                    <div className="text-[9px] font-bold text-gray-700 truncate" title={getArchetypeDistribution(card)}>{getArchetypeDistribution(card)}</div>
-                    <div className="text-[9px] text-gray-500">好きな季節：{getCharacterSeason(card)}</div>
-                    <div className="flex items-center justify-center gap-1 mt-1.5">
-                      {isAssigned ? (
-                        <button
-                          onClick={(e) => { e.stopPropagation();
-                            if (vanguardId === card.id) setVanguardId(null);
-                            if (centerId === card.id) setCenterId(null);
-                            if (generalId === card.id) setGeneralId(null);
-                          }}
-                          className="px-3 py-1.5 rounded-md bg-red-100 hover:bg-red-200 text-red-700 border border-red-300 text-xs font-black shadow-sm"
-                        >外す</button>
-                      ) : null}
-                      <button
-                        onClick={(e) => { e.stopPropagation(); setSelectedCharacterDetail(card); }}
-                        className="w-6 h-6 rounded-full border border-gray-300 bg-white hover:bg-indigo-50 hover:border-indigo-400 text-gray-500 hover:text-indigo-600 font-black text-xs"
-                        title="キャラカード詳細"
-                        aria-label={`${card.userName}の詳細`}
-                      >ⓘ</button>
-                    </div>
-                  </div>
+                  </button>
                 );
               })}
             </div>
-          )}
-        </div>
+          </section>
 
-        {/* 3. 選択中のサポートカード枠 */}
-        <div className="border-t pt-4">
-          <div className="flex justify-between items-center mb-3">
-            <div className="flex items-center space-x-3">
-              <h3 className="text-sm font-bold text-gray-800">
-                【サポートカード】（{supportIds.length} / 18 枚）
-              </h3>
-              {supportIds.length > 0 && (
+          <section className="mt-3 min-h-0 flex-1 rounded-3xl border border-purple-100 bg-white p-3 shadow-sm sm:p-4">
+            <div className="flex items-center justify-between gap-3">
+              <div>
+                <div className="text-[9px] font-black tracking-[0.16em] text-purple-500">SUPPORT LINEUP</div>
+                <h2 className="mt-0.5 text-sm font-black text-purple-950">サポートカード</h2>
+              </div>
+              <div className="flex items-center gap-2">
+                <div className={`text-sm font-black ${supportIds.length === 18 ? 'text-emerald-600' : 'text-amber-600'}`}>{supportIds.length} / 18枚</div>
                 <button
-                  onClick={handleClearAllSupports}
-                  className="px-2 py-1 bg-red-50 hover:bg-red-100 text-red-600 text-xs font-bold rounded border border-red-200 transition cursor-pointer"
+                  type="button"
+                  onClick={() => { setIsSupportFilterOpen(true); setSelectedSupportDetail(null); }}
+                  className="rounded-xl bg-purple-700 px-3 py-2 text-[10px] font-black text-white shadow-sm transition hover:bg-purple-800"
                 >
-                  🗑️ 全解除
+                  ＋ カードを選ぶ
                 </button>
+              </div>
+            </div>
+
+            <div
+              className="mt-2 min-h-[76px] max-h-[26vh] overflow-x-auto rounded-2xl border-2 border-dashed border-purple-100 bg-purple-50/40 p-2"
+              onDragOver={handleDragOver}
+              onDrop={handleSupportDrop}
+            >
+              {groupedSupportCards.length === 0 ? (
+                <div className="flex h-16 items-center justify-center text-[10px] font-bold text-gray-400">「カードを選ぶ」から追加してください</div>
+              ) : (
+                <div className="flex min-w-max gap-2">
+                  {groupedSupportCards.map(({ id, count, data }) => data ? (
+                    <div key={id} className="w-28 shrink-0 rounded-xl border bg-white p-1.5 shadow-sm" style={{ borderColor: data.colorHex || '#e9d5ff' }}>
+                      <div className="relative h-20 overflow-hidden rounded-lg bg-gray-100">
+                        {data.imageDataUrl ? <img src={data.imageDataUrl} alt="" className="h-full w-full object-cover" /> : <div className="flex h-full items-center justify-center text-[8px] text-gray-400">画像なし</div>}
+                        <span className="absolute right-1 top-1 rounded-full bg-gray-950/75 px-1.5 py-0.5 text-[8px] font-black text-white">×{count}</span>
+                      </div>
+                      <div className="mt-1 truncate text-[9px] font-black text-gray-900">{data.name}</div>
+                      <button type="button" onClick={() => handleRemoveSingleSupport(id)} className="mt-1 w-full rounded-lg bg-gray-50 py-1 text-[8px] font-black text-gray-500 hover:bg-red-50 hover:text-red-600">1枚減らす</button>
+                    </div>
+                  ) : null)}
+                </div>
               )}
             </div>
-            <span className="text-xs text-gray-500">同名カードは2枚まで</span>
+          </section>
+
+          <div className="mt-3 grid shrink-0 grid-cols-[1fr_auto] gap-2">
+            <button
+              type="button"
+              onClick={handleSaveDeck}
+              className="rounded-2xl bg-indigo-600 px-4 py-3 text-sm font-black text-white shadow-lg shadow-indigo-100 transition hover:bg-indigo-700"
+            >
+              {selectedDeckId ? 'チームを保存して更新' : 'チームを保存する'}
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                if (!validateDeckForSave()) return;
+                handleSaveDeck();
+                goToCpuBattle?.();
+              }}
+              className="rounded-2xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-[11px] font-black text-emerald-800 transition hover:bg-emerald-100"
+            >
+              {battleButtonLabel.replace(/^⚔️\s*/, '')}
+            </button>
           </div>
-          <div
-            className="min-h-[72px] p-2.5 border-2 border-dashed border-gray-200 rounded-xl bg-gray-50 flex flex-wrap gap-2"
-            onDragOver={handleDragOver}
-            onDrop={handleSupportDrop}
-          >
-            {groupedSupportCards.length === 0 ? (
-              <span className="text-xs text-gray-400 m-auto">下の一覧からクリック、またはドラッグ＆ドロップで追加できます</span>
-            ) : (
-              groupedSupportCards.map(({ id, count, data }) => (
-                <div key={id} className="w-64 bg-white border border-indigo-200 hover:border-indigo-400 px-2 py-1.5 rounded-lg text-xs flex items-center gap-1 shadow-sm transition">
-                  <button
-                    onClick={() => handleRemoveSingleSupport(id)}
-                    className="w-6 h-6 rounded-md bg-gray-100 hover:bg-red-50 text-gray-500 hover:text-red-600 font-black flex-shrink-0 transition"
-                    title="1枚減らす"
-                  >−</button>
-                  <div className="flex items-center min-w-0 flex-1">
-                    <span className="font-bold text-indigo-950 truncate" title={data?.name}>{data?.name || '不明なカード'}</span>
-                    <span className="ml-1 px-1.5 py-0.2 bg-orange-500 text-white font-extrabold rounded-full text-[10px] flex-shrink-0">{count}</span>
-                  </div>
-                  <button
-                    onClick={() => handleAddSupport(id)}
-                    disabled={supportIds.length >= 18 || count >= 2}
-                    className={`w-6 h-6 rounded-md font-black flex-shrink-0 transition ${
-                      supportIds.length >= 18 || count >= 2
-                        ? 'bg-gray-50 text-gray-300 cursor-not-allowed'
-                        : 'bg-gray-100 hover:bg-indigo-50 text-gray-500 hover:text-indigo-600'
-                    }`}
-                    title={count >= 2 ? '同じカードは2枚まで' : supportIds.length >= 18 ? 'サポートカードは18枚まで' : '1枚追加'}
-                  >+</button>
-                  {data && (
-                    <button
-                      onClick={(e) => handleOpenSupportDetail(e, data)}
-                      className="w-6 h-6 rounded-full border border-gray-300 bg-white hover:bg-indigo-50 hover:border-indigo-400 text-gray-500 hover:text-indigo-600 font-black flex-shrink-0 transition"
-                      title="カード詳細を見る"
-                      aria-label={`${data.name}の詳細`}
-                    >ⓘ</button>
-                  )}
+        </div>
+      </div>
+
+      {/* キャラカード選択モーダル */}
+      {selectedTargetRole && (
+        <div className="fixed inset-0 z-50 flex items-end justify-center bg-gray-950/50 p-2 sm:items-center sm:p-5">
+          <div className="flex max-h-[92dvh] w-full max-w-5xl min-h-0 flex-col overflow-hidden rounded-3xl bg-white shadow-2xl">
+            <div className="shrink-0 border-b border-gray-200 bg-white px-4 py-3">
+              <div className="flex items-center justify-between gap-3">
+                <div>
+                  <div className="text-[9px] font-black tracking-[0.16em] text-indigo-500">CHARACTER CARD SELECT</div>
+                  <h2 className="mt-0.5 text-base font-black text-gray-950">
+                    {selectedTargetRole === 'vanguard' ? 'フェザークラス' : selectedTargetRole === 'center' ? 'オーロラクラス' : 'スタークラス'} に入れるキャラを選ぶ
+                  </h2>
                 </div>
-              ))
+                <button type="button" onClick={() => { setSelectedTargetRole(null); setSelectedCharacterDetail(null); }} className="rounded-xl bg-gray-100 px-3 py-2 text-[10px] font-black text-gray-700">閉じる</button>
+              </div>
+              <div className="mt-2 flex flex-wrap items-center gap-2">
+                <input type="text" value={charSearchQuery} onChange={(e) => setCharSearchQuery(e.target.value)} placeholder="登録ユーザー名で検索" className="min-w-0 flex-1 rounded-xl border border-gray-200 bg-white px-3 py-2 text-[10px]" />
+                <button type="button" onClick={() => setIsCharFilterOpen((v) => !v)} className="rounded-xl border border-gray-200 bg-white px-3 py-2 text-[10px] font-black text-gray-600">絞り込み{activeCharFilterCount > 0 ? ` (${activeCharFilterCount})` : ''}</button>
+              </div>
+              {isCharFilterOpen && (
+                <div className="mt-2 rounded-2xl bg-indigo-50 p-2">
+                  <div className="flex flex-wrap gap-1.5">
+                    {availableColors.map(color => <button key={color} type="button" onClick={() => toggleColorFilter(color)} className={`rounded-lg border px-2 py-1 text-[9px] font-black ${selectedColors.includes(color) ? 'border-indigo-600 bg-indigo-600 text-white' : 'border-gray-200 bg-white text-gray-600'}`}>{color}</button>)}
+                  </div>
+                </div>
+              )}
+            </div>
+
+            <div className="min-h-0 flex-1 overflow-y-auto p-3">
+              {filteredCards.length === 0 ? (
+                <div className="rounded-2xl border border-dashed border-gray-200 bg-gray-50 py-12 text-center text-xs font-bold text-gray-400">登録されているキャラカードがありません。</div>
+              ) : (
+                <div className="grid grid-cols-2 gap-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5">
+                  {filteredCards.map(card => {
+                    const isAssigned = [vanguardId, centerId, generalId].includes(card.id);
+                    return (
+                      <div key={card.id} className={`rounded-2xl border p-2 transition ${isAssigned ? 'border-gray-200 bg-gray-100 opacity-45' : 'border-gray-200 bg-white hover:border-indigo-300'}`}>
+                        <button type="button" disabled={isAssigned} onClick={() => { assignCardToRole(card.id, selectedTargetRole); setSelectedCharacterDetail(null); }} className="w-full text-left disabled:cursor-not-allowed">
+                          <div className="overflow-hidden rounded-xl border-2 bg-white" style={{ borderColor: card.colorHex || '#dbeafe' }}>
+                            {card.imageDataUrl ? <img src={card.imageDataUrl} alt="" className="h-32 w-full object-cover" /> : <div className="flex h-32 items-center justify-center bg-gray-100 text-[8px] text-gray-400">画像なし</div>}
+                          </div>
+                          <div className="mt-1 truncate text-[10px] font-black">{card.userName}</div>
+                          <div className="mt-0.5 text-[8px] font-bold text-gray-400">{isAssigned ? '編成済み' : 'このクラスに入れる'}</div>
+                        </button>
+                        <button type="button" onClick={() => setSelectedCharacterDetail(card)} className="mt-1 w-full rounded-lg bg-gray-50 py-1 text-[8px] font-black text-gray-500 hover:bg-indigo-50 hover:text-indigo-700">詳細を見る</button>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
+
+            {selectedCharacterDetail && (
+              <div className="shrink-0 max-h-[34dvh] overflow-y-auto border-t border-gray-200 bg-gray-50 p-3">
+                <div className="flex items-start gap-3">
+                  <div className="w-24 shrink-0 overflow-hidden rounded-2xl border-2 bg-white" style={{ borderColor: selectedCharacterDetail.colorHex || '#dbeafe' }}>
+                    {selectedCharacterDetail.imageDataUrl ? <img src={selectedCharacterDetail.imageDataUrl} alt="" className="aspect-square w-full object-cover" /> : <div className="flex aspect-square items-center justify-center text-[8px] text-gray-400">画像なし</div>}
+                  </div>
+                  <div className="min-w-0 flex-1">
+                    <div className="text-sm font-black text-gray-950">{selectedCharacterDetail.userName}</div>
+                    <div className="mt-1 grid grid-cols-2 gap-1 text-[9px] font-black text-gray-600">
+                      {(['hp','intellect','dexterity','charm'] as const).map(key => (
+                        <div key={key} className="rounded-lg bg-white px-2 py-1">{key === 'hp' ? '体力' : key === 'intellect' ? '知略' : key === 'dexterity' ? '器用' : '特技'} {getCharacterStats(selectedCharacterDetail)[key]}</div>
+                      ))}
+                    </div>
+                    <div className="mt-2 flex flex-wrap gap-1.5">
+                      {getCharacterSkills(selectedCharacterDetail).map(skill => <div key={skill.number} className="rounded-lg bg-white px-2 py-1 text-[8px] font-bold text-gray-600">スキル{skill.number}：{skill.name}</div>)}
+                    </div>
+                    <button type="button" disabled={[vanguardId, centerId, generalId].includes(selectedCharacterDetail.id)} onClick={() => { assignCardToRole(selectedCharacterDetail.id, selectedTargetRole); setSelectedCharacterDetail(null); }} className="mt-2 rounded-xl bg-indigo-600 px-4 py-2 text-[9px] font-black text-white disabled:bg-gray-300">このキャラをセットする</button>
+                  </div>
+                </div>
+              </div>
             )}
           </div>
-          {supportIds.length >= 18 && (
-            <div className="mt-2 px-3 py-2 rounded-lg bg-amber-50 border border-amber-200 text-amber-800 text-xs font-black text-center">
-              ✓ サポートカードは満杯です（18 / 18）　「−」で減らすと再び追加できます
-            </div>
-          )}
         </div>
-        {/* 4. 選択できるサポートカード一覧セクション */}
-        <div className="border-t pt-6 space-y-3">
-          <div className="flex flex-wrap items-center justify-between gap-3">
-            <div className="flex flex-wrap items-center gap-2">
-              <h2 className="text-sm font-bold text-gray-800">
-                サポートカード一覧 ({filteredSupportCards.length} / {supportPool.length}件)
-              </h2>
-              <button
-                onClick={() => setIsSupportFilterOpen(!isSupportFilterOpen)}
-                className={`px-2.5 py-1 text-xs font-bold rounded-lg border transition flex items-center space-x-1 cursor-pointer ${
-                  activeSupportFilterCount > 0
-                    ? 'bg-indigo-600 text-white border-indigo-600'
-                    : 'bg-white text-gray-700 border-gray-300 hover:bg-gray-50'
-                }`}
-              >
-                <span>🔍 絞り込み</span>
-                {activeSupportFilterCount > 0 && (
-                  <span className="bg-white text-indigo-600 rounded-full px-1.5 text-[10px] font-black">{activeSupportFilterCount}</span>
-                )}
-                <span>{isSupportFilterOpen ? '▲' : '▼'}</span>
-              </button>
+      )}
 
-              {supportTotalPages > 1 && (
-                <div className="flex items-center gap-1.5 ml-1">
+      {/* サポートカード選択モーダル */}
+      {isSupportFilterOpen && !selectedTargetRole && (
+        <div className="fixed inset-0 z-50 flex items-end justify-center bg-gray-950/50 p-2 sm:items-center sm:p-5">
+          <div className="flex max-h-[92dvh] w-full max-w-5xl min-h-0 flex-col overflow-hidden rounded-3xl bg-white shadow-2xl">
+            <div className="shrink-0 border-b border-gray-200 bg-white px-4 py-3">
+              <div className="flex items-center justify-between gap-3">
+                <div>
+                  <div className="text-[9px] font-black tracking-[0.16em] text-purple-500">SUPPORT CARD SELECT</div>
+                  <h2 className="mt-0.5 text-base font-black text-gray-950">サポートカードを選ぶ</h2>
+                </div>
+                <button type="button" onClick={() => setIsSupportFilterOpen(false)} className="rounded-xl bg-gray-100 px-3 py-2 text-[10px] font-black text-gray-700">閉じる</button>
+              </div>
+              <div className="mt-2 flex flex-wrap gap-2">
+                <input type="text" value={supSearchQuery} onChange={(e) => setSupSearchQuery(e.target.value)} placeholder="カード名・効果で検索" className="min-w-0 flex-1 rounded-xl border border-gray-200 px-3 py-2 text-[10px]" />
+                {availableSupportCategories.length > 0 && availableSupportCategories.map(category => (
                   <button
-                    onClick={() => setSupportPage(prev => Math.max(1, prev - 1))}
-                    disabled={supportPage === 1}
-                    className="px-2.5 py-1 text-xs font-bold rounded-lg border border-gray-300 bg-white hover:bg-gray-50 disabled:opacity-40 disabled:cursor-not-allowed"
-                  >←</button>
-                  <span className="text-xs font-bold text-gray-600 whitespace-nowrap">{supportPage} / {supportTotalPages}</span>
-                  <button
-                    onClick={() => setSupportPage(prev => Math.min(supportTotalPages, prev + 1))}
-                    disabled={supportPage === supportTotalPages}
-                    className="px-2.5 py-1 text-xs font-bold rounded-lg border border-gray-300 bg-white hover:bg-gray-50 disabled:opacity-40 disabled:cursor-not-allowed"
-                  >→</button>
+                    key={category}
+                    type="button"
+                    onClick={() => toggleSupportCategoryFilter(category)}
+                    className={`rounded-xl border px-2.5 py-2 text-[9px] font-black ${selectedSupportCategories.includes(category) ? 'border-purple-600 bg-purple-600 text-white' : 'border-gray-200 bg-white text-gray-600'}`}
+                  >
+                    {category}
+                  </button>
+                ))}
+              </div>
+              <div className="mt-2 flex items-center justify-between text-[9px] font-bold text-gray-400">
+                <span>{filteredSupportCards.length}件</span>
+                {selectedSupportCategories.length > 0 && <button type="button" onClick={clearSupportFilters} className="font-black text-purple-600">絞り込みを解除</button>}
+              </div>
+            </div>
+
+            <div className="min-h-0 flex-1 overflow-y-auto p-3">
+              {filteredSupportCards.length === 0 ? (
+                <div className="rounded-2xl border border-dashed border-gray-200 bg-gray-50 py-12 text-center text-xs font-bold text-gray-400">条件に一致するサポートカードがありません。</div>
+              ) : (
+                <div className="grid grid-cols-2 gap-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5">
+                  {filteredSupportCards.map(sup => {
+                    const currentCount = supportIds.filter(id => id === sup.id).length;
+                    const full = supportIds.length >= 18 || currentCount >= 2;
+                    const meta = getSupportDetailMeta(sup);
+                    return (
+                      <div key={sup.id} className={`rounded-2xl border p-2 transition ${full ? 'border-gray-200 bg-gray-100 opacity-55' : 'border-gray-200 bg-white hover:border-purple-300'}`}>
+                        <button type="button" disabled={full} onClick={() => handleAddSupport(sup.id)} className="w-full text-left disabled:cursor-not-allowed">
+                          <div className="overflow-hidden rounded-xl border-2 bg-gray-100" style={{ borderColor: sup.colorHex || '#e9d5ff' }}>
+                            {sup.imageDataUrl ? <img src={sup.imageDataUrl} alt="" className="h-28 w-full object-cover" /> : <div className="flex h-28 items-center justify-center text-[8px] text-gray-400">画像なし</div>}
+                          </div>
+                          <div className="mt-1 line-clamp-2 text-[9px] font-black text-gray-950">{sup.name}</div>
+                          <div className="mt-1 text-[8px] font-bold text-gray-500">{meta.statEffect || sup.category || 'サポート効果'}</div>
+                          <div className="mt-0.5 text-[8px] text-gray-400">{currentCount > 0 ? `現在 ×${currentCount}` : 'タップで追加'}</div>
+                        </button>
+                        <button type="button" onClick={() => setSelectedSupportDetail(sup)} className="mt-1 w-full rounded-lg bg-gray-50 py-1 text-[8px] font-black text-gray-500 hover:bg-purple-50 hover:text-purple-700">詳細を見る</button>
+                      </div>
+                    );
+                  })}
                 </div>
               )}
             </div>
-            <div className="w-full sm:w-72">
-              <input
-                type="text"
-                value={supSearchQuery}
-                onChange={(e) => setSupSearchQuery(e.target.value)}
-                placeholder="🔍 サポートカード名・効果で検索..."
-                className="w-full text-xs px-3 py-1.5 border border-gray-300 rounded-lg bg-white text-gray-900 focus:ring-1 focus:ring-indigo-500"
-              />
-            </div>
-          </div>
 
-          {isSupportFilterOpen && (
-            <div className="p-3 bg-indigo-50/50 border border-indigo-100 rounded-xl space-y-3">
-              {availableSupportCategories.length > 0 && (
-                <div className="flex items-start gap-2 text-xs">
-                  <span className="font-bold text-gray-600 whitespace-nowrap pt-1">カテゴリ:</span>
-                  <div className="flex flex-wrap gap-1">
-                    {availableSupportCategories.map(category => (
-                      <button
-                        key={category}
-                        onClick={() => toggleSupportCategoryFilter(category)}
-                        className={`px-2 py-0.5 rounded text-[11px] font-bold transition border cursor-pointer ${
-                          selectedSupportCategories.includes(category)
-                            ? 'bg-indigo-600 text-white border-indigo-600'
-                            : 'bg-white text-gray-700 border-gray-200 hover:bg-gray-100'
-                        }`}
-                      >{category}</button>
-                    ))}
+            {selectedSupportDetail && (
+              <div className="shrink-0 max-h-[34dvh] overflow-y-auto border-t border-gray-200 bg-gray-50 p-3">
+                <div className="flex items-start gap-3">
+                  <div className="w-24 shrink-0 overflow-hidden rounded-2xl border-2 bg-white" style={{ borderColor: selectedSupportDetail.colorHex || '#e9d5ff' }}>
+                    {selectedSupportDetail.imageDataUrl ? <img src={selectedSupportDetail.imageDataUrl} alt="" className="aspect-square w-full object-cover" /> : <div className="flex aspect-square items-center justify-center text-[8px] text-gray-400">画像なし</div>}
+                  </div>
+                  <div className="min-w-0 flex-1">
+                    <div className="text-sm font-black text-gray-950">{selectedSupportDetail.name}</div>
+                    {(() => {
+                      const meta = getSupportDetailMeta(selectedSupportDetail);
+                      return (
+                        <>
+                          <div className="mt-1 flex flex-wrap gap-1.5 text-[8px] font-black text-gray-600">
+                            {meta.target && <span className="rounded-lg bg-white px-2 py-1">対象：{meta.target}</span>}
+                            {meta.duration && <span className="rounded-lg bg-white px-2 py-1">持続：{meta.duration}</span>}
+                            {meta.statEffect && <span className="rounded-lg bg-white px-2 py-1">効果：{meta.statEffect}{meta.effectAmount ? ` ${meta.effectAmount}` : ''}</span>}
+                          </div>
+                          <div className="mt-2 rounded-xl bg-white p-2 text-[9px] leading-5 text-gray-700 whitespace-pre-wrap">{selectedSupportDetail.description || '説明はありません。'}</div>
+                          {meta.note && <div className="mt-1 text-[8px] text-gray-500 whitespace-pre-wrap">{meta.note}</div>}
+                        </>
+                      );
+                    })()}
+                    <div className="mt-2 flex flex-wrap gap-2">
+                      <button type="button" onClick={() => setSelectedSupportDetail(null)} className="rounded-xl bg-white px-3 py-2 text-[9px] font-black text-gray-600">閉じる</button>
+                      <button type="button" onClick={() => { handleAddSupport(selectedSupportDetail.id); setSelectedSupportDetail(null); }} disabled={supportIds.length >= 18 || supportIds.filter(id => id === selectedSupportDetail.id).length >= 2} className="rounded-xl bg-purple-700 px-3 py-2 text-[9px] font-black text-white disabled:bg-gray-300">このカードを追加</button>
+                    </div>
                   </div>
                 </div>
-              )}
+              </div>
+            )}
+          </div>
+        </div>
+      )}
 
-              {activeSupportFilterCount > 0 && (
-                <div className="text-right">
-                  <button onClick={clearSupportFilters} className="text-[11px] text-red-600 hover:underline font-bold cursor-pointer">条件リセット</button>
-                </div>
-              )}
+      {/* チーム分析 */}
+      {isDeckDashboardOpen && (
+        <div className="fixed inset-0 z-[55] flex items-end justify-center bg-gray-950/50 p-2 sm:items-center sm:p-5">
+          <div className="flex max-h-[92dvh] w-full max-w-4xl min-h-0 flex-col overflow-hidden rounded-3xl bg-white shadow-2xl">
+            <div className="shrink-0 flex items-center justify-between gap-3 border-b border-gray-200 px-4 py-3">
+              <div>
+                <div className="text-[9px] font-black tracking-[0.16em] text-indigo-500">TEAM ANALYSIS</div>
+                <h2 className="mt-0.5 text-base font-black">チーム分析</h2>
+              </div>
+              <button type="button" onClick={() => setIsDeckDashboardOpen(false)} className="rounded-xl bg-gray-100 px-3 py-2 text-[10px] font-black text-gray-700">閉じる</button>
             </div>
-          )}
-
-          {filteredSupportCards.length === 0 ? (
-            <div className="p-6 text-center bg-gray-50 border border-dashed rounded-xl text-xs text-gray-400">条件に一致するサポートカードがありません</div>
-          ) : (
-            <>
-              <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-3">
-                {paginatedSupportCards.map((sup) => {
-                  const currentCount = supportIds.filter(id => id === sup.id).length;
-                  const canAdd = supportIds.length < 18 && currentCount < 2;
+            <div className="min-h-0 flex-1 overflow-y-auto p-4">
+              <div className="grid gap-3 sm:grid-cols-3">
+                {([
+                  ['フェザークラス', vanguardId],
+                  ['オーロラクラス', centerId],
+                  ['スタークラス', generalId],
+                ] as Array<[string, string | null]>).map(([label, cardId]) => {
+                  const card = getCard(cardId);
+                  const stats = card ? getCharacterStats(card) : null;
                   return (
-                    <div
-                      key={sup.id}
-                      draggable
-                      onDragStart={(e) => handleSupportDragStart(e, sup.id)}
-                      className={`min-h-[178px] p-3 border rounded-xl transition flex flex-col cursor-grab active:cursor-grabbing ${
-                        currentCount >= 2 || supportIds.length >= 18
-                          ? 'bg-gray-100 border-gray-200'
-                          : 'bg-white hover:border-indigo-400 border-gray-200 shadow-sm'
-                      }`}
-                    >
-                      <div className="flex gap-3 min-w-0">
-                        {sup.imageDataUrl ? (
-                          <div className="w-20 h-20 rounded-lg bg-gray-50 flex-shrink-0 border border-gray-200 flex items-center justify-center overflow-hidden">
-                            <img src={sup.imageDataUrl} alt="" className="max-w-full max-h-full object-contain" />
-                          </div>
-                        ) : (
-                          <div className="w-20 h-20 rounded-lg bg-gray-100 flex-shrink-0 flex items-center justify-center text-[9px] text-gray-400 border border-gray-200">NO IMG</div>
-                        )}
-                        <div className="min-w-0 flex-1">
-                          <div className="text-sm font-black text-gray-900 leading-tight mb-1">{sup.name}</div>
-                          <div className="text-[11px] text-gray-600 leading-relaxed line-clamp-3">{sup.description}</div>
-                          {sup.category && (
-                            <div className="mt-2 inline-flex px-2 py-0.5 rounded-full bg-gray-100 text-[10px] font-bold text-gray-600">{sup.category}</div>
-                          )}
-                        </div>
-                      </div>
-
-                      {sup.isVirtual && (
-                        <div className="mt-2 text-[10px] text-purple-600 font-bold">✨ エントリー前の仮カード</div>
-                      )}
-
-                      <div className="mt-auto pt-3 flex items-center justify-between gap-2">
-                        <button
-                          onClick={(e) => handleOpenSupportDetail(e, sup)}
-                          className="h-8 px-2.5 rounded-lg border border-gray-300 bg-white hover:bg-indigo-50 hover:border-indigo-400 text-gray-600 hover:text-indigo-600 font-black text-xs transition"
-                          title="カード詳細を見る"
-                          aria-label={`${sup.name}の詳細`}
-                        >ⓘ 詳細</button>
-
-                        <div className="flex items-center gap-1.5">
-                          <button
-                            onClick={(e) => { e.stopPropagation(); handleRemoveSingleSupport(sup.id); }}
-                            disabled={currentCount === 0}
-                            className={`w-8 h-8 rounded-lg font-black text-base transition ${
-                              currentCount === 0
-                                ? 'bg-gray-50 text-gray-300 cursor-not-allowed'
-                                : 'bg-gray-100 hover:bg-red-50 text-gray-500 hover:text-red-600'
-                            }`}
-                            title={currentCount === 0 ? 'デッキに入っていません' : '1枚減らす'}
-                            aria-label={`${sup.name}を1枚減らす`}
-                          >−</button>
-                          <span className={`text-[11px] font-black px-2 py-1 rounded-full border min-w-[40px] text-center ${currentCount === 0 ? 'bg-indigo-50 text-indigo-700 border-indigo-200' : 'bg-orange-50 text-orange-700 border-orange-200'}`}>{currentCount}/2</span>
-                          <button
-                            onClick={(e) => { e.stopPropagation(); handleAddSupport(sup.id); }}
-                            disabled={!canAdd}
-                            className={`w-8 h-8 rounded-lg font-black text-base transition ${
-                              !canAdd
-                                ? 'bg-gray-50 text-gray-300 cursor-not-allowed'
-                                : 'bg-gray-100 hover:bg-indigo-50 text-gray-500 hover:text-indigo-600'
-                            }`}
-                            title={currentCount >= 2 ? '同じカードは2枚まで' : supportIds.length >= 18 ? 'サポートカードは18枚まで' : '1枚追加'}
-                            aria-label={`${sup.name}を1枚追加`}
-                          >+</button>
-                        </div>
-                      </div>
+                    <div key={label} className="rounded-2xl border border-gray-200 bg-gray-50 p-3 text-center">
+                      <div className="text-[9px] font-black text-indigo-700">{label}</div>
+                      <div className="mt-1 truncate text-xs font-black">{card?.userName || '未セット'}</div>
+                      {stats ? <StatRadar stats={stats} size={145} /> : <div className="py-10 text-[9px] font-bold text-gray-400">キャラ未設定</div>}
                     </div>
                   );
                 })}
               </div>
-
-              {supportTotalPages > 1 && (
-                <div className="flex flex-wrap items-center justify-center gap-2 pt-2">
-                  <button
-                    onClick={() => setSupportPage(prev => Math.max(1, prev - 1))}
-                    disabled={supportPage === 1}
-                    className="px-3 py-1.5 text-xs font-bold rounded-lg border border-gray-300 bg-white hover:bg-gray-50 disabled:opacity-40 disabled:cursor-not-allowed"
-                  >← 前へ</button>
-                  <span className="text-xs font-bold text-gray-600">{supportPage} / {supportTotalPages} ページ</span>
-                  <button
-                    onClick={() => setSupportPage(prev => Math.min(supportTotalPages, prev + 1))}
-                    disabled={supportPage === supportTotalPages}
-                    className="px-3 py-1.5 text-xs font-bold rounded-lg border border-gray-300 bg-white hover:bg-gray-50 disabled:opacity-40 disabled:cursor-not-allowed"
-                  >次へ →</button>
-                </div>
-              )}
-            </>
-          )}
-        </div>
-      </div>
-
-      {isSaveAsOpen && (
-        <div className="fixed inset-0 z-50 bg-black/40 flex items-center justify-center p-4">
-          <div className="w-full max-w-md bg-white rounded-2xl shadow-2xl border border-gray-200 p-6">
-            {!saveAsConflictName ? (
-              <>
-                <h3 className="text-lg font-black text-gray-900 mb-2">デッキ名を入力</h3>
-                <p className="text-xs text-gray-500 mb-4">現在のデッキを別のデッキとして保存します。</p>
-                <input autoFocus type="text" value={saveAsName} onChange={(e) => setSaveAsName(e.target.value)}
-                  onKeyDown={(e) => { if (e.key === 'Enter') handleSaveAsConfirm(); }}
-                  className="w-full px-3 py-2 border rounded-lg text-sm font-bold text-gray-900 focus:ring-2 focus:ring-indigo-500" />
-                <div className="flex justify-end gap-2 mt-5">
-                  <button onClick={() => setIsSaveAsOpen(false)} className="px-4 py-2 bg-gray-100 hover:bg-gray-200 rounded-lg text-sm font-bold">キャンセル</button>
-                  <button onClick={handleSaveAsConfirm} className="px-4 py-2 bg-purple-600 hover:bg-purple-700 text-white rounded-lg text-sm font-bold">保存</button>
-                </div>
-              </>
-            ) : (
-              <>
-                <h3 className="text-lg font-black text-gray-900 mb-2">同じ名称のデッキがあります</h3>
-                <p className="text-sm text-gray-700 mb-5">「{saveAsConflictName}」という名称のデッキがすでにあります。上書きしますか？</p>
-                <div className="flex justify-end gap-2">
-                  <button onClick={() => setSaveAsConflictName(null)} className="px-4 py-2 bg-gray-100 hover:bg-gray-200 rounded-lg text-sm font-bold">名前編集に戻る</button>
-                  <button onClick={handleSaveAsOverwrite} className="px-4 py-2 bg-red-600 hover:bg-red-700 text-white rounded-lg text-sm font-bold">はい</button>
-                </div>
-              </>
-            )}
-          </div>
-        </div>
-      )}
-
-      <div className="sticky bottom-0 z-30 mt-6 -mx-6 px-6 py-3 bg-white/95 backdrop-blur border-t border-gray-200 shadow-[0_-4px_12px_rgba(0,0,0,0.08)]">
-        <div className="max-w-4xl mx-auto flex flex-wrap items-center justify-between gap-3">
-          <div className="text-xs font-bold text-gray-600">
-            {selectedDeckId ? `編集中：${deckName}` : '新規デッキを編集中'}
-            {hasUnsavedChanges && (
-              <span className="ml-2 text-amber-700">● 未保存の変更</span>
-            )}
-            <span className="ml-3">キャラ 3枠</span>
-            <span className="ml-3">サポート {supportIds.length} / 18</span>
-          </div>
-          <div className="flex gap-2">
-            <button onClick={handleSaveDeck} className="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white text-sm font-black rounded-lg shadow cursor-pointer">
-              {selectedDeckId ? '💾 上書き保存' : '💾 保存'}
-            </button>
-            <button onClick={handleOpenSaveAs} className="px-4 py-2 bg-purple-600 hover:bg-purple-700 text-white text-sm font-black rounded-lg shadow cursor-pointer">
-              📝 名前を付けて保存
-            </button>
-            <button onClick={() => setIsDeckDashboardOpen(true)} className="px-4 py-2 bg-sky-600 hover:bg-sky-700 text-white text-sm font-black rounded-lg shadow cursor-pointer">
-              📊 デッキダッシュボード
-            </button>
-            {goToCpuBattle && (
-              <button
-                onClick={goToCpuBattle}
-                disabled={hasUnsavedChanges}
-                title={hasUnsavedChanges ? '未保存の変更があります。保存してからCPU対戦へ進んでください。' : '保存済みデッキでCPU対戦を開始'}
-                className="px-4 py-2 bg-emerald-600 hover:bg-emerald-700 disabled:bg-gray-300 disabled:hover:bg-gray-300 disabled:text-gray-500 disabled:cursor-not-allowed text-white text-sm font-black rounded-lg shadow cursor-pointer"
-              >
-                ⚔️ CPU対戦へ
-              </button>
-            )}
-          </div>
-        </div>
-      </div>
-
-      {selectedCharacterDetail && (
-        <div className="fixed inset-0 z-[55] bg-black/50 flex items-center justify-center p-4" onClick={() => setSelectedCharacterDetail(null)}>
-          <div className="w-full max-w-2xl max-h-[90vh] overflow-y-auto bg-white rounded-2xl shadow-2xl border border-gray-200 p-6" onClick={(e) => e.stopPropagation()}>
-            <div className="flex items-start justify-between gap-3 mb-5">
-              <div>
-                <div className="text-xs font-bold text-indigo-600 mb-1">キャラカード詳細</div>
-                <h3 className="text-xl font-black text-gray-900">{selectedCharacterDetail.userName}</h3>
-              </div>
-              <button onClick={() => setSelectedCharacterDetail(null)} className="w-8 h-8 rounded-full bg-gray-100 hover:bg-gray-200 text-gray-600 font-black">×</button>
-            </div>
-            <div className="grid grid-cols-1 sm:grid-cols-[180px_1fr] gap-6">
-              <div>
-                <div className="w-full aspect-square rounded-xl border border-gray-200 bg-gray-50 flex items-center justify-center overflow-hidden">
-                  {selectedCharacterDetail.imageDataUrl ? <img src={selectedCharacterDetail.imageDataUrl} alt={selectedCharacterDetail.userName} className="max-w-full max-h-full object-contain" /> : <span className="text-xs text-gray-400">NO IMG</span>}
-                </div>
-                <div className="mt-3 text-sm font-black text-gray-900">{selectedCharacterDetail.archetype}</div>
-                <div className="text-xs text-gray-600 mt-1">{selectedCharacterDetail.color}</div>
-                <div className="text-xs font-bold text-gray-700 mt-2">ステータス配分</div>
-                <div className="text-sm font-black text-indigo-700 mt-1">{getArchetypeDistribution(selectedCharacterDetail)}</div>
-                <div className="text-xs text-gray-600 mt-2">好きな季節：{getCharacterSeason(selectedCharacterDetail)}</div>
-              </div>
-              <div className="flex flex-col items-center">
-                <StatRadar stats={getCharacterStats(selectedCharacterDetail)} size={250} />
-                <div className="grid grid-cols-2 gap-2 w-full max-w-sm mt-2">
-                  {Object.entries(getCharacterStats(selectedCharacterDetail)).map(([key, value]) => (
-                    <div key={key} className="p-2 rounded-lg bg-gray-50 border border-gray-200 text-center">
-                      <div className="text-[10px] font-bold text-gray-500">{key === 'hp' ? '体力' : key === 'intellect' ? '知略' : key === 'dexterity' ? '器用' : '特技'}</div>
-                      <div className="text-lg font-black text-gray-900">{value}</div>
+              <div className="mt-3 rounded-2xl border border-purple-100 bg-purple-50/50 p-3">
+                <div className="text-[9px] font-black text-purple-700">サポートによるステータス変化（自分対象のみ）</div>
+                <div className="mt-2 grid grid-cols-2 gap-2 sm:grid-cols-4">
+                  {([
+                    ['体力', getSupportStatDelta.hp],
+                    ['知略', getSupportStatDelta.intellect],
+                    ['器用', getSupportStatDelta.dexterity],
+                    ['特技', getSupportStatDelta.charm],
+                  ] as Array<[string, number]>).map(([label, delta]) => (
+                    <div key={label} className="rounded-xl bg-white px-2 py-2 text-center">
+                      <div className="text-[8px] font-bold text-gray-400">{label}</div>
+                      <div className={`text-sm font-black ${delta > 0 ? 'text-emerald-600' : delta < 0 ? 'text-rose-600' : 'text-gray-500'}`}>{delta > 0 ? '+' : ''}{delta}</div>
                     </div>
                   ))}
                 </div>
-                <div className="w-full max-w-sm mt-5 rounded-xl border border-indigo-100 bg-indigo-50/40 p-4">
-                  <div className="text-sm font-black text-indigo-900 mb-3">技一覧・効果</div>
-                  <div className="space-y-2.5">
-                    {getCharacterSkills(selectedCharacterDetail).map(skill => (
-                      <div key={`${selectedCharacterDetail.id}-${skill.number}`} className="rounded-lg bg-white border border-indigo-100 p-3">
-                        <div className="text-sm font-black text-gray-900">{skill.number}：{skill.name}</div>
-                        <div className="text-xs leading-relaxed text-gray-700 mt-1 whitespace-pre-wrap">{skill.description}</div>
-                      </div>
+              </div>
+              <div className="mt-3 rounded-2xl border border-gray-200 bg-white p-3">
+                <div className="text-[9px] font-black tracking-wide text-gray-400">CURRENT TEAM</div>
+                <div className="mt-1 text-sm font-black">{deckName || '新規チーム'}</div>
+                <div className="mt-2 text-[9px] leading-5 text-gray-500">キャラ3枠とサポート18枚を、この分析で確認できます。</div>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* その他メニュー */}
+      {isOtherMenuOpen && (
+        <div className="fixed inset-0 z-[60] flex items-end justify-center bg-gray-950/50 p-2 sm:items-center sm:p-5">
+          <div className="w-full max-w-md rounded-3xl bg-white p-4 shadow-2xl">
+            <div className="flex items-center justify-between gap-3">
+              <div>
+                <div className="text-[9px] font-black tracking-[0.16em] text-gray-400">OTHER</div>
+                <h2 className="mt-0.5 text-base font-black">その他</h2>
+              </div>
+              <button type="button" onClick={() => setIsOtherMenuOpen(false)} className="rounded-xl bg-gray-100 px-3 py-2 text-[10px] font-black text-gray-700">閉じる</button>
+            </div>
+
+            <div className="mt-3 space-y-3">
+              {decks.length > 0 && (
+                <div className="rounded-2xl border border-gray-200 bg-gray-50 p-3">
+                  <div className="text-[9px] font-black text-gray-500">保存済みチーム</div>
+                  <div className="mt-2 flex max-h-28 flex-wrap gap-1.5 overflow-y-auto">
+                    {decks.map(deck => (
+                      <button
+                        key={deck.id}
+                        type="button"
+                        onClick={() => { loadDeckToEditor(deck); setIsOtherMenuOpen(false); }}
+                        className={`rounded-xl px-2.5 py-2 text-[9px] font-black ${selectedDeckId === deck.id ? 'bg-indigo-600 text-white' : 'border border-gray-200 bg-white text-gray-700 hover:bg-indigo-50'}`}
+                      >
+                        {deck.name}
+                      </button>
                     ))}
                   </div>
                 </div>
-              </div>
-            </div>
-          </div>
-        </div>
-      )}
+              )}
 
-      {isDeckDashboardOpen && (
-        <div className="fixed inset-0 z-[50] bg-black/50 flex items-center justify-center p-4" onClick={() => setIsDeckDashboardOpen(false)}>
-          <div className="w-full max-w-5xl max-h-[92vh] overflow-y-auto bg-white rounded-2xl shadow-2xl border border-gray-200 p-6" onClick={(e) => e.stopPropagation()}>
-            <div className="flex items-start justify-between gap-3 mb-2">
-              <div>
-                <div className="text-xs font-bold text-sky-600 mb-1">リアルタイムデッキダッシュボード</div>
-                <h3 className="text-2xl font-black text-gray-900">{deckName}</h3>
-                <p className="text-xs text-gray-500 mt-1">編集中の内容に合わせて自動更新されます。</p>
-              </div>
-              <button onClick={() => setIsDeckDashboardOpen(false)} className="w-8 h-8 rounded-full bg-gray-100 hover:bg-gray-200 text-gray-600 font-black">×</button>
-            </div>
-
-            <div className="mt-5 grid grid-cols-1 lg:grid-cols-3 gap-4">
-              {(['vanguard', 'center', 'general'] as PositionRole[]).map(role => {
-                const label = role === 'vanguard' ? '先鋒' : role === 'center' ? '中堅' : '大将';
-                const id = role === 'vanguard' ? vanguardId : role === 'center' ? centerId : generalId;
-                const card = getCard(id);
-                if (!card) return (
-                  <div key={role} className="rounded-xl border-2 border-dashed border-gray-200 p-5 text-center text-sm text-gray-400">{label}：未セット</div>
-                );
-                const base = getCharacterStats(card);
-                const final = { hp: base.hp + getSupportStatDelta.hp, intellect: base.intellect + getSupportStatDelta.intellect, dexterity: base.dexterity + getSupportStatDelta.dexterity, charm: base.charm + getSupportStatDelta.charm };
-                return (
-                  <div key={role} className="rounded-xl border border-gray-200 bg-gray-50 p-4">
-                    <div className="flex items-center justify-between mb-2"><span className="text-xs font-black text-indigo-700">{label}</span><span className="text-sm font-black text-gray-900">{card.userName}</span></div>
-                    <div className="flex justify-center">
-                      <StatRadar stats={base} compareStats={final} size={210} />
-                    </div>
-                    <div className="text-xs font-bold text-gray-600 mt-1">{card.archetype}　／　好きな季節：{getCharacterSeason(card)}</div>
-                    <div className="text-[11px] font-black text-indigo-700 mt-1">{getArchetypeDistribution(card)}</div>
-                    <div className="mt-3 p-3 rounded-xl bg-white border border-gray-200">
-                      <div className="text-xs font-black text-gray-700 mb-2">選択中サポートをすべて使用した場合</div>
-                      <div className="grid grid-cols-4 gap-1 text-center">
-                        {[['体力', base.hp, getSupportStatDelta.hp, final.hp], ['知略', base.intellect, getSupportStatDelta.intellect, final.intellect], ['器用', base.dexterity, getSupportStatDelta.dexterity, final.dexterity], ['特技', base.charm, getSupportStatDelta.charm, final.charm]].map(([name, before, delta, after]) => (
-                          <div key={String(name)}>
-                            <div className="text-[10px] text-gray-500">{name}</div>
-                            <div className="text-sm font-black text-gray-900">{before}</div>
-                            <div className={`text-[11px] font-black ${Number(delta) > 0 ? 'text-emerald-600' : Number(delta) < 0 ? 'text-red-600' : 'text-gray-400'}`}>{Number(delta) > 0 ? '+' : ''}{delta}</div>
-                            <div className="text-sm font-black text-indigo-700">→ {after}</div>
-                          </div>
-                        ))}
-                      </div>
-                    </div>
-                  </div>
-                );
-              })}
-            </div>
-
-            <div className="mt-5 p-4 rounded-xl bg-sky-50 border border-sky-100">
-              <div className="text-sm font-black text-sky-900">サポートによる単純なステータス増減</div>
-              <div className="text-xs text-sky-800 mt-1">「自分」対象の公式カードについて、選択枚数分を合計しています。反転・平均化・カードドロー・スコア・使用数制限などの特殊効果は計算対象外です。</div>
-              <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 mt-3">
-                {[['体力', getSupportStatDelta.hp], ['知略', getSupportStatDelta.intellect], ['器用', getSupportStatDelta.dexterity], ['特技', getSupportStatDelta.charm]].map(([name, value]) => (
-                  <div key={String(name)} className="bg-white rounded-lg border border-sky-100 p-2 text-center"><div className="text-[10px] text-gray-500">{name}</div><div className={`text-lg font-black ${Number(value) > 0 ? 'text-emerald-600' : Number(value) < 0 ? 'text-red-600' : 'text-gray-400'}`}>{Number(value) > 0 ? '+' : ''}{value}</div></div>
-                ))}
-              </div>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {selectedSupportDetail && (
-        <div
-          className="fixed inset-0 z-[60] bg-black/50 flex items-center justify-center p-4"
-          onClick={() => setSelectedSupportDetail(null)}
-        >
-          <div
-            className="w-full max-w-lg max-h-[90vh] overflow-y-auto bg-white rounded-2xl shadow-2xl border border-gray-200 p-6"
-            onClick={(e) => e.stopPropagation()}
-          >
-            <div className="flex items-start justify-between gap-3 mb-4">
-              <div>
-                <div className="text-xs font-bold text-indigo-600 mb-1">サポートカード詳細</div>
-                <h3 className="text-xl font-black text-gray-900">{selectedSupportDetail.name}</h3>
-              </div>
-              <button onClick={() => setSelectedSupportDetail(null)} className="w-8 h-8 rounded-full bg-gray-100 hover:bg-gray-200 text-gray-600 font-black" aria-label="閉じる">×</button>
-            </div>
-
-            <div className="grid grid-cols-1 sm:grid-cols-[140px_1fr] gap-5">
-              <div>
-                {selectedSupportDetail.imageDataUrl ? (
-                  <div className="w-full aspect-square rounded-xl border border-gray-200 bg-gray-50 flex items-center justify-center overflow-hidden">
-                    <img src={selectedSupportDetail.imageDataUrl} alt={selectedSupportDetail.name} className="max-w-full max-h-full object-contain" />
-                  </div>
-                ) : (
-                  <div className="w-full aspect-square rounded-xl bg-gray-100 border border-gray-200 flex items-center justify-center text-xs text-gray-400">NO IMG</div>
+              <div className="grid grid-cols-2 gap-2">
+                <button type="button" onClick={() => { setIsDeckDashboardOpen(true); setIsOtherMenuOpen(false); }} className="rounded-2xl border border-indigo-200 bg-indigo-50 p-3 text-left text-[10px] font-black text-indigo-800">📊 チーム分析</button>
+                {onGoToEntryHub && (
+                  <button type="button" onClick={() => { setIsOtherMenuOpen(false); onGoToEntryHub(); }} className="rounded-2xl border border-gray-200 bg-gray-50 p-3 text-left text-[10px] font-black text-gray-700">🗂️ カードライブラリ</button>
                 )}
+                <button type="button" onClick={() => { handleDuplicateDeck(); setIsOtherMenuOpen(false); }} className="rounded-2xl border border-amber-200 bg-amber-50 p-3 text-left text-[10px] font-black text-amber-800">📋 チームを複製</button>
+                <button type="button" onClick={() => { handleOpenSaveAs(); setIsOtherMenuOpen(false); }} className="rounded-2xl border border-gray-200 bg-white p-3 text-left text-[10px] font-black text-gray-700">＋ 名前を付けて保存</button>
+                <button type="button" onClick={() => { handleExportDeck(); setIsOtherMenuOpen(false); }} className="rounded-2xl border border-emerald-200 bg-emerald-50 p-3 text-left text-[10px] font-black text-emerald-800">📤 チームを書き出す</button>
+                <label className="cursor-pointer rounded-2xl border border-emerald-200 bg-emerald-50 p-3 text-left text-[10px] font-black text-emerald-800">
+                  📥 チームを読み込む
+                  <input type="file" accept=".json" onChange={(e) => { handleImportDeck(e); setIsOtherMenuOpen(false); }} className="hidden" />
+                </label>
+                {decks.length > 1 && <button type="button" onClick={handleExportAllDecks} className="rounded-2xl border border-emerald-200 bg-white p-3 text-left text-[10px] font-black text-emerald-700">📦 全チームを書き出す</button>}
+                {selectedDeckId && <button type="button" onClick={() => { handleDeleteDeck(selectedDeckId); setIsOtherMenuOpen(false); }} className="rounded-2xl border border-rose-200 bg-rose-50 p-3 text-left text-[10px] font-black text-rose-700">🗑️ チームを削除</button>}
+                <button type="button" onClick={() => { resetToNewDeck(); setIsOtherMenuOpen(false); }} className="rounded-2xl border border-dashed border-gray-300 bg-white p-3 text-left text-[10px] font-black text-gray-600">＋ 新しいチーム</button>
               </div>
-              <div className="space-y-3">
-                {(() => {
-                  const meta = getSupportDetailMeta(selectedSupportDetail);
-                  return (
-                    <>
-                      <div className="flex flex-wrap gap-2">
-                        {selectedSupportDetail.category && <span className="px-2 py-1 rounded-full bg-gray-100 text-gray-700 text-xs font-bold">カテゴリ：{selectedSupportDetail.category}</span>}
-                        {meta.target && <span className="px-2 py-1 rounded-full bg-blue-50 text-blue-700 border border-blue-100 text-xs font-bold">対象：{meta.target}</span>}
-                        {selectedSupportDetail.isVirtual && <span className="px-2 py-1 rounded-full bg-purple-50 text-purple-700 border border-purple-100 text-xs font-bold">仮カード</span>}
-                      </div>
-
-                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-                        <div className="p-3 rounded-xl bg-indigo-50 border border-indigo-100">
-                          <div className="text-[11px] font-black text-indigo-500 mb-1">持続</div>
-                          <div className="text-sm font-black text-indigo-900">{meta.duration === '永続' && meta.note?.includes('最大4ターン') ? '永続（最大4ターン）' : (meta.duration || '記載なし')}</div>
-                        </div>
-                        <div className="p-3 rounded-xl bg-amber-50 border border-amber-100">
-                          <div className="text-[11px] font-black text-amber-600 mb-1">増加・減少量</div>
-                          <div className="text-sm font-black text-amber-900">{meta.effectAmount || '数値・枚数の指定なし'}</div>
-                        </div>
-                      </div>
-
-                      <div className="p-3 rounded-xl bg-gray-50 border border-gray-200 space-y-2">
-                        {meta.statEffect && (
-                          <div>
-                            <div className="text-[11px] font-black text-gray-500 mb-1">具体的な効果</div>
-                            <div className="text-sm font-bold text-gray-800">{meta.statEffect}</div>
-                          </div>
-                        )}
-                        <div>
-                          <div className="text-[11px] font-black text-gray-500 mb-1">効果・説明</div>
-                          <div className="text-sm leading-relaxed text-gray-800 whitespace-pre-wrap">{selectedSupportDetail.description || '説明はありません。'}</div>
-                        </div>
-                        {meta.note && (
-                          <div className="pt-2 border-t border-gray-200">
-                            <div className="text-[11px] font-black text-gray-500 mb-1">備考・制限</div>
-                            <div className="text-sm leading-relaxed text-gray-700 whitespace-pre-wrap">{meta.note}</div>
-                          </div>
-                        )}
-                      </div>
-
-                      {selectedSupportDetail.presetId && <div className="text-[10px] text-gray-400 break-all">プリセットID: {selectedSupportDetail.presetId}</div>}
-                    </>
-                  );
-                })()}
-              </div>
-            </div>
-
-            <div className="flex justify-end gap-2 mt-6">
-              <button
-                onClick={() => handleRemoveSingleSupport(selectedSupportDetail.id)}
-                disabled={!supportIds.includes(selectedSupportDetail.id)}
-                className="px-4 py-2 bg-gray-100 hover:bg-red-50 hover:text-red-600 rounded-lg text-sm font-bold disabled:opacity-40 disabled:cursor-not-allowed"
-              >− 1枚減らす</button>
-              <button
-                onClick={() => handleAddSupport(selectedSupportDetail.id)}
-                disabled={supportIds.length >= 18 || supportIds.filter(id => id === selectedSupportDetail.id).length >= 2}
-                className="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg text-sm font-bold disabled:opacity-40 disabled:cursor-not-allowed"
-              >＋ 1枚追加</button>
             </div>
           </div>
         </div>
       )}
+
+      {/* 名前を付けて保存 */}
+      {isSaveAsOpen && (
+        <div className="fixed inset-0 z-[65] flex items-end justify-center bg-gray-950/50 p-2 sm:items-center sm:p-5">
+          <div className="w-full max-w-md rounded-3xl bg-white p-4 shadow-2xl">
+            <div className="text-base font-black">名前を付けて保存</div>
+            <p className="mt-1 text-[9px] text-gray-500">現在の編成を別のチームとして保存します。</p>
+            <input type="text" value={saveAsName} onChange={(e) => setSaveAsName(e.target.value)} className="mt-3 w-full rounded-xl border border-gray-200 px-3 py-3 text-sm font-black" placeholder="チーム名" />
+            {saveAsConflictName && <div className="mt-2 rounded-xl border border-amber-200 bg-amber-50 p-3 text-[10px] font-black text-amber-800">「{saveAsConflictName}」はすでにあります。上書きしますか？</div>}
+            <div className="mt-3 grid grid-cols-2 gap-2">
+              <button type="button" onClick={() => { setIsSaveAsOpen(false); setSaveAsConflictName(null); }} className="rounded-xl bg-gray-100 px-3 py-3 text-xs font-black text-gray-700">キャンセル</button>
+              {saveAsConflictName ? <button type="button" onClick={handleSaveAsOverwrite} className="rounded-xl bg-indigo-600 px-3 py-3 text-xs font-black text-white">上書きする</button> : <button type="button" onClick={handleSaveAsConfirm} className="rounded-xl bg-indigo-600 px-3 py-3 text-xs font-black text-white">保存する</button>}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {selectedCharacterDetail && !selectedTargetRole && null}
+      {selectedSupportDetail && !isSupportFilterOpen && null}
     </div>
   );
 }
