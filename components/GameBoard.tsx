@@ -682,10 +682,13 @@ void ensureAnonymousAuth()
     myTotal: number;
     opponentTotal: number;
   } | null>(null);
+  const classTransitionInProgressRef = useRef(false);
   const [readyHost, setReadyHost] = useState(false);
   const [readyGuest, setReadyGuest] = useState(false);
   const [hostDeckId, setHostDeckId] = useState<string | null>(null);
   const [guestDeckId, setGuestDeckId] = useState<string | null>(null);
+  const [classReadyYearHost, setClassReadyYearHost] = useState(0);
+  const [classReadyYearGuest, setClassReadyYearGuest] = useState(0);
 
   const [activeCardsRevealed, setActiveCardsRevealed] = useState(false);
   const [battleDealAnimationKey, setBattleDealAnimationKey] = useState(0);
@@ -1822,6 +1825,9 @@ const opponentPresenceRef =
             : null,
         );
 
+        setClassReadyYearHost(Number(data.classReadyYearHost ?? 0));
+        setClassReadyYearGuest(Number(data.classReadyYearGuest ?? 0));
+
         setDeckConfirmed(
           playerRole === 'host'
             ? roomReadyHost
@@ -2227,6 +2233,12 @@ return () => {
       readyGuest &&
       Boolean(hostDeckId) &&
       Boolean(guestDeckId)
+    );
+  const onlineClassPreparationConfirmed =
+    !isOnline ||
+    (
+      classReadyYearHost === currentYear &&
+      classReadyYearGuest === currentYear
     );
   const myTurn =
     firstPlayer !== null &&
@@ -3712,7 +3724,9 @@ useEffect(() => {
     if (
       battlePhase !== 'setup' ||
       isCoinTossing ||
-      (isOnline ? !onlineDecksConfirmed : !deckConfirmed) ||
+      (isOnline
+        ? (!onlineDecksConfirmed || !onlineClassPreparationConfirmed)
+        : !deckConfirmed) ||
       (isOnline && !authReady)
     ) {
       return;
@@ -3776,6 +3790,13 @@ useEffect(() => {
           throw new Error('BOTH_DECKS_NOT_CONFIRMED');
         }
 
+        if (
+          Number(data.classReadyYearHost ?? 0) !== roomCurrentYear ||
+          Number(data.classReadyYearGuest ?? 0) !== roomCurrentYear
+        ) {
+          throw new Error('BOTH_CLASS_PREP_NOT_CONFIRMED');
+        }
+
         const firstPlayer: PlayerRole = Math.random() < 0.5 ? 'host' : 'guest';
 
         transaction.update(roomRef, {
@@ -3810,6 +3831,8 @@ useEffect(() => {
 
     if (!isOnline) {
       setDeckConfirmed(true);
+      setClassReadyYearHost(1);
+      setClassReadyYearGuest(1);
       setPreparationMessage('デッキを確定しました。コイントスを行って先手・後手を決定してください。');
       addLog('このデッキを対戦用デッキとして確定しました。');
       return;
@@ -3820,6 +3843,7 @@ useEffect(() => {
     await updateDoc(doc(db, 'rooms', roomId), {
       [field]: true,
       [playerRole === 'host' ? 'hostDeckId' : 'guestDeckId']: activeDeckId,
+      [playerRole === 'host' ? 'classReadyYearHost' : 'classReadyYearGuest']: 1,
     });
     setPreparationMessage('このデッキでの準備が完了しました。両者のデッキ確定後、ルーム作成者がコイントスを行います。');
   };
@@ -3854,139 +3878,200 @@ useEffect(() => {
     });
   };
 
-  const continueAfterClassResult = async () => {
-    if (!classResult || (isOnline && !authReady)) return;
+  const prepareClassStart = async (targetYear: number) => {
+    if (targetYear < 1 || targetYear > 3) return;
 
-    const completedYear = classResult.completedYear;
-    setClassResult(null);
+    setCurrentYear(targetYear);
+    setTurnIndex(0);
+    setFirstPlayer(null);
+    setStartSeasonIdx(null);
+    setBattlePhase('setup');
 
-    if (completedYear < 3) {
-      // 先鋒→中堅→大将は、必ず「次の年」の準備状態から再開する。
-      // CPU戦でも、先鋒戦の状態を再利用せず、コイントスをもう一度行う。
-      setCurrentYear(completedYear + 1);
-      setTurnIndex(0);
-      setFirstPlayer(null);
-      setStartSeasonIdx(null);
-      setBattlePhase('setup');
+    setMyDeckReady(true);
+    setDeckConfirmed(targetYear > 1 ? true : deckConfirmed);
 
-      // デッキは継続使用するが、デッキ変更は許可しない。
-      setMyDeckReady(true);
-      setDeckConfirmed(true);
+    const nextDeckDefinition =
+      activeDeckId
+        ? loadDeckDefinition(activeDeckId)
+        : null;
 
-      // =====================================================
-      // 次のクラスはサポートデッキを18枚から再スタート
-      //
-      // 初期手札4枚
-      // 山札14枚
-      // =====================================================
-
-      const nextDeckDefinition =
-        activeDeckId
-          ? loadDeckDefinition(activeDeckId)
-          : null;
-
-      const nextSupportState =
-        resetLocalSupportDeck(
-          nextDeckDefinition,
-        );
-
-// -----------------------------------------------------
-// オンラインでは次クラスの手札・山札を
-// privatePlayersへ正式保存
-// -----------------------------------------------------
-
-if (
-  isOnline &&
-  myPlayerRef &&
-  myPrivatePlayerRef
-) {
-  try {
-    // =================================================
-    // 非公開Player
-    //   hand / deck
-    // =================================================
-
-    await setDoc(
-      myPrivatePlayerRef,
-      {
-        hand:
-          nextSupportState.hand,
-
-        deck:
-          nextSupportState.deck,
-      },
-      {
-        merge: true,
-      },
-    );
-
-    // =================================================
-    // 公開Player
-    //   handCount / deckCount / lastSeenAt
-    // =================================================
-
-    await updateDoc(
-      myPlayerRef,
-      {
-        handCount:
-          nextSupportState.hand.length,
-
-        deckCount:
-          nextSupportState.deck.length,
-
-        // 旧構造の秘密情報を削除
-        hand:
-          deleteField(),
-
-        deck:
-          deleteField(),
-      },
-    );
-  } catch (error) {
-    console.error(
-      '次クラスのサポートデッキ初期化保存エラー:',
-      error,
-    );
-
-    addLog(
-      '⚠️ 次クラスの手札・山札初期化に失敗しました。',
-    );
-  }
-}
-
-      // 新しいクラスでは「このクラス1回」の技使用状況だけリセットする。
-      // 新しいクラスでは「このクラス1回」の技使用状況だけリセットする。
-      setUsedSkillsByClass((prev) => {
-        const next = { ...prev };
-        delete next[String(completedYear + 1)];
-        return next;
-      });
-      setCpuUsedSkillsByClass((prev) => {
-        const next = { ...prev };
-        delete next[String(completedYear + 1)];
-        return next;
-      });
-
-      setPreparationMessage(
-        `${completedYear + 1}年目の準備を開始します。デッキは前のクラスから継続します。\nコイントスを行ってください。`,
+    const nextSupportState =
+      resetLocalSupportDeck(
+        nextDeckDefinition,
       );
 
-      // オンライン対戦では、前クラス終了時にルーム側もすでに次クラスの setup へ
-      // 移行済みだが、ここでも現在クラスの番号を明示して巻き戻しを防ぐ。
-      if (isOnline) {
-        void updateDoc(doc(db, 'rooms', roomId), {
-          battlePhase: 'setup',
-          currentYear: completedYear + 1,
-          turnIndex: 0,
-          firstPlayer: null,
-          startSeasonIdx: null,
-        });
+    if (
+      isOnline &&
+      myPlayerRef &&
+      myPrivatePlayerRef
+    ) {
+      try {
+        await setDoc(
+          myPrivatePlayerRef,
+          {
+            hand: nextSupportState.hand,
+            deck: nextSupportState.deck,
+          },
+          {
+            merge: true,
+          },
+        );
+
+        await updateDoc(
+          myPlayerRef,
+          {
+            handCount:
+              nextSupportState.hand.length,
+            deckCount:
+              nextSupportState.deck.length,
+            hand: deleteField(),
+            deck: deleteField(),
+          },
+        );
+      } catch (error) {
+        console.error(
+          '次クラスのサポートデッキ初期化保存エラー:',
+          error,
+        );
+
+        addLog(
+          '⚠️ 次クラスの手札・山札初期化に失敗しました。',
+        );
       }
+    }
+
+    setUsedSkillsByClass((prev) => {
+      const next = { ...prev };
+      delete next[String(targetYear)];
+      return next;
+    });
+    setCpuUsedSkillsByClass((prev) => {
+      const next = { ...prev };
+      delete next[String(targetYear)];
+      return next;
+    });
+
+    setPreparationMessage(
+      `${targetYear}年目の準備を進めています。デッキは前のクラスから継続します。\n両者の準備完了後にコイントスを行います。`,
+    );
+
+    if (isOnline) {
+      const classReadyField =
+        playerRole === 'host'
+          ? 'classReadyYearHost'
+          : 'classReadyYearGuest';
+
+      await updateDoc(
+        doc(db, 'rooms', roomId),
+        {
+          [classReadyField]: targetYear,
+        },
+      );
     } else {
-      setBattlePhase('finished');
-      setPreparationMessage('');
+      setClassReadyYearHost(targetYear);
+      setClassReadyYearGuest(targetYear);
     }
   };
+
+  const continueAfterClassResult = async () => {
+    if (
+      !classResult ||
+      (isOnline && !authReady) ||
+      classTransitionInProgressRef.current
+    ) {
+      return;
+    }
+
+    classTransitionInProgressRef.current = true;
+
+    try {
+      const completedYear =
+        classResult.completedYear;
+
+      setClassResult(null);
+
+      if (completedYear < 3) {
+        await prepareClassStart(
+          completedYear + 1,
+        );
+      } else {
+        setBattlePhase('finished');
+        setPreparationMessage('');
+      }
+    } catch (error) {
+      console.error(
+        'クラス切り替え処理エラー:',
+        error,
+      );
+
+      addLog(
+        '⚠️ 次クラスへの切り替えに失敗しました。もう一度お試しください。',
+      );
+    } finally {
+      classTransitionInProgressRef.current = false;
+    }
+  };
+
+  useEffect(() => {
+    if (!classResult || classResult.completedYear >= 3) return;
+
+    const timer = window.setTimeout(() => {
+      if (!classTransitionInProgressRef.current) {
+        void continueAfterClassResult();
+      }
+    }, 1800);
+
+    return () => window.clearTimeout(timer);
+  }, [classResult]);
+
+  useEffect(() => {
+    if (
+      !isOnline ||
+      !roomId ||
+      !authReady ||
+      battlePhase !== 'setup' ||
+      currentYear <= 1 ||
+      classResult ||
+      classTransitionInProgressRef.current
+    ) {
+      return;
+    }
+
+    const myClassReadyYear =
+      playerRole === 'host'
+        ? classReadyYearHost
+        : classReadyYearGuest;
+
+    if (myClassReadyYear === currentYear) {
+      return;
+    }
+
+    classTransitionInProgressRef.current = true;
+
+    void prepareClassStart(currentYear)
+      .catch((error) => {
+        console.error(
+          '再入室時のクラス準備エラー:',
+          error,
+        );
+        addLog(
+          '⚠️ クラス準備の同期に失敗しました。',
+        );
+      })
+      .finally(() => {
+        classTransitionInProgressRef.current = false;
+      });
+  }, [
+    isOnline,
+    roomId,
+    authReady,
+    battlePhase,
+    currentYear,
+    classResult,
+    playerRole,
+    classReadyYearHost,
+    classReadyYearGuest,
+  ]);
 
   // ===== 技発動後の次ターンを計算 =====
   const getNextTurnState = () => {
@@ -5590,19 +5675,6 @@ const handleUseSupportCard = async (
     };
   };
 
-  // ===== クラス間の準備をホストがリセット =====
-  const resetForNextClass = async () => {
-    if (!isHost || battlePhase !== 'setup' || currentYear > 3) return;
-
-    await updateDoc(doc(db, 'rooms', roomId), {
-      firstPlayer: null,
-      startSeasonIdx: null,
-      turnIndex: 0,
-      battlePhase: 'setup',
-    });
-    addLog(`${currentYear}年目（${ROLE_NAMES[currentYear - 1]}戦）の準備を開始します。`);
-  };
-
 // =========================================================
 // ===== 相手切断時の退出処理
 // =========================================================
@@ -6312,6 +6384,12 @@ const field =
               readyGuest:
                 false,
 
+              classReadyYearHost:
+                0,
+
+              classReadyYearGuest:
+                0,
+
             },
           ).catch((error) => {
             console.error(
@@ -6491,12 +6569,18 @@ const field =
             <div className="mt-2 text-sm font-bold opacity-60">
               累計　{classResult.myTotal}スコア　VS　{classResult.opponentTotal}スコア
             </div>
-            <button
-              onClick={continueAfterClassResult}
-              className="mt-6 w-full rounded-xl bg-indigo-600 px-5 py-3 text-base font-black text-white shadow-lg hover:bg-indigo-700"
-            >
-              {classResult.completedYear < 3 ? '次のクラスの準備へ' : '最終結果を見る'}
-            </button>
+            {classResult.completedYear < 3 ? (
+              <div className="mt-6 w-full rounded-xl bg-indigo-50 px-5 py-3 text-sm font-black text-indigo-900">
+                次のクラスへ自動的に移行します。
+              </div>
+            ) : (
+              <button
+                onClick={continueAfterClassResult}
+                className="mt-6 w-full rounded-xl bg-indigo-600 px-5 py-3 text-base font-black text-white shadow-lg hover:bg-indigo-700"
+              >
+                最終結果を見る
+              </button>
+            )}
           </section>
         )}
 
@@ -6610,13 +6694,17 @@ const field =
               <div className="mt-1 text-lg font-black">🪙 先手・後手をコイントスで決定</div>
               {!firstPlayer ? (
                 isOnline ? (
-                  isHost && onlineDecksConfirmed ? (
+                  isHost && onlineDecksConfirmed && onlineClassPreparationConfirmed ? (
                     <button onClick={() => void decideFirstPlayer()} disabled={isCoinTossing} className="mt-4 w-full rounded-xl bg-amber-400 px-5 py-3 font-black text-slate-950 disabled:opacity-50">
                       {isCoinTossing ? '🪙 コイントス中…' : '🪙 コイントスを行う'}
                     </button>
                   ) : (
                     <div className="mt-4 rounded-xl bg-white/10 p-3 text-sm font-bold">
-                      {currentYear > 1 ? '前のクラスと同じデッキを使用します。両者の準備完了を確認後、コイントスで先手を決めます。' : '両者のデッキ確定後、コイントスで先手を決めます。'}
+                      {!onlineDecksConfirmed
+                        ? '両者のデッキ確定を待っています。'
+                        : !onlineClassPreparationConfirmed
+                          ? '相手のクラス準備完了を待っています。'
+                          : '両者の準備が完了しました。コイントスで先手を決めます。'}
                     </div>
                   )
                 ) : (

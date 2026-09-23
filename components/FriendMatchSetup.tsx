@@ -167,6 +167,8 @@ const isStageStale = (
     exitGuest: false,
     readyHost: false,
     readyGuest: false,
+    classReadyYearHost: 0,
+    classReadyYearGuest: 0,
     roomClosed: false,
     createdAt: now,
     hostLastSeenAt: now,

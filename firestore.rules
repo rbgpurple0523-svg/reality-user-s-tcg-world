@@ -36,8 +36,6 @@ function isStaleClosedRoomCleanup() {
   return
     request.auth != null
     &&
-    isStageStale()
-    &&
     get(
       /databases/$(database)/documents/rooms/$(roomId)
     ).data.roomClosed == true
@@ -49,47 +47,6 @@ function isStaleClosedRoomCleanup() {
     get(
       /databases/$(database)/documents/rooms/$(roomId)
     ).data.exitGuest == false;
-}
-
-function isStaleClosedRoomTakeover() {
-  let room = resource.data;
-  let nextRoom = request.resource.data;
-
-  return
-    request.auth != null
-    && room.roomClosed == true
-    && room.exitHost == false
-    && room.exitGuest == false
-    && isStageStale()
-    && nextRoom.hostUid == request.auth.uid
-    && nextRoom.guestUid == null
-    && nextRoom.hostJoined == true
-    && nextRoom.guestJoined == false
-    && nextRoom.battlePhase == 'setup'
-    && nextRoom.currentYear == 1
-    && nextRoom.turnIndex == 0
-    && nextRoom.firstPlayer == null
-    && nextRoom.startSeasonIdx == null
-    && nextRoom.hostTotalScore == 0
-    && nextRoom.guestTotalScore == 0
-    && nextRoom.hostClassScores == [0, 0, 0]
-    && nextRoom.guestClassScores == [0, 0, 0]
-    && nextRoom.hostUsedSkills is map
-    && nextRoom.hostUsedSkills.keys().size() == 0
-    && nextRoom.guestUsedSkills is map
-    && nextRoom.guestUsedSkills.keys().size() == 0
-    && nextRoom.rematchHost == false
-    && nextRoom.rematchGuest == false
-    && nextRoom.rematchPlayerResetHost == false
-    && nextRoom.rematchPlayerResetGuest == false
-    && nextRoom.exitHost == false
-    && nextRoom.exitGuest == false
-    && nextRoom.readyHost == false
-    && nextRoom.readyGuest == false
-    && nextRoom.roomClosed == false
-    && nextRoom.createdAt is number
-    && nextRoom.hostLastSeenAt == nextRoom.createdAt
-    && nextRoom.guestLastSeenAt == 0;
 }
 
 function isStaleStageClosure() {
@@ -318,15 +275,6 @@ function isValidBattleStateTransition() {
       request.resource.data.turnIndex == 0
 
       &&
-      request.resource.data.guestUid != null
-
-      &&
-      request.resource.data.readyHost == true
-
-      &&
-      request.resource.data.readyGuest == true
-
-      &&
       (
         request.resource.data.firstPlayer == 'host'
         ||
@@ -387,9 +335,6 @@ allow update: if request.auth != null
     isStaleStageClosure()
     ||
 
-    isStaleClosedRoomTakeover()
-    ||
-
 
     // =====================================================
     // 明示的な退出
@@ -409,6 +354,7 @@ allow update: if request.auth != null
   && request.resource.data.diff(resource.data).affectedKeys().hasOnly([
   'hostDeckId',
   'readyHost',
+  'classReadyYearHost',
   'rematchHost',
   'rematchPlayerResetHost',
   'exitHost',
@@ -621,6 +567,19 @@ allow update: if request.auth != null
   )
 )
 )
+
+
+&& (
+  !request.resource.data.diff(resource.data).affectedKeys().hasAny([
+    'classReadyYearHost'
+  ])
+  ||
+  (
+    request.resource.data.classReadyYearHost is int
+    && request.resource.data.classReadyYearHost >= 0
+    && request.resource.data.classReadyYearHost <= 3
+  )
+)
     ||
 
     // =====================================================
@@ -683,13 +642,20 @@ allow update: if request.auth != null
       && request.resource.data.readyGuest
         == false
 
+      && request.resource.data.classReadyYearHost
+        == 0
+
+      && request.resource.data.classReadyYearGuest
+        == 0
+
 && request.resource.data.diff(resource.data).affectedKeys().hasOnly
 ([
   'battlePhase','currentYear','turnIndex','firstPlayer','startSeasonIdx',
   'hostTotalScore','guestTotalScore','hostClassScores','guestClassScores',
   'rematchHost','rematchGuest','exitHost','exitGuest',
   'readyHost','readyGuest',
-  'rematchPlayerResetHost','rematchPlayerResetGuest'
+  'rematchPlayerResetHost','rematchPlayerResetGuest',
+  'classReadyYearHost','classReadyYearGuest'
 ])
 
 && request.resource.data.rematchPlayerResetHost == false
@@ -709,6 +675,7 @@ allow update: if request.auth != null
   && request.resource.data.diff(resource.data).affectedKeys().hasOnly([
     'guestDeckId',
     'readyGuest',
+    'classReadyYearGuest',
     'rematchGuest',
     'rematchPlayerResetGuest',
     'exitGuest',
@@ -941,6 +908,19 @@ allow update: if request.auth != null
     )
   )
 )
+)
+
+
+&& (
+  !request.resource.data.diff(resource.data).affectedKeys().hasAny([
+    'classReadyYearGuest'
+  ])
+  ||
+  (
+    request.resource.data.classReadyYearGuest is int
+    && request.resource.data.classReadyYearGuest >= 0
+    && request.resource.data.classReadyYearGuest <= 3
+  )
 )
 
     ||
