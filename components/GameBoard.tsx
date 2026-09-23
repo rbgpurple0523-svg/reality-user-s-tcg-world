@@ -689,6 +689,7 @@ void ensureAnonymousAuth()
   const [battleDealAnimationKey, setBattleDealAnimationKey] = useState(0);
   const [battleDealAnimationActive, setBattleDealAnimationActive] = useState(false);
   const [selectedSupportCardIndex, setSelectedSupportCardIndex] = useState<number | null>(null);
+  const [supportSubmittingCardIndex, setSupportSubmittingCardIndex] = useState<number | null>(null);
   const [revealingSupportCardIndexes, setRevealingSupportCardIndexes] = useState<number[]>([]);
   const [supportDealAnimationKey, setSupportDealAnimationKey] = useState(0);
   const [supportDealAnimationActive, setSupportDealAnimationActive] = useState(false);
@@ -5071,6 +5072,8 @@ const handleUseSupportCard = async (
   }
 
   supportSubmitInProgressRef.current = true;
+  setSupportSubmittingCardIndex(index);
+
 
   try {
     const applied =
@@ -5310,6 +5313,7 @@ const handleUseSupportCard = async (
     );
   } finally {
     supportSubmitInProgressRef.current = false;
+    setSupportSubmittingCardIndex(null);
   }
 };
 
@@ -6776,7 +6780,7 @@ const field =
                   <div
                     className={
                       selectedCard
-                        ? 'mt-3 grid grid-cols-[minmax(0,56%)_minmax(0,44%)] items-start gap-3'
+                        ? 'mt-3 grid grid-cols-[minmax(0,0.95fr)_minmax(0,1.05fr)] items-start gap-3'
                         : 'mt-3'
                     }
                   >
@@ -6857,23 +6861,27 @@ const field =
                         const naturalWidth =
                           myHand.length * cardWidth +
                           Math.max(0, myHand.length - 1) * cardGap;
-                        const overlap =
-                          myHand.length > 1 &&
-                          supportHandContainerWidth > 0 &&
-                          naturalWidth > supportHandContainerWidth
-                            ? (naturalWidth - supportHandContainerWidth) / (myHand.length - 1)
-                            : 0;
+                        const cardStep =
+                          myHand.length <= 1 ||
+                          supportHandContainerWidth <= 0
+                            ? cardWidth + cardGap
+                            : Math.min(
+                                cardWidth + cardGap,
+                                Math.max(14, (supportHandContainerWidth - cardWidth) / (myHand.length - 1)),
+                              );
+                        const overlap = cardWidth + cardGap - cardStep;
 
                         return (
                           <div
                             ref={supportHandContainerRef}
-                            className="flex items-center justify-end overflow-hidden pb-2 pt-2"
+                            className="flex w-full items-center overflow-hidden pb-2 pt-2"
                           >
                         {myHand.length === 0 ? (
                           <div className="py-4 text-xs font-bold opacity-40">手札がありません。</div>
                         ) : (
                           myHand.map((card, index) => {
                             const isSelected = selectedSupportCardIndex === index;
+                            const isSubmitting = supportSubmittingCardIndex === index;
                             const isRevealing = revealingSupportCardIndexes.includes(index);
                             const preset = getEmotionPresetForCard(card);
                             const badges = preset
@@ -6884,7 +6892,7 @@ const field =
                               <button
                                 key={`${card.id}_${index}`}
                                 type="button"
-                                disabled={!myTurn}
+                                disabled={!myTurn || supportSubmittingCardIndex !== null}
                                 onPointerDown={(event) => {
                                   if (!myTurn) return;
                                   supportPointerStartRef.current = { index, y: event.clientY };
@@ -6896,7 +6904,7 @@ const field =
                                   if (!startPoint || startPoint.index !== index) return;
                                   if (event.clientY - startPoint.y <= -45) {
                                     supportClickSuppressRef.current = true;
-                                    setSelectedSupportCardIndex(null);
+                                    setSelectedSupportCardIndex(index);
                                     void handleUseSupportCard(card, index);
                                     window.setTimeout(() => { supportClickSuppressRef.current = false; }, 50);
                                   }
@@ -6905,7 +6913,6 @@ const field =
                                 onClick={() => {
                                   if (!myTurn || supportClickSuppressRef.current) return;
                                   if (selectedSupportCardIndex === index) {
-                                    setSelectedSupportCardIndex(null);
                                     void handleUseSupportCard(card, index);
                                     return;
                                   }
@@ -6921,6 +6928,11 @@ const field =
                                   isSelected ? '-translate-y-3 border-indigo-500 ring-2 ring-indigo-200' : 'border-slate-200'
                                 }`}
                               >
+                                {isSubmitting && (
+                                  <div className="absolute inset-0 z-30 flex items-center justify-center rounded-xl bg-slate-950/55 text-[11px] font-black text-white backdrop-blur-[1px]">
+                                    発動中…
+                                  </div>
+                                )}
                                 <BattleCardReveal
                                   revealed={!isRevealing}
                                   width={70}
