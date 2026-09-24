@@ -2396,11 +2396,12 @@ return () => {
       isSupportEffectActive(effect, turnOrdinal),
     );
 
+    const baseStats = avatar.baseStats || avatar.stats;
     const supportStats = {
-      hp: Math.max(0, avatar.stats.hp),
-      intellect: Math.max(0, avatar.stats.intellect),
-      dexterity: Math.max(0, avatar.stats.dexterity),
-      charm: Math.max(0, avatar.stats.charm),
+      hp: Math.max(0, baseStats.hp),
+      intellect: Math.max(0, baseStats.intellect),
+      dexterity: Math.max(0, baseStats.dexterity),
+      charm: Math.max(0, baseStats.charm),
     };
 
     for (const effect of activeSupportEffects) {
@@ -4230,19 +4231,19 @@ useEffect(() => {
 
     if (skill.rule === 'primary_score') {
       const stat = skill.primaryStat || 'hp';
-      gainedScore = Number(baseStats[stat] || 0) * 20;
+      gainedScore = getStat(effective, stat) * 20;
     } else if (skill.rule === 'product_score') {
-      const first = skill.primaryStat || 'hp';
-      const second = skill.secondaryStat || 'intellect';
-      gainedScore = Number(baseStats[first] || 0) * Number(baseStats[second] || 0);
+      const first = skill.primaryStat || 'intellect';
+      const second = skill.secondaryStat || 'dexterity';
+      gainedScore = getStat(effective, first) * getStat(effective, second);
     } else if (skill.rule === 'difference_score') {
       const stat = skill.primaryStat || 'hp';
-      gainedScore = Math.max(0, Number(baseStats[stat] || 0) - getStat(opponentEffective, stat)) * 40;
+      gainedScore = Math.max(0, getStat(effective, stat) - getStat(opponentEffective, stat)) * 40;
     } else if (skill.rule === 'combo_score_and_debuff') {
       const first = skill.secondaryStat || 'dexterity';
       const second = skill.tertiaryStat || 'charm';
       const target = skill.primaryStat || 'hp';
-      gainedScore = (Number(baseStats[first] || 0) + Number(baseStats[second] || 0)) * 10;
+      gainedScore = (getStat(effective, first) + getStat(effective, second)) * 10;
       debuffStat = target;
       debuffAmount = Math.ceil(getStat(opponentEffective, target) * 0.5);
       debuffs[target] = debuffAmount;
@@ -4254,7 +4255,7 @@ useEffect(() => {
         );
       }
     } else if (skill.rule === 'y_total_score') {
-      gainedScore = Object.values(baseStats).reduce((sum, value) => sum + Number(value || 0), 0) * 10;
+      gainedScore = Object.values(effective).reduce((sum, value) => sum + Number(value || 0), 0) * 10;
     } else if (skill.rule === 'y_response_score') {
       selectedBoostStat = selectedStatOverride || null;
       if (!selectedBoostStat) return;
@@ -4262,11 +4263,17 @@ useEffect(() => {
     } else if (skill.rule === 'y_burst') {
       selectedBoostStat = selectedStatOverride || null;
       if (!selectedBoostStat) return;
-      gainedScore = getStat(effective, selectedBoostStat) * 10;
-      const currentBoost = myActiveAvatar.statBoost?.[selectedBoostStat] || 1;
+      const boostStat = selectedBoostStat;
+      gainedScore = getStat(effective, boostStat) * 10;
+      const currentBaseStats = myActiveAvatar.baseStats || myActiveAvatar.stats;
+      const nextBaseValue = Number(currentBaseStats[boostStat] || 0) * 2;
       nextMyAvatars = myAvatars.map((avatar, index) =>
         index === activeIndex
-          ? { ...avatar, statBoost: { ...(avatar.statBoost || {}), [selectedBoostStat!]: currentBoost * 2 } }
+          ? {
+              ...avatar,
+              stats: { ...avatar.stats, [boostStat]: nextBaseValue },
+              baseStats: { ...((avatar.baseStats || avatar.stats)), [boostStat]: nextBaseValue },
+            }
           : avatar,
       );
     } else if (skill.rule === 'y_crash') {
@@ -5211,30 +5218,32 @@ if (!actionSubmitted) {
       let cpuBurstStat: StatKey | null = null;
 
       if (skill.rule === 'primary_score') {
-        gainedScore = Number(cpuBaseStats[skill.primaryStat || 'hp'] || 0) * 20;
+        gainedScore = effective[skill.primaryStat || 'hp'] * 20;
       } else if (skill.rule === 'product_score') {
-        gainedScore = Number(cpuBaseStats[skill.primaryStat || 'hp'] || 0) * Number(cpuBaseStats[skill.secondaryStat || 'intellect'] || 0);
+        gainedScore = effective[skill.primaryStat || 'intellect'] * effective[skill.secondaryStat || 'dexterity'];
       } else if (skill.rule === 'difference_score') {
         const stat = skill.primaryStat || 'hp';
-        gainedScore = Math.max(0, Number(cpuBaseStats[stat] || 0) - opponentEffective[stat]) * 40;
+        gainedScore = Math.max(0, effective[stat] - opponentEffective[stat]) * 40;
       } else if (skill.rule === 'combo_score_and_debuff') {
         const first = skill.secondaryStat || 'dexterity';
         const second = skill.tertiaryStat || 'charm';
         const target = skill.primaryStat || 'hp';
-        gainedScore = (Number(cpuBaseStats[first] || 0) + Number(cpuBaseStats[second] || 0)) * 10;
+        gainedScore = (effective[first] + effective[second]) * 10;
         debuffs[target] = Math.ceil(opponentEffective[target] * 0.5);
       } else if (skill.rule === 'y_total_score') {
-        gainedScore = Object.values(cpuBaseStats).reduce((sum, value) => sum + Number(value || 0), 0) * 10;
+        gainedScore = Object.values(effective).reduce((sum, value) => sum + Number(value || 0), 0) * 10;
       } else if (skill.rule === 'y_response_score') {
         const responseStat = cpuRank[0] || 'hp';
         gainedScore = Math.max(0, effective[responseStat] - opponentEffective[responseStat]) * 40;
       } else if (skill.rule === 'y_burst') {
         cpuBurstStat = cpuRank[0] || 'hp';
         gainedScore = effective[cpuBurstStat] * 10;
-        const currentBoost = workingCpu.statBoost?.[cpuBurstStat] || 1;
+        const cpuCurrentBaseStats = workingCpu.baseStats || workingCpu.stats;
+        const nextBaseValue = Number(cpuCurrentBaseStats[cpuBurstStat] || 0) * 2;
         workingCpu = {
           ...workingCpu,
-          statBoost: { ...(workingCpu.statBoost || {}), [cpuBurstStat]: currentBoost * 2 },
+          stats: { ...workingCpu.stats, [cpuBurstStat]: nextBaseValue },
+          baseStats: { ...cpuCurrentBaseStats, [cpuBurstStat]: nextBaseValue },
         };
       } else if (skill.rule === 'y_crash') {
         const third = cpuRank[2] || 'dexterity';

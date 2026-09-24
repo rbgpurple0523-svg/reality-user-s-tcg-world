@@ -407,11 +407,12 @@ const getEffectiveStats = (
     );
   }
 
+  const sourceBaseStats = avatar.baseStats ?? preset.stats;
   const result: Record<StatKey, number> = {
-    hp: Number(preset.stats.hp),
-    intellect: Number(preset.stats.intellect),
-    dexterity: Number(preset.stats.dexterity),
-    charm: Number(preset.stats.charm),
+    hp: Number(sourceBaseStats.hp),
+    intellect: Number(sourceBaseStats.intellect),
+    dexterity: Number(sourceBaseStats.dexterity),
+    charm: Number(sourceBaseStats.charm),
   };
 
   const activeSupportEffects =
@@ -583,20 +584,20 @@ const calculateSkillResult = (
   const baseRank = STAT_KEYS.slice().sort((a, b) => Number(baseActorStats[b] ?? 0) - Number(baseActorStats[a] ?? 0));
 
   if (skill.rule === 'primary_score') {
-    const stat = skill.primaryStat ?? 'hp';
-    gainedScore = Number(baseActorStats[stat] ?? 0) * 20;
+    const stat = skill.primaryStat ?? baseRank[0] ?? 'hp';
+    gainedScore = effective[stat] * 20;
   } else if (skill.rule === 'product_score') {
     const first = skill.primaryStat ?? baseRank[1] ?? 'intellect';
     const second = skill.secondaryStat ?? baseRank[2] ?? 'dexterity';
     gainedScore =
-      Number(baseActorStats[first] ?? 0) *
-      Number(baseActorStats[second] ?? 0);
+      effective[first] *
+      effective[second];
   } else if (skill.rule === 'difference_score') {
     const stat = skill.primaryStat ?? baseRank[0] ?? 'hp';
     gainedScore =
       Math.max(
         0,
-        Number(baseActorStats[stat] ?? 0) -
+        effective[stat] -
           targetEffective[stat],
       ) * 40;
   } else if (
@@ -608,8 +609,8 @@ const calculateSkillResult = (
     const targetStat = skill.primaryStat ?? baseRank[0] ?? 'hp';
 
     gainedScore =
-      (Number(baseActorStats[first] ?? 0) +
-        Number(baseActorStats[second] ?? 0)) *
+      (effective[first] +
+        effective[second]) *
       10;
 
     debuffs[targetStat] =
@@ -626,7 +627,7 @@ const calculateSkillResult = (
     'y_total_score'
   ) {
     gainedScore =
-      Object.values(baseActorStats).reduce(
+      Object.values(effective).reduce(
         (sum, value) => sum + Number(value ?? 0),
         0,
       ) * 10;
@@ -657,11 +658,19 @@ const calculateSkillResult = (
 
     gainedScore =
       effective[selectedBoostStat] * 10;
+
+    const nextBaseValue =
+      Number(baseActorStats[selectedBoostStat] ?? 0) * 2;
+
     nextActor = {
       ...actor,
-      statBoost: {
-        ...(actor.statBoost ?? {}),
-        [selectedBoostStat]: (actor.statBoost?.[selectedBoostStat] ?? 1) * 2,
+      stats: {
+        ...actor.stats,
+        [selectedBoostStat]: nextBaseValue,
+      },
+      baseStats: {
+        ...baseActorStats,
+        [selectedBoostStat]: nextBaseValue,
       },
     };
   } else if (
