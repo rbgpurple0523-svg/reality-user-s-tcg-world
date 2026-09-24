@@ -2438,6 +2438,18 @@ useEffect(() => {
     return;
   }
 
+  // オンラインでは、クラス開始直後にprivatePlayersの初期手札・山札が
+  // まだ購読できていない瞬間があります。ここでturnを消費済みにすると、
+  // privatePlayer到着後に開始時ドローを再試行できなくなります。
+  if (
+    isOnline &&
+    turnIndex === 0 &&
+    myHand.length === 0 &&
+    myDeck.length === 0
+  ) {
+    return;
+  }
+
   const turnOrdinal = getBattleTurnOrdinal(currentYear, turnIndex);
   const drawCount = Math.min(
     1 + getAdditionalDrawFromEffects(
@@ -2481,7 +2493,15 @@ useEffect(() => {
         setMyDeck(result.deck);
       }
 
-      const actualDrawCount = result.drawCount;
+      const observedDrawCount =
+        result.hand && result.hand.length >= myHand.length
+          ? Math.max(0, result.hand.length - myHand.length)
+          : 0;
+      const actualDrawCount = Math.max(
+        result.drawCount,
+        observedDrawCount,
+      );
+
       if (actualDrawCount > 0) {
         triggerSupportDealAnimation(actualDrawCount);
         revealSupportCardIndexes(
@@ -2497,7 +2517,9 @@ useEffect(() => {
       addLog(
         actualDrawCount > 0
           ? `サポートカードを${actualDrawCount}枚ドローしました。`
-          : 'サポートカードをドローできませんでした。',
+          : (currentYear === 1 && turnIndex === 0
+              ? 'サポートカードはすでに開始時の手札へ反映されています。'
+              : 'サポートカードをドローできませんでした。'),
       );
       return;
     }
@@ -6643,18 +6665,6 @@ const field =
 
             <div className="flex shrink-0 items-center gap-2">
               {battlePhase === 'battle' && (
-                <div className="rounded-xl bg-slate-950/90 px-2.5 py-1.5 text-center text-white shadow">
-                  <div className="text-[8px] font-bold opacity-55">
-                    {currentRoleDisplayName} スコア
-                  </div>
-                  <div className="text-lg font-black leading-none sm:text-xl">
-                    {currentMyClassScore}
-                    <span className="ml-0.5 text-[9px]">VS</span>
-                    {currentOppClassScore}
-                  </div>
-                </div>
-              )}
-              {battlePhase === 'battle' && (
                 <button
                   type="button"
                   onClick={() => setShowBattleLog(true)}
@@ -6976,27 +6986,37 @@ const field =
                 <div className="text-center text-[9px] font-black text-indigo-600">
                   あなた　{currentRoleDisplayName}
                 </div>
-                <button
-                  type="button"
-                  onClick={() => setModalAvatar(myActiveAvatar)}
-                  className="mt-1 block w-full"
-                >
-                  <div ref={myActiveCardAnchorRef}>
-                    <BattleCardReveal
-                      revealed={activeCardsRevealed}
-                      width={92}
-                      height={118}
-                      className="mx-auto"
-                      colorHex={getBattleVisualColorHex(myActiveAvatar.card)}
-                    >
-                      <img
-                        src={myActiveAvatar.card.imageDataUrl}
-                        alt=""
-                        className="h-full w-full rounded-2xl bg-white object-contain p-1"
-                      />
-                    </BattleCardReveal>
-                  </div>
-                </button>
+                <div className="mt-1 flex items-start justify-center gap-1.5">
+                  <button
+                    type="button"
+                    onClick={() => setModalAvatar(myActiveAvatar)}
+                    className="block w-[92px] shrink-0"
+                  >
+                    <div ref={myActiveCardAnchorRef}>
+                      <BattleCardReveal
+                        revealed={activeCardsRevealed}
+                        width={92}
+                        height={118}
+                        className="mx-auto"
+                        colorHex={getBattleVisualColorHex(myActiveAvatar.card)}
+                      >
+                        <img
+                          src={myActiveAvatar.card.imageDataUrl}
+                          alt=""
+                          className="h-full w-full rounded-2xl bg-white object-contain p-1"
+                        />
+                      </BattleCardReveal>
+                    </div>
+                  </button>
+                  <VerticalScoreGauge
+                    label="このクラス"
+                    score={currentMyClassScore}
+                    side="self"
+                    active={myTurn}
+                    compact
+                    baseHeightPx={118}
+                  />
+                </div>
                 <div className="mt-1 truncate text-center text-xs font-black text-slate-950">
                   {myActiveAvatar.card.userName}
                 </div>
@@ -7023,27 +7043,37 @@ const field =
                 <div className="text-center text-[9px] font-black text-rose-600">
                   相手　{currentRoleDisplayName}
                 </div>
-                <button
-                  type="button"
-                  onClick={() => setModalAvatar(oppActiveAvatar)}
-                  className="mt-1 block w-full"
-                >
-                  <div ref={opponentActiveCardAnchorRef}>
-                    <BattleCardReveal
-                      revealed={activeCardsRevealed}
-                      width={92}
-                      height={118}
-                      className="mx-auto"
-                      colorHex={getBattleVisualColorHex(oppActiveAvatar.card)}
-                    >
-                      <img
-                        src={oppActiveAvatar.card.imageDataUrl}
-                        alt=""
-                        className="h-full w-full rounded-2xl bg-white object-contain p-1"
-                      />
-                    </BattleCardReveal>
-                  </div>
-                </button>
+                <div className="mt-1 flex items-start justify-center gap-1.5">
+                  <button
+                    type="button"
+                    onClick={() => setModalAvatar(oppActiveAvatar)}
+                    className="block w-[92px] shrink-0"
+                  >
+                    <div ref={opponentActiveCardAnchorRef}>
+                      <BattleCardReveal
+                        revealed={activeCardsRevealed}
+                        width={92}
+                        height={118}
+                        className="mx-auto"
+                        colorHex={getBattleVisualColorHex(oppActiveAvatar.card)}
+                      >
+                        <img
+                          src={oppActiveAvatar.card.imageDataUrl}
+                          alt=""
+                          className="h-full w-full rounded-2xl bg-white object-contain p-1"
+                        />
+                      </BattleCardReveal>
+                    </div>
+                  </button>
+                  <VerticalScoreGauge
+                    label="このクラス"
+                    score={currentOppClassScore}
+                    side="opponent"
+                    active={!myTurn}
+                    compact
+                    baseHeightPx={118}
+                  />
+                </div>
                 <div className="mt-1 truncate text-center text-xs font-black text-slate-950">
                   {oppActiveAvatar.card.userName}
                 </div>
@@ -7410,6 +7440,73 @@ const field =
               >
                 {myTurn ? 'このサポートカードを使用する' : '自分のターンではありません'}
               </button>
+            </div>
+          </div>
+        )}
+
+        {skillStatSelection && (
+          <div className="fixed inset-0 z-[80] flex items-center justify-center bg-slate-950/60 p-4 backdrop-blur-sm">
+            <div className="w-full max-w-sm rounded-3xl bg-white p-5 shadow-2xl">
+              <div className="flex items-start justify-between gap-3">
+                <div>
+                  <div className="text-xs font-black text-slate-400">A-1コーデ</div>
+                  <h3 className="mt-1 text-xl font-black text-slate-950">ステータスを選択</h3>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setSkillStatSelection(null)}
+                  className="rounded-xl bg-slate-100 px-3 py-2 text-sm font-black text-slate-500"
+                  aria-label="ステータス選択を閉じる"
+                >
+                  ✕
+                </button>
+              </div>
+
+              <div className="mt-3 rounded-2xl bg-slate-50 p-3 text-xs font-bold leading-relaxed text-slate-600">
+                {skillStatSelection.mode === 'response'
+                  ? '選んだステータスの「自分 − 相手」×20でスコアを計算します。'
+                  : '選んだステータスを2倍にしてから、技の処理を確定します。'}
+              </div>
+
+              <div className="mt-3 grid grid-cols-2 gap-2">
+                {STAT_KEYS.map((stat) => {
+                  const mine = getEffectiveStats(myActiveAvatar)[stat];
+                  const opponent = getEffectiveStats(oppActiveAvatar)[stat];
+                  const score = Math.max(0, mine - opponent) * 20;
+                  const burstValue = mine * 2;
+
+                  return (
+                    <button
+                      key={stat}
+                      type="button"
+                      onClick={() => {
+                        const skill = myActiveAvatar.skills.find(
+                          (item) => item.id === skillStatSelection.skillId,
+                        );
+                        if (!skill) {
+                          setSkillStatSelection(null);
+                          return;
+                        }
+                        setSkillStatSelection(null);
+                        void handleUseSkill(skill, stat);
+                      }}
+                      className="rounded-2xl border border-indigo-200 bg-indigo-50 p-3 text-left shadow-sm transition hover:-translate-y-0.5 hover:border-indigo-400 hover:bg-indigo-100"
+                    >
+                      <div className="text-sm font-black text-indigo-950">
+                        {STAT_LABELS[stat]}
+                      </div>
+                      <div className="mt-1 text-xs font-bold text-slate-600">
+                        自分 {mine} ／ 相手 {opponent}
+                      </div>
+                      <div className="mt-2 text-sm font-black text-indigo-700">
+                        {skillStatSelection.mode === 'response'
+                          ? `+${score}スコア`
+                          : `${mine} → ${burstValue}`}
+                      </div>
+                    </button>
+                  );
+                })}
+              </div>
             </div>
           </div>
         )}
