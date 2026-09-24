@@ -346,6 +346,10 @@ allow update: if request.auth != null
 
     // =====================================================
     // Hostの通常更新
+    //
+    // currentYear / turnIndex / battlePhase / firstPlayer /
+    // startSeasonIdx はここでは更新不可。
+    // これらはServer API (Admin SDK) だけが確定する。
     // =====================================================
 (
   resource.data.hostUid == request.auth.uid
@@ -354,18 +358,12 @@ allow update: if request.auth != null
   && request.resource.data.diff(resource.data).affectedKeys().hasOnly([
   'hostDeckId',
   'readyHost',
-  'classReadyYearHost',
   'rematchHost',
   'rematchPlayerResetHost',
   'exitHost',
   'hostJoined',
   'hostRejoinedAt',
-  'hostLastSeenAt',
-  'currentYear',
-  'firstPlayer',
-  'startSeasonIdx',
-  'turnIndex',
-  'battlePhase'
+  'hostLastSeenAt'
 ])
 
 && isValidBattleStateTransition()
@@ -567,105 +565,14 @@ allow update: if request.auth != null
   )
 )
 )
-
-
-&& (
-  !request.resource.data.diff(resource.data).affectedKeys().hasAny([
-    'classReadyYearHost'
-  ])
-  ||
-  (
-    request.resource.data.classReadyYearHost is int
-    && request.resource.data.classReadyYearHost >= 0
-    && request.resource.data.classReadyYearHost <= 3
-  )
-)
     ||
 
     // =====================================================
-    // 両者が「もう一回」を選択した後の再戦リセット
-    // Hostだけが実行可能
-    // =====================================================
-    (
-      resource.data.hostUid == request.auth.uid
-      && resource.data.rematchHost == true
-      && resource.data.rematchGuest == true
-
-      && request.resource.data.hostUid
-        == resource.data.hostUid
-
-      && request.resource.data.guestUid
-        == resource.data.guestUid
-
-      && request.resource.data.battlePhase
-        == 'setup'
-
-      && request.resource.data.currentYear
-        == 1
-
-      && request.resource.data.turnIndex
-        == 0
-
-      && request.resource.data.firstPlayer
-        == null
-
-      && request.resource.data.startSeasonIdx
-        == null
-
-      && request.resource.data.hostTotalScore
-        == 0
-
-      && request.resource.data.guestTotalScore
-        == 0
-
-      && request.resource.data.hostClassScores
-        == [0, 0, 0]
-
-      && request.resource.data.guestClassScores
-        == [0, 0, 0]
-
-      && request.resource.data.rematchHost
-        == false
-
-      && request.resource.data.rematchGuest
-        == false
-
-      && request.resource.data.exitHost
-        == false
-
-      && request.resource.data.exitGuest
-        == false
-
-      && request.resource.data.readyHost
-        == false
-
-      && request.resource.data.readyGuest
-        == false
-
-      && request.resource.data.classReadyYearHost
-        == 0
-
-      && request.resource.data.classReadyYearGuest
-        == 0
-
-&& request.resource.data.diff(resource.data).affectedKeys().hasOnly
-([
-  'battlePhase','currentYear','turnIndex','firstPlayer','startSeasonIdx',
-  'hostTotalScore','guestTotalScore','hostClassScores','guestClassScores',
-  'rematchHost','rematchGuest','exitHost','exitGuest',
-  'readyHost','readyGuest',
-  'rematchPlayerResetHost','rematchPlayerResetGuest',
-  'classReadyYearHost','classReadyYearGuest'
-])
-
-&& request.resource.data.rematchPlayerResetHost == false
-&& request.resource.data.rematchPlayerResetGuest == false
-
-)
-    ||
-
-    // =====================================================
-    // Guestの更新
+    // Guestの通常更新
+    //
+    // currentYear / turnIndex / battlePhase / firstPlayer /
+    // startSeasonIdx はここでは更新不可。
+    // これらはServer API (Admin SDK) だけが確定する。
     // =====================================================
 (
   resource.data.guestUid == request.auth.uid
@@ -675,18 +582,12 @@ allow update: if request.auth != null
   && request.resource.data.diff(resource.data).affectedKeys().hasOnly([
     'guestDeckId',
     'readyGuest',
-    'classReadyYearGuest',
     'rematchGuest',
     'rematchPlayerResetGuest',
     'exitGuest',
     'guestJoined',
     'guestLastSeenAt',
-    'guestRejoinedAt',
-    'currentYear',
-    'firstPlayer',
-    'startSeasonIdx',
-    'turnIndex',
-    'battlePhase'
+    'guestRejoinedAt'
   ])
 
 && isValidBattleStateTransition()
@@ -908,19 +809,6 @@ allow update: if request.auth != null
     )
   )
 )
-)
-
-
-&& (
-  !request.resource.data.diff(resource.data).affectedKeys().hasAny([
-    'classReadyYearGuest'
-  ])
-  ||
-  (
-    request.resource.data.classReadyYearGuest is int
-    && request.resource.data.classReadyYearGuest >= 0
-    && request.resource.data.classReadyYearGuest <= 3
-  )
 )
 
     ||

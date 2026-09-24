@@ -103,7 +103,7 @@ type SupportCardState = {
 
 type BattleAction = {
   actionId?: string;
-  type?: 'USE_SKILL' | 'PLAY_SUPPORT' | 'DRAW_TURN';
+  type?: 'USE_SKILL' | 'PLAY_SUPPORT' | 'DRAW_TURN' | 'START_BATTLE' | 'REMATCH_RESET';
 
   playerRole?: PlayerRole;
   uid?: string;
@@ -186,6 +186,17 @@ type RoomData = {
 
   hostTotalScore?: number;
   guestTotalScore?: number;
+
+  hostDeckId?: string | null;
+  guestDeckId?: string | null;
+  readyHost?: boolean;
+  readyGuest?: boolean;
+  classReadyYearHost?: number;
+  classReadyYearGuest?: number;
+  rematchHost?: boolean;
+  rematchGuest?: boolean;
+  rematchPlayerResetHost?: boolean;
+  rematchPlayerResetGuest?: boolean;
 };
 
 type PrivatePlayerData = {
@@ -1536,7 +1547,9 @@ export async function POST(
     if (
       body.type !== 'USE_SKILL' &&
       body.type !== 'PLAY_SUPPORT' &&
-      body.type !== 'DRAW_TURN'
+      body.type !== 'DRAW_TURN' &&
+      body.type !== 'START_BATTLE' &&
+      body.type !== 'REMATCH_RESET'
     ) {
       return NextResponse.json(
         {
@@ -1547,56 +1560,47 @@ export async function POST(
       );
     }
 
-    if (
-      typeof body.year !==
-        'number' ||
+    const isBattleAction =
+      body.type === 'USE_SKILL' ||
+      body.type === 'PLAY_SUPPORT' ||
+      body.type === 'DRAW_TURN';
+
+    if (isBattleAction && (
+      typeof body.year !== 'number' ||
       !Number.isInteger(body.year)
-    ) {
+    )) {
       return NextResponse.json(
         {
           ok: false,
-          error:
-            'yearが不正です。',
+          error: 'yearが不正です。',
         },
-        {
-          status: 400,
-        },
+        { status: 400 },
       );
     }
 
-    if (
-      typeof body.turnIndex !==
-        'number' ||
+    if (isBattleAction && (
+      typeof body.turnIndex !== 'number' ||
       !Number.isInteger(body.turnIndex)
-    ) {
+    )) {
       return NextResponse.json(
         {
           ok: false,
-          error:
-            'turnIndexが不正です。',
+          error: 'turnIndexが不正です。',
         },
-        {
-          status: 400,
-        },
+        { status: 400 },
       );
     }
 
-    if (
-      typeof body.avatarIndex !==
-        'number' ||
-      !Number.isInteger(
-        body.avatarIndex,
-      )
-    ) {
+    if (isBattleAction && (
+      typeof body.avatarIndex !== 'number' ||
+      !Number.isInteger(body.avatarIndex)
+    )) {
       return NextResponse.json(
         {
           ok: false,
-          error:
-            'avatarIndexが不正です。',
+          error: 'avatarIndexが不正です。',
         },
-        {
-          status: 400,
-        },
+        { status: 400 },
       );
     }
 
@@ -1658,7 +1662,9 @@ export async function POST(
       body.turnIndex;
 
     const requestedAvatarIndex =
-      body.avatarIndex;
+      typeof body.avatarIndex === 'number'
+        ? body.avatarIndex
+        : -1;
 
     const requestedSkillId =
       body.skillId;
@@ -1704,6 +1710,145 @@ export async function POST(
             Number(
               roomData.turnIndex ?? 0,
             );
+
+          // =====================================================
+          // Room進行状態を変更するライフサイクルAction
+          //
+          // currentYear / turnIndex / battlePhase / firstPlayer /
+          // startSeasonIdx は、通常のFirestore Client Writeでは変更させない。
+          // これらはここでのみAdmin SDKから確定する。
+          // =====================================================
+          if (body.type === 'START_BATTLE') {
+            if (roomData.hostUid !== authUid) {
+              throw new Error(
+                'コイントスを実行できるのはルーム作成者だけです。',
+              );
+            }
+
+            if (
+              roomData.battlePhase === 'battle' &&
+              isPlayerRole(roomData.firstPlayer)
+            ) {
+              return {
+                actionId,
+                alreadyProcessed: true,
+                firstPlayer: roomData.firstPlayer,
+                currentYear,
+                turnIndex,
+                battlePhase: 'battle' as const,
+              };
+            }
+
+            if (roomData.battlePhase !== 'setup') {
+              throw new Error(
+                '現在はコイントスを開始できる準備状態ではありません。',
+              );
+            }
+
+            if (roomData.currentYear === undefined) {
+              throw new Error('currentYearが存在しません。');
+            }
+
+            if (roomData.firstPlayer !== null) {
+              throw new Error('先手はすでに決定されています。');
+            }
+
+            if (!roomData.guestUid) {
+              throw new Error('相手プレイヤーが参加していません。');
+            }
+
+            if (
+              roomData.readyHost !== true ||
+              roomData.readyGuest !== true ||
+              typeof roomData.hostDeckId !== 'string' ||
+              !roomData.hostDeckId ||
+              typeof roomData.guestDeckId !== 'string' ||
+              !roomData.guestDeckId
+            ) {
+              throw new Error('両者のチーム確定が完了していません。');
+            }
+
+            if (
+              Number(roomData.classReadyYearHost ?? 0) !== currentYear ||
+              Number(roomData.classReadyYearGuest ?? 0) !== currentYear
+            ) {
+              throw new Error('両者のクラス準備が完了していません。');
+            }
+
+            const firstPlayer: PlayerRole =
+              Math.random() < 0.5 ? 'host' : 'guest';
+
+            transaction.update(roomRef, {
+              firstPlayer,
+              startSeasonIdx: 0,
+              turnIndex: 0,
+              battlePhase: 'battle',
+            });
+
+            return {
+              actionId,
+              alreadyProcessed: false,
+              firstPlayer,
+              currentYear,
+              turnIndex: 0,
+              battlePhase: 'battle' as const,
+            };
+          }
+
+          if (body.type === 'REMATCH_RESET') {
+            if (roomData.hostUid !== authUid) {
+              throw new Error(
+                '再戦リセットを実行できるのはルーム作成者だけです。',
+              );
+            }
+
+            if (
+              roomData.battlePhase !== 'finished' ||
+              Number(roomData.currentYear ?? 0) !== 3 ||
+              Number(roomData.turnIndex ?? -1) !== 7
+            ) {
+              throw new Error('再戦リセットを実行できる試合状態ではありません。');
+            }
+
+            if (
+              roomData.rematchHost !== true ||
+              roomData.rematchGuest !== true ||
+              roomData.rematchPlayerResetHost !== true ||
+              roomData.rematchPlayerResetGuest !== true
+            ) {
+              throw new Error('両者の再戦準備が完了していません。');
+            }
+
+            transaction.update(roomRef, {
+              battlePhase: 'setup',
+              currentYear: 1,
+              turnIndex: 0,
+              firstPlayer: null,
+              startSeasonIdx: null,
+              hostTotalScore: 0,
+              guestTotalScore: 0,
+              hostClassScores: [0, 0, 0],
+              guestClassScores: [0, 0, 0],
+              rematchHost: false,
+              rematchGuest: false,
+              rematchPlayerResetHost: false,
+              rematchPlayerResetGuest: false,
+              exitHost: false,
+              exitGuest: false,
+              readyHost: false,
+              readyGuest: false,
+              classReadyYearHost: 0,
+              classReadyYearGuest: 0,
+            });
+
+            return {
+              actionId,
+              alreadyProcessed: false,
+              currentYear: 1,
+              turnIndex: 0,
+              battlePhase: 'setup' as const,
+            };
+          }
 
           if (
             roomData.battlePhase !==

@@ -2204,67 +2204,9 @@ return () => {
 
 );
 
-  // =========================================================
-  // ===== 初回ルーム状態の作成 =====
-  // =========================================================
-  //
-  // Room作成自体はFriendMatchSetup側で完了している。
-  //
-  // ここでは既存ルームに不足している「戦闘状態」だけを
-  // ホストが補完する。
-  //
-  // Playerドキュメントの作成はFriendMatchSetupで行うため、
-  // GameBoardから勝手にRoomを再生成しない。
-  // =========================================================
+  // Roomの初期戦闘状態はFriendMatchSetupの作成時に確定する。
+  // ここからクライアントがcurrentYear等を直接補完することはしない。
 
-  useEffect(() => {
-    if (!roomId || !isHost || !authReady) return;
-
-    const roomRef = doc(db, 'rooms', roomId);
-
-    void getDoc(roomRef).then((snapshot) => {
-      if (!snapshot.exists()) return;
-
-      const data =
-        snapshot.data() as Record<string, any>;
-
-      if (data.battlePhase) return;
-
-      void updateDoc(roomRef, {
-        battlePhase: 'setup',
-        currentYear: 1,
-        turnIndex: 0,
-        firstPlayer: null,
-        startSeasonIdx: null,
-
-        hostTotalScore: 0,
-        guestTotalScore: 0,
-
-        hostClassScores: [0, 0, 0],
-        guestClassScores: [0, 0, 0],
-
-        rematchHost: false,
-        rematchGuest: false,
-
-        rematchPlayerResetHost: false,
-        rematchPlayerResetGuest: false,
-
-        exitHost: false,
-        exitGuest: false,
-
-        readyHost: false,
-        readyGuest: false,
-
-      });
-    });
-  }, [
-    roomId,
-    isHost,
-    authReady,
-  ]);
-
-
-  // ===== 現在の季節・手番・出場キャラ =====
   const currentSeasonIdx = startSeasonIdx === null ? 0 : (startSeasonIdx + Math.floor(turnIndex / 2)) % 4;
   const currentSeason = SEASONS[currentSeasonIdx];
   const onlineDecksConfirmed =
@@ -2679,6 +2621,56 @@ type BattleActionPayload = {
   supportPresetId?: string;
   supportFlavorText?: string;
   supportColorHex?: string;
+};
+
+const submitBattleLifecycleAction = async (
+  type: 'START_BATTLE' | 'REMATCH_RESET',
+) => {
+  if (!isOnline || !roomId || !authReady) {
+    return null;
+  }
+
+  try {
+    const currentUser = await ensureAnonymousAuth();
+    const actionId = `${currentUser.uid}-${type}-${Date.now()}-${Math.random().toString(36).slice(2)}`;
+    const idToken = await currentUser.getIdToken();
+    const response = await fetch('/api/battle/action', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${idToken}`,
+      },
+      body: JSON.stringify({
+        roomId,
+        actionId,
+        type,
+      }),
+    });
+
+    const responseData = (await response.json()) as {
+      ok?: boolean;
+      error?: string;
+      result?: {
+        firstPlayer?: PlayerRole;
+        currentYear?: number;
+        turnIndex?: number;
+        battlePhase?: 'setup' | 'battle';
+        alreadyProcessed?: boolean;
+      };
+    };
+
+    if (!response.ok || responseData.ok !== true) {
+      throw new Error(
+        responseData.error ||
+          'Room進行Action APIに失敗しました。',
+      );
+    }
+
+    return responseData.result ?? null;
+  } catch (error) {
+    console.error('Room進行Action API送信エラー:', error);
+    return null;
+  }
 };
 
 const submitTurnDrawAction = async (
@@ -3833,69 +3825,22 @@ useEffect(() => {
         return;
       }
 
-      const roomRef = doc(db, 'rooms', roomId);
-      const result = await runTransaction(db, async (transaction) => {
-        const snapshot = await transaction.get(roomRef);
+      const result = await submitBattleLifecycleAction(
+        'START_BATTLE',
+      );
 
-        if (!snapshot.exists()) {
-          throw new Error('ROOM_NOT_FOUND');
-        }
+      if (!result?.firstPlayer) {
+        throw new Error(
+          'サーバーから先手結果を取得できませんでした。',
+        );
+      }
 
-        const data = snapshot.data() as Record<string, unknown>;
-        const roomCurrentYear = Number(data.currentYear ?? 1);
-
-        if (data.battlePhase !== 'setup') {
-          throw new Error('ROOM_NOT_IN_SETUP');
-        }
-
-        if (data.firstPlayer !== null) {
-          throw new Error('FIRST_PLAYER_ALREADY_SET');
-        }
-
-        if (roomCurrentYear !== currentYear) {
-          throw new Error('YEAR_MISMATCH');
-        }
-
-        if (!data.guestUid) {
-          throw new Error('OPPONENT_NOT_JOINED');
-        }
-
-        if (
-          data.readyHost !== true ||
-          data.readyGuest !== true ||
-          typeof data.hostDeckId !== 'string' ||
-          !data.hostDeckId ||
-          typeof data.guestDeckId !== 'string' ||
-          !data.guestDeckId
-        ) {
-          throw new Error('BOTH_DECKS_NOT_CONFIRMED');
-        }
-
-        if (
-          Number(data.classReadyYearHost ?? 0) !== roomCurrentYear ||
-          Number(data.classReadyYearGuest ?? 0) !== roomCurrentYear
-        ) {
-          throw new Error('BOTH_CLASS_PREP_NOT_CONFIRMED');
-        }
-
-        const firstPlayer: PlayerRole = Math.random() < 0.5 ? 'host' : 'guest';
-
-        transaction.update(roomRef, {
-          firstPlayer,
-          startSeasonIdx: 0,
-          turnIndex: 0,
-          battlePhase: 'battle',
-        });
-
-        return firstPlayer;
-      });
-
-      setFirstPlayer(result);
+      setFirstPlayer(result.firstPlayer);
       setStartSeasonIdx(0);
       setPreparationMessage(
-        `🪙 コイントス結果：${result === playerRole ? '自分' : '相手'}が先手です。春から${ROLE_NAMES[currentYear - 1]}戦を開始します。`,
+        `🪙 コイントス結果：${result.firstPlayer === playerRole ? '自分' : '相手'}が先手です。春から${ROLE_NAMES[currentYear - 1]}戦を開始します。`,
       );
-      addLog(`🪙 コイントス結果：${result === playerRole ? '自分' : '相手'}が先手です。`);
+      addLog(`🪙 コイントス結果：${result.firstPlayer === playerRole ? '自分' : '相手'}が先手です。`);
     } catch (error) {
       console.error('コイントス結果の同期エラー:', error);
       addLog('⚠️ 先手決定に失敗しました。両者のチーム確定状態を確認してください。');
@@ -3929,18 +3874,8 @@ useEffect(() => {
     setPreparationMessage('このチームでの準備が完了しました。両者のチーム確定後、ルーム作成者がコイントスを行います。');
   };
 
-  // 両者の準備完了後、ホストがbattleへ移行
-  useEffect(() => {
-    if (!isOnline || !isHost || battlePhase !== 'setup' || !firstPlayer || startSeasonIdx === null) return;
-    if (!onlineDecksConfirmed) return;
-    // 現在準備しているクラス番号をそのまま引き継ぐ。
-    // ここを 1 固定にすると、中堅戦・大将戦の開始時に先鋒戦へ巻き戻ってしまう。
-    void updateDoc(doc(db, 'rooms', roomId), {
-      battlePhase: 'battle',
-      currentYear,
-      turnIndex: 0,
-    });
-  }, [isOnline, isHost, battlePhase, firstPlayer, startSeasonIdx, onlineDecksConfirmed, currentYear, roomId]);
+  // START_BATTLE APIがsetup→battleを原子的に確定するため、
+  // クライアント側からbattlePhase/currentYear/turnIndexは更新しない。
 
   // ===== クラス終了リザルト =====
   const showClassResult = (
@@ -6436,12 +6371,11 @@ const field =
       return;
     }
 
-    const roomRef =
-      doc(
-        db,
-        'rooms',
-        roomId,
-      );
+    const roomRef = doc(
+      db,
+      'rooms',
+      roomId,
+    );
 
     const unsubscribe =
       onSnapshot(
@@ -6475,72 +6409,14 @@ const field =
             return;
           }
 
-          void updateDoc(
-            roomRef,
-            {
-              battlePhase:
-                'setup',
-
-              currentYear:
-                1,
-
-              turnIndex:
-                0,
-
-              firstPlayer:
-                null,
-
-              startSeasonIdx:
-                null,
-
-              hostTotalScore:
-                0,
-
-              guestTotalScore:
-                0,
-
-              hostClassScores:
-                [0, 0, 0],
-
-              guestClassScores:
-                [0, 0, 0],
-
-              rematchHost:
-                false,
-
-              rematchGuest:
-                false,
-
-              rematchPlayerResetHost:
-                false,
-
-              rematchPlayerResetGuest:
-                false,
-
-              exitHost:
-                false,
-
-              exitGuest:
-                false,
-
-              readyHost:
-                false,
-
-              readyGuest:
-                false,
-
-              classReadyYearHost:
-                0,
-
-              classReadyYearGuest:
-                0,
-
-            },
-          ).catch((error) => {
-            console.error(
-              '再戦リセットRoom更新エラー:',
-              error,
-            );
+          void submitBattleLifecycleAction(
+            'REMATCH_RESET',
+          ).then((result) => {
+            if (!result) {
+              console.error(
+                '再戦リセットRoom更新エラー: サーバーActionに失敗しました。',
+              );
+            }
           });
         },
       );
