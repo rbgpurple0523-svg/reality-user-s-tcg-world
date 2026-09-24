@@ -91,7 +91,7 @@ interface DeckBuilderProps {
   onGoToEntryHub?: () => void;
 }
 
-export default function DeckBuilder({ onGoToCpuBattle, onGoToBattle, initialDeckId = null, battleButtonLabel = '⚔️ CPU対戦へ', onGoToEntryHub }: DeckBuilderProps) {
+export default function DeckBuilder({ onGoToCpuBattle, onGoToBattle, initialDeckId = null, battleButtonLabel = '⚔️ CPU対戦で試す', onGoToEntryHub }: DeckBuilderProps) {
   // 既存の呼び出し側が onGoToCpuBattle / onGoToBattle のどちらでも動くよう互換性を維持します。
   const goToCpuBattle = onGoToCpuBattle ?? onGoToBattle;
   const [cards, setCards] = useState<AvatarCard[]>([]);
@@ -121,7 +121,7 @@ export default function DeckBuilder({ onGoToCpuBattle, onGoToBattle, initialDeck
   const [isCharFilterOpen, setIsCharFilterOpen] = useState<boolean>(false);
   const [charSearchQuery, setCharSearchQuery] = useState<string>('');
   const [selectedColors, setSelectedColors] = useState<string[]>([]);
-  const [selectedArchetypes, setSelectedArchetypes] = useState<string[]>([]);
+  const [selectedCoordinateTypes, setSelectedCoordinateTypes] = useState<string[]>([]);
 
   // 🔍 サポートカード専用 検索ステート
   const [supSearchQuery, setSupSearchQuery] = useState<string>('');
@@ -331,57 +331,72 @@ export default function DeckBuilder({ onGoToCpuBattle, onGoToBattle, initialDeck
     }));
   }, [supportIds, supportPool]);
 
-  // カラー・タイプ一覧抽出
-  const availableColors = useMemo(() => {
-    const set = new Set<string>();
-    cards.forEach(c => { if (c.color) set.add(c.color); });
-    return Array.from(set);
-  }, [cards]);
+  const COLOR_TYPE_OPTIONS = ['マゼンタ系', 'シアン系', 'イエロー系'];
+  const COORDINATE_TYPE_OPTIONS = ['情熱', '知性', '技能', '愛嬌'];
 
-  const availableArchetypes = useMemo(() => {
-    const set = new Set<string>();
-    cards.forEach(c => { if (c.archetype) set.add(c.archetype); });
-    return Array.from(set);
-  }, [cards]);
+  const getCardColorType = (card: AvatarCard) => {
+    if (card.color === '青') return 'マゼンタ系';
+    if (card.color === '赤') return 'シアン系';
+    if (card.color === '黄') return 'イエロー系';
+    return '';
+  };
+
+  const getCardCoordinateType = (card: AvatarCard) => {
+    const preset = card.presetId ? COORDINATE_PRESETS.find(p => p.id === card.presetId) : undefined;
+    const code = preset?.code?.toLowerCase() || '';
+    if (code.startsWith('a')) return '情熱';
+    if (code.startsWith('w')) return '知性';
+    if (code.startsWith('t')) return '技能';
+    if (code.startsWith('c')) return '愛嬌';
+    if (card.archetype === 'マッスル型') return '情熱';
+    if (card.archetype === '頭脳型') return '知性';
+    if (card.archetype === '職人型') return '技能';
+    if (card.archetype === 'ディーバ型') return '愛嬌';
+    return '';
+  };
 
   // フィルター処理
-  const toggleColorFilter = (color: string) => {
+  const toggleColorFilter = (colorType: string) => {
     setSelectedColors(prev =>
-      prev.includes(color) ? prev.filter(c => c !== color) : [...prev, color]
+      prev.includes(colorType) ? prev.filter(c => c !== colorType) : [...prev, colorType]
     );
   };
 
-  const toggleArchetypeFilter = (arch: string) => {
-    setSelectedArchetypes(prev =>
-      prev.includes(arch) ? prev.filter(a => a !== arch) : [...prev, arch]
+  const toggleCoordinateTypeFilter = (coordinateType: string) => {
+    setSelectedCoordinateTypes(prev =>
+      prev.includes(coordinateType) ? prev.filter(type => type !== coordinateType) : [...prev, coordinateType]
     );
   };
 
   const clearCharFilters = () => {
     setCharSearchQuery('');
     setSelectedColors([]);
-    setSelectedArchetypes([]);
+    setSelectedCoordinateTypes([]);
   };
 
   // 絞り込み済みキャラカード一覧
   const filteredCards = useMemo(() => {
     return cards.filter(card => {
+      const colorType = getCardColorType(card);
+      const coordinateType = getCardCoordinateType(card);
+
       if (charSearchQuery.trim()) {
         const q = charSearchQuery.toLowerCase();
         const matchName = card.userName?.toLowerCase().includes(q);
         const matchColor = card.color?.toLowerCase().includes(q);
-        const matchArchetype = card.archetype?.toLowerCase().includes(q);
-        if (!matchName && !matchColor && !matchArchetype) return false;
+        const matchColorType = colorType.toLowerCase().includes(q);
+        const matchCoordinateType = coordinateType.toLowerCase().includes(q);
+        if (!matchName && !matchColor && !matchColorType && !matchCoordinateType) return false;
       }
-      if (selectedColors.length > 0 && !selectedColors.includes(card.color)) {
+      if (selectedColors.length > 0 && !selectedColors.includes(colorType)) {
         return false;
       }
-      if (selectedArchetypes.length > 0 && !selectedArchetypes.includes(card.archetype)) {
+      if (selectedCoordinateTypes.length > 0 && !selectedCoordinateTypes.includes(coordinateType)) {
         return false;
       }
       return true;
     });
-  }, [cards, charSearchQuery, selectedColors, selectedArchetypes]);
+  }, [cards, charSearchQuery, selectedColors, selectedCoordinateTypes]);
 
   // サポートカードの絞り込み候補
   const availableSupportCategories = useMemo(() => {
@@ -1052,7 +1067,8 @@ export default function DeckBuilder({ onGoToCpuBattle, onGoToBattle, initialDeck
 
   const getCard = (id: string | null) => cards.find(c => c.id === id);
 
-  const activeCharFilterCount = selectedColors.length + selectedArchetypes.length + (charSearchQuery ? 1 : 0);
+  const activeCharFilterCount = selectedColors.length + selectedCoordinateTypes.length + (charSearchQuery ? 1 : 0);
+  const canSaveDeck = Boolean(vanguardId && centerId && generalId) && supportIds.length === 18;
 
   return (
     <div className="flex h-full min-h-0 flex-col bg-gray-50 text-gray-900">
@@ -1215,7 +1231,8 @@ export default function DeckBuilder({ onGoToCpuBattle, onGoToBattle, initialDeck
             <button
               type="button"
               onClick={handleSaveDeck}
-              className="rounded-2xl bg-indigo-600 px-4 py-3 text-sm font-black text-white shadow-lg shadow-indigo-100 transition hover:bg-indigo-700"
+              disabled={!canSaveDeck}
+              className="rounded-2xl bg-indigo-600 px-4 py-3 text-sm font-black text-white shadow-lg shadow-indigo-100 transition hover:bg-indigo-700 disabled:cursor-not-allowed disabled:bg-gray-300 disabled:text-gray-500 disabled:shadow-none"
             >
               {selectedDeckId ? 'チームを保存して更新' : 'チームを保存する'}
             </button>
@@ -1228,7 +1245,15 @@ export default function DeckBuilder({ onGoToCpuBattle, onGoToBattle, initialDeck
               }}
               className="rounded-2xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm font-black text-emerald-800 transition hover:bg-emerald-100"
             >
-              {battleButtonLabel.replace(/^⚔️\s*/, '')}
+              {(() => {
+                const [mainLabel, noteLabel] = battleButtonLabel.replace(/^⚔️\s*/, '').split('※');
+                return (
+                  <>
+                    <span className="block">{mainLabel}</span>
+                    {noteLabel && <span className="mt-0.5 block text-[9px] font-bold opacity-75">※{noteLabel}</span>}
+                  </>
+                );
+              })()}
             </button>
           </div>
         </div>
@@ -1253,10 +1278,22 @@ export default function DeckBuilder({ onGoToCpuBattle, onGoToBattle, initialDeck
                 <button type="button" onClick={() => setIsCharFilterOpen((v) => !v)} className="rounded-xl border border-gray-200 bg-white px-3 py-2 text-[10px] font-black text-gray-600">絞り込み{activeCharFilterCount > 0 ? ` (${activeCharFilterCount})` : ''}</button>
               </div>
               {isCharFilterOpen && (
-                <div className="mt-2 rounded-2xl bg-indigo-50 p-2">
-                  <div className="flex flex-wrap gap-1.5">
-                    {availableColors.map(color => <button key={color} type="button" onClick={() => toggleColorFilter(color)} className={`rounded-lg border px-2 py-1 text-[9px] font-black ${selectedColors.includes(color) ? 'border-indigo-600 bg-indigo-600 text-white' : 'border-gray-200 bg-white text-gray-600'}`}>{color}</button>)}
+                <div className="mt-2 rounded-2xl bg-indigo-50 p-2.5">
+                  <div className="text-[8px] font-black tracking-wide text-indigo-500">カラータイプ</div>
+                  <div className="mt-1.5 flex flex-wrap gap-1.5">
+                    {COLOR_TYPE_OPTIONS.map(colorType => (
+                      <button key={colorType} type="button" onClick={() => toggleColorFilter(colorType)} className={`rounded-lg border px-2 py-1.5 text-[9px] font-black ${selectedColors.includes(colorType) ? 'border-indigo-600 bg-indigo-600 text-white' : 'border-gray-200 bg-white text-gray-600'}`}>{colorType}</button>
+                    ))}
                   </div>
+                  <div className="mt-2 text-[8px] font-black tracking-wide text-indigo-500">コーデのタイプ</div>
+                  <div className="mt-1.5 flex flex-wrap gap-1.5">
+                    {COORDINATE_TYPE_OPTIONS.map(coordinateType => (
+                      <button key={coordinateType} type="button" onClick={() => toggleCoordinateTypeFilter(coordinateType)} className={`rounded-lg border px-2 py-1.5 text-[9px] font-black ${selectedCoordinateTypes.includes(coordinateType) ? 'border-indigo-600 bg-indigo-600 text-white' : 'border-gray-200 bg-white text-gray-600'}`}>{coordinateType}</button>
+                    ))}
+                  </div>
+                  {(selectedColors.length > 0 || selectedCoordinateTypes.length > 0 || charSearchQuery) && (
+                    <button type="button" onClick={clearCharFilters} className="mt-2 text-[9px] font-black text-indigo-600">絞り込みを解除</button>
+                  )}
                 </div>
               )}
             </div>
@@ -1425,11 +1462,19 @@ export default function DeckBuilder({ onGoToCpuBattle, onGoToBattle, initialDeck
                 ] as Array<[string, string | null]>).map(([label, cardId]) => {
                   const card = getCard(cardId);
                   const stats = card ? getCharacterStats(card) : null;
+                  const compareStats = stats
+                    ? {
+                        hp: stats.hp + getSupportStatDelta.hp,
+                        intellect: stats.intellect + getSupportStatDelta.intellect,
+                        dexterity: stats.dexterity + getSupportStatDelta.dexterity,
+                        charm: stats.charm + getSupportStatDelta.charm,
+                      }
+                    : undefined;
                   return (
                     <div key={label} className="rounded-2xl border border-gray-200 bg-gray-50 p-3 text-center">
                       <div className="text-[9px] font-black text-indigo-700">{label}</div>
                       <div className="mt-1 truncate text-xs font-black">{card?.userName || '未セット'}</div>
-                      {stats ? <StatRadar stats={stats} size={145} /> : <div className="py-10 text-[9px] font-bold text-gray-400">キャラ未設定</div>}
+                      {stats ? <div className="mt-4 pt-1"><StatRadar stats={stats} compareStats={compareStats} size={145} /></div> : <div className="py-10 text-[9px] font-bold text-gray-400">キャラ未設定</div>}
                     </div>
                   );
                 })}

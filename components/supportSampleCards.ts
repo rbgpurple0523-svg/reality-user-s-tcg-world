@@ -9,9 +9,9 @@ export const DEFAULT_VIRTUAL_SUPPORT_COLOR_HEX = '#22D3EE';
 
 const EMOTION_CATEGORY_ICONS: Record<string, string> = {
   '情熱': '🔥',
-  '知性': '▽',
+  '知性': '🔷',
   '技能': '⬡',
-  '愛嬌': '♥',
+  '愛嬌': '🩷',
   '全ステータス': '✚',
   'スコア': '●',
   'サポートカード使用数': '↕',
@@ -21,40 +21,28 @@ const EMOTION_CATEGORY_ICONS: Record<string, string> = {
   '技封印': '⊘',
 };
 
-const escapeXml = (value: string): string =>
-  value
-    .replaceAll('&', '&amp;')
-    .replaceAll('<', '&lt;')
-    .replaceAll('>', '&gt;')
-    .replaceAll('\"', '&quot;')
-    .replaceAll("'", '&apos;');
+const getVirtualSupportIcon = (emotion: EmotionPreset): string =>
+  EMOTION_CATEGORY_ICONS[emotion.effectCategory] || '●';
 
-/** 公式仮サポートカード用の自己完結型プレビュー画像を生成します。 */
+/** 公式仮サポートカード用のアイコンだけのプレビュー画像を生成します。 */
 export const getVirtualSupportImageDataUrl = (emotion: EmotionPreset): string => {
-  const name = escapeXml(emotion.name);
-  const category = escapeXml(emotion.effectCategory);
-  const icon = escapeXml(EMOTION_CATEGORY_ICONS[emotion.effectCategory] || '●');
+  const icon = getVirtualSupportIcon(emotion);
   const svg = `<?xml version="1.0" encoding="UTF-8"?>
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 600 800">
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 400 400">
   <defs>
     <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
       <stop offset="0%" stop-color="#eef2ff"/>
       <stop offset="100%" stop-color="#f5d0fe"/>
     </linearGradient>
     <linearGradient id="orb" x1="0" y1="0" x2="1" y2="1">
-      <stop offset="0%" stop-color="#6366f1" stop-opacity="0.82"/>
-      <stop offset="100%" stop-color="#c026d3" stop-opacity="0.72"/>
+      <stop offset="0%" stop-color="#6366f1" stop-opacity="0.86"/>
+      <stop offset="100%" stop-color="#c026d3" stop-opacity="0.76"/>
     </linearGradient>
   </defs>
-  <rect x="18" y="18" width="564" height="764" rx="46" fill="url(#bg)" stroke="#ffffff" stroke-width="12"/>
-  <circle cx="300" cy="285" r="150" fill="url(#orb)" opacity="0.92"/>
-  <circle cx="300" cy="285" r="112" fill="#ffffff" opacity="0.20"/>
-  <text x="300" y="326" text-anchor="middle" font-family="system-ui,-apple-system,Segoe UI,sans-serif" font-size="92" font-weight="900" fill="#ffffff">${icon}</text>
-  <text x="300" y="80" text-anchor="middle" font-family="system-ui,-apple-system,Segoe UI,sans-serif" font-size="24" font-weight="800" fill="#4c1d95">OFFICIAL SUPPORT</text>
-  <text x="300" y="560" text-anchor="middle" font-family="system-ui,-apple-system,Segoe UI,sans-serif" font-size="36" font-weight="900" fill="#111827">${name}</text>
-  <rect x="110" y="610" width="380" height="62" rx="31" fill="#ffffff" opacity="0.86"/>
-  <text x="300" y="650" text-anchor="middle" font-family="system-ui,-apple-system,Segoe UI,sans-serif" font-size="22" font-weight="800" fill="#5b21b6">${category}</text>
-  <text x="300" y="730" text-anchor="middle" font-family="system-ui,-apple-system,Segoe UI,sans-serif" font-size="18" font-weight="700" fill="#6b7280">エントリー前の公式仮カード</text>
+  <rect x="18" y="18" width="364" height="364" rx="58" fill="url(#bg)" stroke="#ffffff" stroke-width="10"/>
+  <circle cx="200" cy="200" r="126" fill="url(#orb)" opacity="0.94"/>
+  <circle cx="200" cy="200" r="96" fill="#ffffff" opacity="0.18"/>
+  <text x="200" y="246" text-anchor="middle" font-family="system-ui,-apple-system,Segoe UI,sans-serif" font-size="148" font-weight="900" fill="#ffffff">${icon}</text>
 </svg>`;
 
   return `data:image/svg+xml;charset=UTF-8,${encodeURIComponent(svg)}`;

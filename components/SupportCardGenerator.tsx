@@ -77,10 +77,7 @@ function getEmotionMapPosition(emotion: EmotionPreset): { x: number; y: number }
     { x: 0, y: 0 },
   );
 
-  const seed = emotion.id.split('').reduce(
-    (sum, char) => sum + char.charCodeAt(0),
-    0,
-  );
+  const seed = emotion.id.split('').reduce((sum, char) => sum + char.charCodeAt(0), 0);
   const jitterX = ((seed % 5) - 2) * 0.8;
   const jitterY = (((seed * 7) % 5) - 2) * 0.65;
 
@@ -88,6 +85,65 @@ function getEmotionMapPosition(emotion: EmotionPreset): { x: number; y: number }
     x: Math.min(92, Math.max(8, weighted.x / total + jitterX)),
     y: Math.min(91, Math.max(9, weighted.y / total + jitterY)),
   };
+}
+
+function getSeparatedEmotionMapPositions(): Record<string, { x: number; y: number }> {
+  const positions = EMOTION_PRESETS.map((emotion) => ({
+    id: emotion.id,
+    ...getEmotionMapPosition(emotion),
+  }));
+
+  const vertexClearance = 10;
+  const minimumDistance = 5.6;
+
+  for (let iteration = 0; iteration < 10; iteration += 1) {
+    for (const point of positions) {
+      for (const axis of EMOTION_AXIS_ORDER) {
+        const vertex = EMOTION_AXIS_CONFIG[axis];
+        const dx = point.x - vertex.x;
+        const dy = point.y - vertex.y;
+        const distance = Math.hypot(dx, dy);
+
+        if (distance > 0 && distance < vertexClearance) {
+          const push = (vertexClearance - distance) / distance;
+          point.x += dx * push * 0.7;
+          point.y += dy * push * 0.7;
+        }
+      }
+    }
+
+    for (let i = 0; i < positions.length; i += 1) {
+      for (let j = i + 1; j < positions.length; j += 1) {
+        const a = positions[i];
+        const b = positions[j];
+        let dx = a.x - b.x;
+        let dy = a.y - b.y;
+        let distance = Math.hypot(dx, dy);
+
+        if (distance === 0) {
+          const seed = a.id.length * 17 + b.id.length * 31 + i + j;
+          dx = ((seed % 3) - 1) * 0.01;
+          dy = (((seed * 7) % 3) - 1) * 0.01;
+          distance = Math.hypot(dx, dy) || 0.01;
+        }
+
+        if (distance < minimumDistance) {
+          const push = ((minimumDistance - distance) / distance) * 0.45;
+          a.x += dx * push;
+          a.y += dy * push;
+          b.x -= dx * push;
+          b.y -= dy * push;
+        }
+      }
+    }
+
+    for (const point of positions) {
+      point.x = Math.min(93, Math.max(7, point.x));
+      point.y = Math.min(93, Math.max(7, point.y));
+    }
+  }
+
+  return Object.fromEntries(positions.map((point) => [point.id, { x: point.x, y: point.y }]));
 }
 
 async function moderateCardTexts(texts: string[]): Promise<ModerationResult> {
@@ -124,7 +180,7 @@ function EmotionMiniMap({
   selectedEmotionId: string;
   onSelect: (emotion: EmotionPreset) => void;
 }) {
-  const [hoveredEmotionId, setHoveredEmotionId] = useState<string | null>(null);
+  const emotionMapPositions = getSeparatedEmotionMapPositions();
 
   return (
     <div className="w-full rounded-2xl border border-purple-100 bg-white p-2.5 shadow-sm">
@@ -187,8 +243,8 @@ function EmotionMiniMap({
               className="absolute -translate-x-1/2 -translate-y-1/2 whitespace-nowrap text-center"
               style={{ left: `${vertex.x}%`, top: `${vertex.y}%` }}
             >
-              <div className="text-[12px] leading-none">{vertex.icon}</div>
-              <div className="mt-0.5 text-[8px] font-black text-purple-950">{vertex.label}</div>
+              <div className="text-[16px] leading-none">{vertex.icon}</div>
+              <div className="mt-0.5 text-[11px] font-black text-purple-950">{vertex.label}</div>
             </div>
           );
         })}
@@ -202,43 +258,17 @@ function EmotionMiniMap({
               key={emotion.id}
               type="button"
               onClick={() => onSelect(emotion)}
-              onMouseEnter={() => setHoveredEmotionId(emotion.id)}
-              onFocus={() => setHoveredEmotionId(emotion.id)}
-              onMouseLeave={() => setHoveredEmotionId(null)}
-              onBlur={() => setHoveredEmotionId(null)}
               aria-label={`${emotion.emotionPhrase}｜${emotion.name}`}
-              title={`${emotion.emotionPhrase}｜${emotion.name}`}
               className={`absolute h-3.5 w-3.5 -translate-x-1/2 -translate-y-1/2 rounded-full border-2 transition ${
                 selected
                   ? 'z-30 scale-150 border-white bg-purple-700 shadow-[0_0_0_4px_rgba(124,58,237,0.20),0_0_18px_rgba(124,58,237,0.75)]'
                   : 'z-10 border-purple-100 bg-purple-500 shadow-[0_0_10px_rgba(124,58,237,0.45)] hover:scale-150 hover:bg-fuchsia-500'
               }`}
-              style={{ left: `${position.x}%`, top: `${position.y}%` }}
+              style={{ left: `${emotionMapPositions[emotion.id]?.x ?? position.x}%`, top: `${emotionMapPositions[emotion.id]?.y ?? position.y}%` }}
             />
           );
         })}
 
-        {hoveredEmotionId && (() => {
-          const emotion = EMOTION_PRESETS.find((item) => item.id === hoveredEmotionId);
-          if (!emotion) return null;
-          const position = getEmotionMapPosition(emotion);
-
-          return (
-            <div
-              className="pointer-events-none absolute z-40 max-w-[220px] -translate-x-1/2 -translate-y-full rounded-2xl border border-purple-200 bg-white/95 px-3 py-2.5 text-center shadow-xl backdrop-blur-sm"
-              style={{ left: `${position.x}%`, top: `${Math.max(8, position.y - 3)}%` }}
-            >
-              <div className="text-[9px] font-black text-purple-500">{emotion.name}</div>
-              <div className="mt-0.5 font-serif text-[11px] font-black leading-relaxed text-purple-950">
-                {emotion.emotionPhrase}
-              </div>
-              <div className="mt-1 text-[8px] font-bold text-gray-500">
-                {emotion.statEffect}
-                {emotion.effectAmount ? ` ${emotion.effectAmount}` : ''} / {emotion.duration}
-              </div>
-            </div>
-          );
-        })()}
       </div>
 
       <p className="mt-2 text-[9px] font-bold leading-relaxed text-gray-500">

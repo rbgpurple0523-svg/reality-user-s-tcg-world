@@ -378,7 +378,7 @@ export default function EntryHub({
           }`}
         >
           <div className="text-sm font-black">👤 キャラカード</div>
-          <div className="mt-1 text-[10px] font-bold opacity-75">コーデマップから探す</div>
+          <div className="mt-1 text-[10px] font-bold opacity-75">コーデマップからコーデを選ぶ</div>
         </button>
 
         <button
@@ -401,7 +401,7 @@ export default function EntryHub({
             <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
               <div>
                 <div className="text-[9px] font-black tracking-[0.18em] text-indigo-500">CHARACTER CARDS</div>
-                <h2 className="mt-1 text-xl font-black">コーデマップ</h2>
+                <h2 className="mt-1 text-xl font-black">コーデマップからコーデを選ぶ</h2>
                 <p className="mt-1 text-[10px] leading-relaxed text-gray-600">
                   気になるコーデをタップすると、その性能と登録済みカードを確認できます。
                 </p>

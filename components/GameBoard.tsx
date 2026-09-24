@@ -76,6 +76,12 @@ const STAT_LABELS: Record<StatKey, string> = {
   charm: '愛嬌',
 };
 
+const COLOR_TYPE_LABELS: Record<'赤' | '青' | '黄', string> = {
+  青: 'マゼンタ系',
+  赤: 'シアン系',
+  黄: 'イエロー系',
+};
+
 type Skill = {
   id: string;
   name: string;
@@ -761,10 +767,22 @@ const opponentActiveCardAnchorRef = useRef<HTMLDivElement | null>(null);
 type BattleVisualCard = AvatarCard & {
   colorHex?: string;
   colorType?: string;
+  flavorText?: string;
 };
 
 const getBattleVisualColorHex = (card: AvatarCard) =>
   (card as BattleVisualCard).colorHex;
+
+const getBattleColorTypeLabel = (card: AvatarCard): string => {
+  const visualCard = card as BattleVisualCard;
+  if (visualCard.colorType === 'マゼンタ系' || visualCard.colorType === 'シアン系' || visualCard.colorType === 'イエロー系') {
+    return visualCard.colorType;
+  }
+  return COLOR_TYPE_LABELS[card.color as '赤' | '青' | '黄'] || card.color;
+};
+
+const getBattleFlavorText = (card: AvatarCard): string =>
+  ((card as BattleVisualCard).flavorText || '').trim();
 
 const getSupportBattleTarget = (
   preset: EmotionPreset | undefined,
@@ -843,7 +861,7 @@ const getSupportBattleTarget = (
       localStorage.setItem('reality_active_deck_id', chosen.id);
       setActiveDeckId(chosen.id);
 
-      const cards: Array<AvatarCard & { colorHex?: string; colorType?: string }> = [...CHARACTER_SAMPLE_CARDS];
+      const cards: Array<AvatarCard & { colorHex?: string; colorType?: string; flavorText?: string; presetId?: string; customSkills?: string[] }> = [...CHARACTER_SAMPLE_CARDS];
       for (const entry of entries.filter((e) => e.cardType === 'coordinate')) {
         const archetype = (entry.archetype as Archetype) || 'マッスル型';
         const fallback = cards.find((c) => c.id === entry.id);
@@ -855,6 +873,7 @@ const getSupportBattleTarget = (
           color: (entry.color as '赤' | '青' | '黄') || '赤',
           colorHex: entry.colorHex,
           colorType: entry.colorType,
+          flavorText: entry.flavorText || '',
           archetype,
           favoredSeason:
             archetype === 'マッスル型'
@@ -7639,8 +7658,9 @@ const field =
               </div>
 
               <div className="mt-2 rounded-2xl bg-slate-50 p-3 text-xs font-bold leading-relaxed text-slate-600">
-                <div>カラー：{modalAvatar.card.color}</div>
-                <div className="mt-1">得意季節：{modalAvatar.card.favoredSeason}</div>
+                <div>カラータイプ：{getBattleColorTypeLabel(modalAvatar.card)}</div>
+                <div className="mt-1">好きな季節：{modalAvatar.card.favoredSeason}</div>
+                <div className="mt-1">フレーバー：{getBattleFlavorText(modalAvatar.card) || '未設定'}</div>
                 <div className="mt-1">ステータスの差分は、サポートやスキルによる現在値の変化を示します。</div>
               </div>
             </div>
