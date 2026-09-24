@@ -154,7 +154,8 @@ function getSelectedCoordinateName(coordinate: CoordinatePreset) {
     c: STAT_ENGLISH.charm,
   };
 
-  return `コーデ${englishByCode[coordinate.code[0].toLowerCase()] ?? getCoordinateDisplayCode(coordinate)}`;
+  const family = englishByCode[coordinate.code[0].toLowerCase()] ?? coordinate.code[0].toUpperCase();
+  return `コーデ${family}-${coordinate.code.slice(1)}`;
 }
 
 function getPrimaryStat(coordinate: CoordinatePreset): StatKey {
@@ -171,7 +172,7 @@ function RadarChart({
   showLabels?: boolean;
 }) {
   const center = size / 2;
-  const radius = 72;
+  const radius = Math.min(72, Math.max(24, size / 2 - 6));
   const max = 100;
   const values = [
     Math.min(stats.hp, max),
@@ -326,9 +327,9 @@ export default function CoordinateRadialMap({
   const isEntryMode = mode === 'entry';
   const isPickerMode = mode === 'picker';
   const displaySvgSize = isEntryMode ? 440 : 340;
-  const displayOuterRadius = isEntryMode ? 158 : 122;
-  const displayInnerRadius = isEntryMode ? 82 : 53;
-  const displayCenterCircleRadius = isEntryMode ? 46 : 34;
+  const displayOuterRadius = isEntryMode ? 158 : 112;
+  const displayInnerRadius = isEntryMode ? 82 : 49;
+  const displayCenterCircleRadius = isEntryMode ? 46 : 32;
   const center = displaySvgSize / 2;
 
   return (
@@ -400,7 +401,7 @@ export default function CoordinateRadialMap({
                   const startAngle = START_ANGLE + index * SLICE_ANGLE;
                   const endAngle = startAngle + SLICE_ANGLE;
                   const middleAngle = startAngle + SLICE_ANGLE / 2;
-                  const labelRadius = (displayOuterRadius + displayInnerRadius) / 2 + 10;
+                  const labelRadius = (displayOuterRadius + displayInnerRadius) / 2 + 14;
                   const labelPoint = polarToCartesian(center, center, labelRadius, middleAngle);
                   const count = getEntryCount(coordinate.id);
                   const presetEntries = getEntriesForCoordinate(coordinate);
