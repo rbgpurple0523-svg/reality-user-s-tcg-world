@@ -597,7 +597,7 @@ export default function DeckBuilder({ onGoToCpuBattle, onGoToBattle, initialDeck
 
   const validateDeckForSave = () => {
     if (!deckName.trim()) {
-      setMessage('⚠️ デッキ名を入力してください。');
+      setMessage('⚠️ チーム名を入力してください。');
       return false;
     }
     if (!vanguardId || !centerId || !generalId) {
@@ -642,7 +642,7 @@ export default function DeckBuilder({ onGoToCpuBattle, onGoToBattle, initialDeck
     if (selectedDeckId) {
       const currentDeck = decks.find(d => d.id === selectedDeckId);
       saveDeckWithName(deckName, selectedDeckId, currentDeck?.createdAt);
-      setMessage('✅ デッキを上書き保存しました。');
+      setMessage('✅ チームを上書き保存しました。');
     } else {
       saveDeckWithName(deckName, null);
       setMessage('🎉 新しいチームを保存しました！');
@@ -659,7 +659,7 @@ export default function DeckBuilder({ onGoToCpuBattle, onGoToBattle, initialDeck
   const handleSaveAsConfirm = () => {
     const name = saveAsName.trim();
     if (!name) {
-      setMessage('⚠️ デッキ名を入力してください。');
+      setMessage('⚠️ チーム名を入力してください。');
       return;
     }
 
@@ -672,7 +672,7 @@ export default function DeckBuilder({ onGoToCpuBattle, onGoToBattle, initialDeck
     saveDeckWithName(name, null);
     setIsSaveAsOpen(false);
     setSaveAsConflictName(null);
-    setMessage(`🎉 「${name}」を新しいデッキとして保存しました！`);
+    setMessage(`🎉 「${name}」を新しいチームとして保存しました！`);
   };
 
   const handleSaveAsOverwrite = () => {
@@ -719,7 +719,7 @@ export default function DeckBuilder({ onGoToCpuBattle, onGoToBattle, initialDeck
   };
 
   const handleDeleteDeck = (deckId: string) => {
-    if (confirm('このデッキを削除してもよろしいですか？')) {
+    if (confirm('このチームを削除してもよろしいですか？')) {
       const updated = decks.filter(d => d.id !== deckId);
       setDecks(updated);
       localStorage.setItem(STORAGE_DECKS_KEY, JSON.stringify(updated));
@@ -745,12 +745,12 @@ export default function DeckBuilder({ onGoToCpuBattle, onGoToBattle, initialDeck
     };
 
     downloadJson(exportData, `${deckName.replace(/\s+/g, '_')}_deck.json`);
-    setMessage('📥 単一デッキファイルをダウンロードしました。');
+    setMessage('📥 単一チームファイルをダウンロードしました。');
   };
 
   const handleExportAllDecks = () => {
     if (decks.length === 0) {
-      setMessage('⚠️ 出力できる保存済みデッキがありません。');
+      setMessage('⚠️ 出力できる保存済みチームがありません。');
       return;
     }
 
@@ -774,7 +774,7 @@ export default function DeckBuilder({ onGoToCpuBattle, onGoToBattle, initialDeck
 
     const dateStr = new Date().toISOString().split('T')[0];
     downloadJson(exportData, `all_decks_backup_${dateStr}.json`);
-    setMessage(`📦 ${decks.length}件のデッキをまとめてダウンロードしました。`);
+    setMessage(`📦 ${decks.length}件のチームをまとめてダウンロードしました。`);
   };
 
   const downloadJson = (data: any, fileName: string) => {
@@ -816,7 +816,7 @@ export default function DeckBuilder({ onGoToCpuBattle, onGoToBattle, initialDeck
             loadDeckToEditor(newDecks[0]);
           }
 
-          setMessage(`🎉 ${importedCount}件のデッキを一括インポートしました！`);
+          setMessage(`🎉 ${importedCount}件のチームを一括インポートしました！`);
         } else if (importedData.deck) {
           setDeckName(`${importedData.deck.name} (共有)`);
           setVanguardId(importedData.deck.vanguardCardId);
@@ -1262,7 +1262,7 @@ export default function DeckBuilder({ onGoToCpuBattle, onGoToBattle, initialDeck
       {/* キャラカード選択モーダル */}
       {selectedTargetRole && (
         <div className="fixed inset-0 z-50 flex items-end justify-center bg-gray-950/50 p-2 sm:items-center sm:p-5">
-          <div className="flex max-h-[92dvh] w-full max-w-5xl min-h-0 flex-col overflow-hidden rounded-3xl bg-white shadow-2xl">
+          <div className="flex h-[92dvh] max-h-[92dvh] w-full max-w-5xl min-h-0 flex-col overflow-hidden rounded-3xl bg-white shadow-2xl">
             <div className="shrink-0 border-b border-gray-200 bg-white px-4 py-3">
               <div className="flex items-center justify-between gap-3">
                 <div>
@@ -1298,7 +1298,7 @@ export default function DeckBuilder({ onGoToCpuBattle, onGoToBattle, initialDeck
               )}
             </div>
 
-            <div className="min-h-0 flex-1 overflow-y-auto p-3">
+            <div className="min-h-0 flex-1 basis-0 overflow-y-auto p-3">
               {filteredCards.length === 0 ? (
                 <div className="rounded-2xl border border-dashed border-gray-200 bg-gray-50 py-12 text-center text-xs font-bold text-gray-400">登録されているキャラカードがありません。</div>
               ) : (
@@ -1350,7 +1350,7 @@ export default function DeckBuilder({ onGoToCpuBattle, onGoToBattle, initialDeck
       {/* サポートカード選択モーダル */}
       {isSupportFilterOpen && !selectedTargetRole && (
         <div className="fixed inset-0 z-50 flex items-end justify-center bg-gray-950/50 p-2 sm:items-center sm:p-5">
-          <div className="flex max-h-[92dvh] w-full max-w-5xl min-h-0 flex-col overflow-hidden rounded-3xl bg-white shadow-2xl">
+          <div className="flex h-[92dvh] max-h-[92dvh] w-full max-w-5xl min-h-0 flex-col overflow-hidden rounded-3xl bg-white shadow-2xl">
             <div className="shrink-0 border-b border-gray-200 bg-white px-4 py-3">
               <div className="flex items-center justify-between gap-3">
                 <div>
@@ -1381,7 +1381,7 @@ export default function DeckBuilder({ onGoToCpuBattle, onGoToBattle, initialDeck
               </div>
             </div>
 
-            <div className="min-h-0 flex-1 overflow-y-auto p-3">
+            <div className="min-h-0 flex-1 basis-0 overflow-y-auto p-3">
               {filteredSupportCards.length === 0 ? (
                 <div className="rounded-2xl border border-dashed border-gray-200 bg-gray-50 py-12 text-center text-xs font-bold text-gray-400">条件に一致するサポートカードがありません。</div>
               ) : (

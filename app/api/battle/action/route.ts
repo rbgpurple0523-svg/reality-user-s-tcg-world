@@ -363,7 +363,7 @@ const getCanonicalSkill = (
       name,
       description,
       maxUsesPerClass:
-        index >= 2 ? 1 : 0,
+        index === 2 ? 2 : index === 3 ? 1 : 0,
       type:
         index === 3
           ? 'debuff_attack'
@@ -390,11 +390,9 @@ const getCanonicalSkill = (
         ? 'debuff_attack'
         : 'score',
     rule: rules[index],
-    primaryStat:
-      index === 1 ? rank[2] : rank[0],
-    secondaryStat:
-      index === 1 ? rank[3] : rank[1],
-    tertiaryStat: rank[3],
+    primaryStat: index === 1 ? rank[1] : rank[0],
+    secondaryStat: index === 1 || index === 3 ? rank[2] : undefined,
+    tertiaryStat: index === 3 ? rank[3] : undefined,
   };
 };
 
@@ -580,39 +578,43 @@ const calculateSkillResult = (
   let nextActor = actor;
   let nextTarget = target;
 
+  const baseActorStats = actor.baseStats ?? getCoordinatePresetForAvatar(actor)?.stats ?? actor.stats;
+  const baseTargetStats = target.baseStats ?? getCoordinatePresetForAvatar(target)?.stats ?? target.stats;
+  const baseRank = STAT_KEYS.slice().sort((a, b) => Number(baseActorStats[b] ?? 0) - Number(baseActorStats[a] ?? 0));
+
   if (skill.rule === 'primary_score') {
     const stat = skill.primaryStat ?? 'hp';
-    gainedScore = effective[stat] * 10;
+    gainedScore = Number(baseActorStats[stat] ?? 0) * 20;
   } else if (skill.rule === 'product_score') {
-    const first = skill.primaryStat ?? 'hp';
-    const second = skill.secondaryStat ?? 'intellect';
+    const first = skill.primaryStat ?? baseRank[1] ?? 'intellect';
+    const second = skill.secondaryStat ?? baseRank[2] ?? 'dexterity';
     gainedScore =
-      effective[first] *
-      effective[second];
+      Number(baseActorStats[first] ?? 0) *
+      Number(baseActorStats[second] ?? 0);
   } else if (skill.rule === 'difference_score') {
-    const stat = skill.primaryStat ?? 'hp';
+    const stat = skill.primaryStat ?? baseRank[0] ?? 'hp';
     gainedScore =
       Math.max(
         0,
-        effective[stat] -
+        Number(baseActorStats[stat] ?? 0) -
           targetEffective[stat],
-      ) * 20;
+      ) * 40;
   } else if (
     skill.rule ===
     'combo_score_and_debuff'
   ) {
-    const first = skill.secondaryStat ?? 'intellect';
-    const second = skill.tertiaryStat ?? 'charm';
-    const targetStat = skill.primaryStat ?? 'hp';
+    const first = skill.secondaryStat ?? baseRank[2] ?? 'dexterity';
+    const second = skill.tertiaryStat ?? baseRank[3] ?? 'charm';
+    const targetStat = skill.primaryStat ?? baseRank[0] ?? 'hp';
 
     gainedScore =
-      (effective[first] +
-        effective[second]) *
-      5;
+      (Number(baseActorStats[first] ?? 0) +
+        Number(baseActorStats[second] ?? 0)) *
+      10;
 
     debuffs[targetStat] =
       Math.ceil(
-        targetEffective[targetStat] / 2,
+        targetEffective[targetStat] * 0.5,
       );
 
     nextTarget = addDebuffs(
@@ -624,10 +626,10 @@ const calculateSkillResult = (
     'y_total_score'
   ) {
     gainedScore =
-      Object.values(effective).reduce(
-        (sum, value) => sum + value,
+      Object.values(baseActorStats).reduce(
+        (sum, value) => sum + Number(value ?? 0),
         0,
-      ) * 5;
+      ) * 10;
   } else if (
     skill.rule ===
     'y_response_score'
@@ -643,7 +645,7 @@ const calculateSkillResult = (
         0,
         effective[selectedBoostStat] -
           targetEffective[selectedBoostStat],
-      ) * 20;
+      ) * 40;
   } else if (
     skill.rule === 'y_burst'
   ) {
@@ -653,27 +655,27 @@ const calculateSkillResult = (
       );
     }
 
-    gainedScore = 100;
+    gainedScore =
+      effective[selectedBoostStat] * 10;
     nextActor = {
       ...actor,
       statBoost: {
         ...(actor.statBoost ?? {}),
-        [selectedBoostStat]: 2,
+        [selectedBoostStat]: (actor.statBoost?.[selectedBoostStat] ?? 1) * 2,
       },
     };
   } else if (
     skill.rule === 'y_crash'
   ) {
+    const thirdStat = baseRank[2] ?? 'dexterity';
+    const fourthStat = baseRank[3] ?? 'charm';
     gainedScore =
-      Object.values(effective).reduce(
-        (sum, value) => sum + value,
-        0,
-      ) * 2;
+      (effective[thirdStat] + effective[fourthStat]) * 10;
 
     for (const key of STAT_KEYS) {
       debuffs[key] =
         Math.ceil(
-          targetEffective[key] * 0.25,
+          Number(baseTargetStats[key] ?? 0) * 0.25,
         );
     }
 
@@ -2620,9 +2622,8 @@ export async function POST(
           if (
             skill.maxUsesPerClass >
               0 &&
-            usedForClass.includes(
-              skill.id,
-            )
+            usedForClass.filter((usedSkillId) => usedSkillId === skill.id).length >=
+              skill.maxUsesPerClass
           ) {
             throw new Error(
               'このSkillはこのクラスでは使用済みです。',

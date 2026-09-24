@@ -106,6 +106,67 @@ function getEmotionMapPosition(emotion: EmotionPreset): { x: number; y: number }
   };
 }
 
+function getSeparatedEmotionMapPositions(): Record<string, { x: number; y: number }> {
+  const positions = EMOTION_PRESETS.map((emotion) => ({
+    id: emotion.id,
+    ...getEmotionMapPosition(emotion),
+  }));
+
+  const vertexClearance = 10;
+  const minimumDistance = 5.6;
+
+  for (let iteration = 0; iteration < 10; iteration += 1) {
+    for (const point of positions) {
+      for (const axis of EMOTION_AXIS_ORDER) {
+        const vertex = EMOTION_AXIS_CONFIG[axis];
+        const dx = point.x - vertex.x;
+        const dy = point.y - vertex.y;
+        const distance = Math.hypot(dx, dy);
+
+        if (distance > 0 && distance < vertexClearance) {
+          const push = (vertexClearance - distance) / distance;
+          point.x += dx * push * 0.7;
+          point.y += dy * push * 0.7;
+        }
+      }
+    }
+
+    for (let i = 0; i < positions.length; i += 1) {
+      for (let j = i + 1; j < positions.length; j += 1) {
+        const a = positions[i];
+        const b = positions[j];
+        let dx = a.x - b.x;
+        let dy = a.y - b.y;
+        let distance = Math.hypot(dx, dy);
+
+        if (distance === 0) {
+          const seed = a.id.length * 17 + b.id.length * 31 + i + j;
+          dx = ((seed % 3) - 1) * 0.01;
+          dy = (((seed * 7) % 3) - 1) * 0.01;
+          distance = Math.hypot(dx, dy) || 0.01;
+        }
+
+        if (distance < minimumDistance) {
+          const push = ((minimumDistance - distance) / distance) * 0.45;
+          a.x += dx * push;
+          a.y += dy * push;
+          b.x -= dx * push;
+          b.y -= dy * push;
+        }
+      }
+    }
+
+    for (const point of positions) {
+      point.x = Math.min(93, Math.max(7, point.x));
+      point.y = Math.min(93, Math.max(7, point.y));
+    }
+  }
+
+  return Object.fromEntries(positions.map((point) => [point.id, { x: point.x, y: point.y }]));
+}
+
+const emotionMapPositions = getSeparatedEmotionMapPositions();
+
 function getStoredEntries(): EntryRecord[] {
   if (typeof window === 'undefined') return [];
   try {
@@ -185,7 +246,7 @@ function EmotionMap({
       })}
 
       {emotions.map((emotion) => {
-        const position = getEmotionMapPosition(emotion);
+        const position = emotionMapPositions[emotion.id] || getEmotionMapPosition(emotion);
         const registered = isRegistered(emotion.id);
         const selected = emotion.id === selectedEmotionId;
         return (

@@ -154,8 +154,8 @@ function getSelectedCoordinateName(coordinate: CoordinatePreset) {
     c: STAT_ENGLISH.charm,
   };
 
-  const family = englishByCode[coordinate.code[0].toLowerCase()] ?? coordinate.code[0].toUpperCase();
-  return `コーデ${family}-${coordinate.code.slice(1)}`;
+  const english = englishByCode[coordinate.code[0].toLowerCase()] ?? getCoordinateDisplayCode(coordinate);
+  return `コーデ${english}-${coordinate.code.slice(1)}`;
 }
 
 function getPrimaryStat(coordinate: CoordinatePreset): StatKey {
@@ -172,7 +172,7 @@ function RadarChart({
   showLabels?: boolean;
 }) {
   const center = size / 2;
-  const radius = Math.min(72, Math.max(24, size / 2 - 6));
+  const radius = 72;
   const max = 100;
   const values = [
     Math.min(stats.hp, max),
@@ -327,16 +327,17 @@ export default function CoordinateRadialMap({
   const isEntryMode = mode === 'entry';
   const isPickerMode = mode === 'picker';
   const displaySvgSize = isEntryMode ? 440 : 340;
-  const displayOuterRadius = isEntryMode ? 158 : 112;
-  const displayInnerRadius = isEntryMode ? 82 : 49;
-  const displayCenterCircleRadius = isEntryMode ? 46 : 32;
+  const displayOuterRadius = isEntryMode ? 158 : 122;
+  const displayInnerRadius = isEntryMode ? 82 : 53;
+  const displayCenterCircleRadius = isEntryMode ? 46 : 34;
   const center = displaySvgSize / 2;
 
   return (
     <div className="space-y-6">
       <div className="rounded-3xl border border-gray-200 bg-white shadow-sm overflow-hidden">
-        <div className="p-5 sm:p-6 bg-gradient-to-b from-gray-50 to-white border-b border-gray-200">
-          <div className="flex flex-col sm:flex-row sm:items-end sm:justify-between gap-3">
+        {!isEntryMode && (
+          <div className="p-5 sm:p-6 bg-gradient-to-b from-gray-50 to-white border-b border-gray-200">
+            <div className="flex flex-col sm:flex-row sm:items-end sm:justify-between gap-3">
             <div>
               <div className="text-[9px] font-black tracking-[0.18em] text-indigo-500">COORDINATE MAP</div>
               <h3 className="mt-1 text-base font-black text-gray-900">
@@ -367,8 +368,9 @@ export default function CoordinateRadialMap({
                 アイコン付きの枠 = 登録あり ／ 数字 = 登録人数
               </div>
             )}
+            </div>
           </div>
-        </div>
+        )}
 
         <div className="p-2 sm:p-4 bg-gray-50">
           <div className="overflow-hidden rounded-2xl border border-gray-200 bg-white">
@@ -401,7 +403,7 @@ export default function CoordinateRadialMap({
                   const startAngle = START_ANGLE + index * SLICE_ANGLE;
                   const endAngle = startAngle + SLICE_ANGLE;
                   const middleAngle = startAngle + SLICE_ANGLE / 2;
-                  const labelRadius = (displayOuterRadius + displayInnerRadius) / 2 + 14;
+                  const labelRadius = (displayOuterRadius + displayInnerRadius) / 2 + 10;
                   const labelPoint = polarToCartesian(center, center, labelRadius, middleAngle);
                   const count = getEntryCount(coordinate.id);
                   const presetEntries = getEntriesForCoordinate(coordinate);

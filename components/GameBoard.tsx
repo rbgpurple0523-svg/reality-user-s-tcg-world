@@ -120,7 +120,7 @@ function buildPresetSkills(
     return [
       { id: 'skill_1', name: names[0] || preset.defaultSkills[0], description: preset.skillDescriptions[0], maxUsesPerClass: 0, type: 'score', rule: 'y_total_score' },
       { id: 'skill_2', name: names[1] || preset.defaultSkills[1], description: preset.skillDescriptions[1], maxUsesPerClass: 0, type: 'score', rule: 'y_response_score' },
-      { id: 'skill_3', name: names[2] || preset.defaultSkills[2], description: preset.skillDescriptions[2], maxUsesPerClass: 1, type: 'score', rule: 'y_burst' },
+      { id: 'skill_3', name: names[2] || preset.defaultSkills[2], description: preset.skillDescriptions[2], maxUsesPerClass: 2, type: 'score', rule: 'y_burst' },
       { id: 'skill_4', name: names[3] || preset.defaultSkills[3], description: preset.skillDescriptions[3], maxUsesPerClass: 1, type: 'debuff_attack', rule: 'y_crash' },
     ];
   }
@@ -130,7 +130,7 @@ function buildPresetSkills(
     { id: 'skill_1', name: names[0] || preset.defaultSkills[0], description: preset.skillDescriptions[0], maxUsesPerClass: 0, type: 'score', rule: 'primary_score', primaryStat: rank[0] },
     { id: 'skill_2', name: names[1] || preset.defaultSkills[1], description: preset.skillDescriptions[1], maxUsesPerClass: 0, type: 'score', rule: 'product_score', primaryStat: rank[1], secondaryStat: rank[2] },
     { id: 'skill_3', name: names[2] || preset.defaultSkills[2], description: preset.skillDescriptions[2], maxUsesPerClass: 0, type: 'score', rule: 'difference_score', primaryStat: rank[0] },
-    { id: 'skill_4', name: names[3] || preset.defaultSkills[3], description: preset.skillDescriptions[3], maxUsesPerClass: 1, type: 'debuff_attack', rule: 'combo_score_and_debuff', primaryStat: rank[0], secondaryStat: rank[1], tertiaryStat: rank[3] },
+    { id: 'skill_4', name: names[3] || preset.defaultSkills[3], description: preset.skillDescriptions[3], maxUsesPerClass: 1, type: 'debuff_attack', rule: 'combo_score_and_debuff', primaryStat: rank[0], secondaryStat: rank[2], tertiaryStat: rank[3] },
   ];
 }
 
@@ -667,7 +667,7 @@ void ensureAnonymousAuth()
   const [cpuDeck, setCpuDeck] = useState<SupportCard[]>([]);
   const [myDeckReady, setMyDeckReady] = useState(false);
 
-  // デッキを選択しただけでは準備完了にしない。「このデッキではじめる」で確定する。
+  // チームを選択しただけでは準備完了にしない。「このチームではじめる」で確定する。
   const [deckConfirmed, setDeckConfirmed] = useState(false);
   const [isCoinTossing, setIsCoinTossing] = useState(false);
   const [myClassScores, setMyClassScores] = useState<number[]>([0, 0, 0]);
@@ -795,7 +795,7 @@ const getSupportBattleTarget = (
   return actorIsLocal ? 'opponent' : 'self';
 };
 
-  // ===== CPU用一時デッキを自動構築 =====
+  // ===== CPU用一時チームを自動構築 =====
   // 6人の正式な仮キャラから3人をランダム選出し、35種の仮サポートから
   // 18枚をランダム選択します。同一カードは最大2枚までです。
   const buildCpuDeck = () => {
@@ -844,10 +844,10 @@ const getSupportBattleTarget = (
     setCpuSupportDeck(shuffledDeck);
     setCpuHand(shuffledDeck.slice(0, INITIAL_HAND_SIZE));
     setCpuDeck(shuffledDeck.slice(INITIAL_HAND_SIZE));
-    addLog(`CPUデッキを構築：キャラ3人＋サポート${shuffledDeck.length}枚`);
+    addLog(`CPUチームを構築：キャラ3人＋サポート${shuffledDeck.length}枚`);
   };
 
-  // ===== デッキから3キャラを読み込む =====
+  // ===== チームから3キャラを読み込む =====
   const loadDeckAndAvatars = (targetDeckId?: string | null): BattleAvatar[] => {
     let result = DEFAULT_MY_AVATARS;
     try {
@@ -932,10 +932,10 @@ const getSupportBattleTarget = (
       if (loaded.length === 3) {
         result = loaded;
         setMyAvatars(loaded);
-        addLog(`デッキ「${chosen.name}」を読み込みました。`);
+        addLog(`チーム「${chosen.name}」を読み込みました。`);
       }
     } catch (error) {
-      console.error('デッキ読み込みエラー:', error);
+      console.error('チーム読み込みエラー:', error);
     }
     return result;
   };
@@ -1017,10 +1017,10 @@ const getSupportBattleTarget = (
             Boolean(card),
         );
 
-      // 実戦デッキは18枚。
+      // 実戦チームは18枚。
       // 初期手札は4枚、山札は14枚。
       //
-      // デッキ構築画面で登録されたカードが18枚未満の場合は、
+      // チーム構築画面で登録されたカードが18枚未満の場合は、
       // 登録カードを循環させて18枚にする。
       const source =
       selected.length > 0
@@ -1068,7 +1068,7 @@ const getSupportBattleTarget = (
       };
     } catch (error) {
       console.error(
-        'サポートデッキ初期化エラー:',
+        'サポートチーム初期化エラー:',
         error,
       );
   
@@ -1173,7 +1173,7 @@ const myPresenceRef = useMemo(
   );
 
   // =========================================================
-  // ===== 自分のアバター・デッキをPlayerへ公開 =====
+  // ===== 自分のアバター・チームをPlayerへ公開 =====
   // =========================================================
   //
   // 現行：
@@ -1206,8 +1206,8 @@ const myPresenceRef = useMemo(
     const initialSupportState =
       resetLocalSupportDeck(selectedDeck);
 
-    // 保存済みデッキがあれば、
-    // 入場直後から「このデッキではじめる」を押せる状態にする。
+    // 保存済みチームがあれば、
+    // 入場直後から「このチームではじめる」を押せる状態にする。
     setMyDeckReady(Boolean(selectedDeck));
     setDeckConfirmed(false);
 
@@ -1219,7 +1219,7 @@ const myPresenceRef = useMemo(
       buildCpuDeck();
 
       setPreparationMessage(
-        'デッキを確認して「このデッキではじめる」を押してください。',
+        'チームを確認して「このチームではじめる」を押してください。',
       );
 
       setOpponentHandCount(INITIAL_HAND_SIZE);
@@ -3488,7 +3488,7 @@ const handleIncomingActionRef =
           skill.primaryStat || 'hp';
 
         gainedScore =
-          effective[stat] * 10;
+          Number((opponentAvatar.baseStats || opponentAvatar.card.stats)[stat] || 0) * 20;
 
       } else if (
         skill.rule ===
@@ -3501,9 +3501,10 @@ const handleIncomingActionRef =
           skill.secondaryStat ||
           'intellect';
 
+        const opponentBaseStats = opponentAvatar.baseStats || opponentAvatar.card.stats;
         gainedScore =
-          effective[first] *
-          effective[second];
+          Number(opponentBaseStats[first] || 0) *
+          Number(opponentBaseStats[second] || 0);
 
       } else if (
         skill.rule ===
@@ -3515,9 +3516,9 @@ const handleIncomingActionRef =
         gainedScore =
           Math.max(
             0,
-            effective[stat] -
+            Number((opponentAvatar.baseStats || opponentAvatar.card.stats)[stat] || 0) -
               opponentEffective[stat],
-          ) * 20;
+          ) * 40;
 
       } else if (
         skill.rule ===
@@ -3534,28 +3535,30 @@ const handleIncomingActionRef =
         const target =
           skill.primaryStat || 'hp';
 
+        const opponentBaseStats = opponentAvatar.baseStats || opponentAvatar.card.stats;
         gainedScore =
-          (effective[first] +
-            effective[second]) *
-          5;
+          (Number(opponentBaseStats[first] || 0) +
+            Number(opponentBaseStats[second] || 0)) *
+          10;
 
         debuffs[target] =
           Math.ceil(
-            opponentEffective[target] / 2,
+            opponentEffective[target] * 0.5,
           );
 
       } else if (
         skill.rule ===
         'y_total_score'
       ) {
+        const opponentBaseStats = opponentAvatar.baseStats || opponentAvatar.card.stats;
         gainedScore =
           Object.values(
-            effective,
+            opponentBaseStats,
           ).reduce(
             (sum, value) =>
-              sum + value,
+              sum + Number(value || 0),
             0,
-          ) * 5;
+          ) * 10;
 
       } else if (
         skill.rule ===
@@ -3566,18 +3569,18 @@ const handleIncomingActionRef =
           Math.max(
             0,
             effective[selectedResponseStat] - opponentEffective[selectedResponseStat],
-          ) * 20;
+          ) * 40;
 
       } else if (
         skill.rule ===
         'y_burst'
       ) {
-        gainedScore = 100;
-
         const selectedBoostStat =
           action.selectedBoostStat;
 
         if (selectedBoostStat) {
+          gainedScore =
+            effective[selectedBoostStat] * 10;
           nextOpponentAvatars =
             oppAvatars.map(
               (avatar, index) =>
@@ -3589,7 +3592,7 @@ const handleIncomingActionRef =
                           avatar.statBoost ||
                           {}
                         ),
-                        [selectedBoostStat]: 2,
+                        [selectedBoostStat]: ((opponentAvatar.statBoost?.[selectedBoostStat] || 1) * 2),
                       },
                     }
                   : avatar,
@@ -3600,15 +3603,18 @@ const handleIncomingActionRef =
         skill.rule ===
         'y_crash'
       ) {
+        const opponentBaseStats = opponentAvatar.baseStats || opponentAvatar.card.stats;
+        const opponentRank = STAT_KEYS.slice().sort((a, b) => Number(opponentBaseStats[b] || 0) - Number(opponentBaseStats[a] || 0));
+        gainedScore = (effective[opponentRank[2] || 'dexterity'] + effective[opponentRank[3] || 'charm']) * 10;
         Object.entries(
-          opponentEffective,
+          myAvatar.baseStats || myAvatar.card.stats,
         ).forEach(
           ([key, value]) => {
             debuffs[
               key as StatKey
             ] =
               Math.ceil(
-                value * 0.25,
+                Number(value || 0) * 0.25,
               );
           },
         );
@@ -3746,10 +3752,7 @@ addLog(`相手が「${skill.name}」を使用しました。`);
           const current =
             prev[yearKey] || [];
 
-          if (
-            skill.maxUsesPerClass > 0 &&
-            !current.includes(skill.id)
-          ) {
+          if (skill.maxUsesPerClass > 0) {
             return {
               ...prev,
               [yearKey]: [
@@ -3796,7 +3799,7 @@ useEffect(() => {
 });
 
 
-  // ===== 先手・後手を決定（デッキ確定後のみ） =====
+  // ===== 先手・後手を決定（チーム確定後のみ） =====
   const decideFirstPlayer = async () => {
     if (
       battlePhase !== 'setup' ||
@@ -3894,24 +3897,24 @@ useEffect(() => {
       addLog(`🪙 コイントス結果：${result === playerRole ? '自分' : '相手'}が先手です。`);
     } catch (error) {
       console.error('コイントス結果の同期エラー:', error);
-      addLog('⚠️ 先手決定に失敗しました。両者のデッキ確定状態を確認してください。');
+      addLog('⚠️ 先手決定に失敗しました。両者のチーム確定状態を確認してください。');
     } finally {
       setIsCoinTossing(false);
     }
   };
 
-  // ===== 選択デッキを確定（ここではまだ対戦を開始しない） =====
+  // ===== 選択チームを確定（ここではまだ対戦を開始しない） =====
   const startBattleWithDeck = async () => {
     if (battlePhase !== 'setup' || !myDeckReady || deckConfirmed || (isOnline && !authReady)) return;
-    // 中堅戦・大将戦ではデッキ変更・再確定を行わない。
+    // 中堅戦・大将戦ではチーム変更・再確定を行わない。
     if (currentYear > 1) return;
 
     if (!isOnline) {
       setDeckConfirmed(true);
       setClassReadyYearHost(1);
       setClassReadyYearGuest(1);
-      setPreparationMessage('デッキを確定しました。コイントスを行って先手・後手を決定してください。');
-      addLog('このデッキを対戦用デッキとして確定しました。');
+      setPreparationMessage('チームを確定しました。コイントスを行って先手・後手を決定してください。');
+      addLog('このチームを対戦用チームとして確定しました。');
       return;
     }
 
@@ -3922,7 +3925,7 @@ useEffect(() => {
       [playerRole === 'host' ? 'hostDeckId' : 'guestDeckId']: activeDeckId,
       [playerRole === 'host' ? 'classReadyYearHost' : 'classReadyYearGuest']: 1,
     });
-    setPreparationMessage('このデッキでの準備が完了しました。両者のデッキ確定後、ルーム作成者がコイントスを行います。');
+    setPreparationMessage('このチームでの準備が完了しました。両者のチーム確定後、ルーム作成者がコイントスを行います。');
   };
 
   // 両者の準備完了後、ホストがbattleへ移行
@@ -4007,7 +4010,7 @@ useEffect(() => {
         );
       } catch (error) {
         console.error(
-          '次クラスのサポートデッキ初期化保存エラー:',
+          '次クラスのサポートチーム初期化保存エラー:',
           error,
         );
 
@@ -4029,7 +4032,7 @@ useEffect(() => {
     });
 
     setPreparationMessage(
-      `${targetYear}年目の準備を進めています。デッキは前のクラスから継続します。\n両者の準備完了後にコイントスを行います。`,
+      `${targetYear}年目の準備を進めています。チームは前のクラスから継続します。\n両者の準備完了後にコイントスを行います。`,
     );
 
     if (isOnline) {
@@ -4190,7 +4193,7 @@ useEffect(() => {
 
     const usedKey = `${currentYear}`;
     const usedForClass = usedSkillsByClass[usedKey] || [];
-    if (skill.maxUsesPerClass > 0 && usedForClass.includes(skill.id)) {
+    if (skill.maxUsesPerClass > 0 && usedForClass.filter((usedSkillId) => usedSkillId === skill.id).length >= skill.maxUsesPerClass) {
       addLog(`「${skill.name}」はこのクラスでは使用済みです。`);
       return;
     }
@@ -4222,23 +4225,26 @@ useEffect(() => {
 
     const getStat = (stats: ReturnType<typeof getEffectiveStats>, key: StatKey) => stats[key];
 
+    const baseStats = myActiveAvatar.baseStats || myActiveAvatar.card.stats;
+    const opponentBaseStats = oppActiveAvatar.baseStats || oppActiveAvatar.card.stats;
+
     if (skill.rule === 'primary_score') {
       const stat = skill.primaryStat || 'hp';
-      gainedScore = getStat(effective, stat) * 10;
+      gainedScore = Number(baseStats[stat] || 0) * 20;
     } else if (skill.rule === 'product_score') {
       const first = skill.primaryStat || 'hp';
       const second = skill.secondaryStat || 'intellect';
-      gainedScore = getStat(effective, first) * getStat(effective, second);
+      gainedScore = Number(baseStats[first] || 0) * Number(baseStats[second] || 0);
     } else if (skill.rule === 'difference_score') {
       const stat = skill.primaryStat || 'hp';
-      gainedScore = Math.max(0, getStat(effective, stat) - getStat(opponentEffective, stat)) * 20;
+      gainedScore = Math.max(0, Number(baseStats[stat] || 0) - getStat(opponentEffective, stat)) * 40;
     } else if (skill.rule === 'combo_score_and_debuff') {
-      const first = skill.secondaryStat || 'intellect';
+      const first = skill.secondaryStat || 'dexterity';
       const second = skill.tertiaryStat || 'charm';
       const target = skill.primaryStat || 'hp';
-      gainedScore = (getStat(effective, first) + getStat(effective, second)) * 5;
+      gainedScore = (Number(baseStats[first] || 0) + Number(baseStats[second] || 0)) * 10;
       debuffStat = target;
-      debuffAmount = Math.ceil(getStat(opponentEffective, target) / 2);
+      debuffAmount = Math.ceil(getStat(opponentEffective, target) * 0.5);
       debuffs[target] = debuffAmount;
       if (debuffAmount > 0 && !oppActiveAvatar.debuffImmune) {
         nextOppAvatars = oppAvatars.map((avatar, index) =>
@@ -4248,25 +4254,29 @@ useEffect(() => {
         );
       }
     } else if (skill.rule === 'y_total_score') {
-      gainedScore = Object.values(effective).reduce((sum, value) => sum + value, 0) * 5;
+      gainedScore = Object.values(baseStats).reduce((sum, value) => sum + Number(value || 0), 0) * 10;
     } else if (skill.rule === 'y_response_score') {
       selectedBoostStat = selectedStatOverride || null;
       if (!selectedBoostStat) return;
-      gainedScore = Math.max(0, getStat(effective, selectedBoostStat) - getStat(opponentEffective, selectedBoostStat)) * 20;
+      gainedScore = Math.max(0, getStat(effective, selectedBoostStat) - getStat(opponentEffective, selectedBoostStat)) * 40;
     } else if (skill.rule === 'y_burst') {
       selectedBoostStat = selectedStatOverride || null;
       if (!selectedBoostStat) return;
-      gainedScore = 100;
+      gainedScore = getStat(effective, selectedBoostStat) * 10;
+      const currentBoost = myActiveAvatar.statBoost?.[selectedBoostStat] || 1;
       nextMyAvatars = myAvatars.map((avatar, index) =>
         index === activeIndex
-          ? { ...avatar, statBoost: { ...(avatar.statBoost || {}), [selectedBoostStat!]: 2 } }
+          ? { ...avatar, statBoost: { ...(avatar.statBoost || {}), [selectedBoostStat!]: currentBoost * 2 } }
           : avatar,
       );
     } else if (skill.rule === 'y_crash') {
-      gainedScore = Object.values(effective).reduce((sum, value) => sum + value, 0) * 2;
-      Object.entries(opponentEffective).forEach(([key, value]) => {
+      const baseRank = STAT_KEYS.slice().sort((a, b) => Number(baseStats[b] || 0) - Number(baseStats[a] || 0));
+      const scoreThird = getStat(effective, baseRank[2]);
+      const scoreFourth = getStat(effective, baseRank[3]);
+      gainedScore = (scoreThird + scoreFourth) * 10;
+      Object.entries(opponentBaseStats).forEach(([key, value]) => {
         const stat = key as StatKey;
-        debuffs[stat] = Math.ceil(value * 0.25);
+        debuffs[stat] = Math.ceil(Number(value || 0) * 0.25);
       });
       if (!oppActiveAvatar.debuffImmune) {
         nextOppAvatars = oppAvatars.map((avatar, index) =>
@@ -4297,7 +4307,7 @@ useEffect(() => {
     const nextUsed = {
       ...usedSkillsByClass,
       [usedKey]:
-        skill.maxUsesPerClass > 0 && !usedForClass.includes(skill.id)
+        skill.maxUsesPerClass > 0
           ? [...usedForClass, skill.id]
           : usedForClass,
     };
@@ -5056,7 +5066,7 @@ if (!actionSubmitted) {
   };
 
   // ===== CPUの自動ターン =====
-  // CPUは準備画面の裏で構築した3キャラ＋18枚デッキを使い、
+  // CPUは準備画面の裏で構築した3キャラ＋18枚チームを使い、
   // 自分の手番では現在キャラの固有技から1つ選んで自動発動します。
   const cpuTurnRef = useRef<string>('');
   useEffect(() => {
@@ -5185,7 +5195,7 @@ if (!actionSubmitted) {
       const usedKey = `${currentYear}`;
       const usedForClass = cpuUsedSkillsByClass[usedKey] || [];
       const available = workingCpu.skills.filter(
-        (skill) => skill.maxUsesPerClass === 0 || !usedForClass.includes(skill.id),
+        (skill) => skill.maxUsesPerClass === 0 || usedForClass.filter((usedSkillId) => usedSkillId === skill.id).length < skill.maxUsesPerClass,
       );
       const skill = available[available.length - 1] || workingCpu.skills[0];
       if (!skill) return;
@@ -5195,32 +5205,43 @@ if (!actionSubmitted) {
       let gainedScore = 0;
       let debuffs: Partial<Record<StatKey, number>> = {};
 
+      const cpuBaseStats = workingCpu.baseStats || workingCpu.card.stats;
+      const playerBaseStats = workingPlayer.baseStats || workingPlayer.card.stats;
+      const cpuRank = STAT_KEYS.slice().sort((a, b) => Number(cpuBaseStats[b] || 0) - Number(cpuBaseStats[a] || 0));
+      let cpuBurstStat: StatKey | null = null;
+
       if (skill.rule === 'primary_score') {
-        gainedScore = effective[skill.primaryStat || 'hp'] * 10;
+        gainedScore = Number(cpuBaseStats[skill.primaryStat || 'hp'] || 0) * 20;
       } else if (skill.rule === 'product_score') {
-        gainedScore =
-          effective[skill.primaryStat || 'hp'] * effective[skill.secondaryStat || 'intellect'];
+        gainedScore = Number(cpuBaseStats[skill.primaryStat || 'hp'] || 0) * Number(cpuBaseStats[skill.secondaryStat || 'intellect'] || 0);
       } else if (skill.rule === 'difference_score') {
         const stat = skill.primaryStat || 'hp';
-        gainedScore = Math.max(0, effective[stat] - opponentEffective[stat]) * 20;
+        gainedScore = Math.max(0, Number(cpuBaseStats[stat] || 0) - opponentEffective[stat]) * 40;
       } else if (skill.rule === 'combo_score_and_debuff') {
-        const first = skill.secondaryStat || 'intellect';
+        const first = skill.secondaryStat || 'dexterity';
         const second = skill.tertiaryStat || 'charm';
         const target = skill.primaryStat || 'hp';
-        gainedScore = (effective[first] + effective[second]) * 5;
-        debuffs[target] = Math.ceil(opponentEffective[target] / 2);
+        gainedScore = (Number(cpuBaseStats[first] || 0) + Number(cpuBaseStats[second] || 0)) * 10;
+        debuffs[target] = Math.ceil(opponentEffective[target] * 0.5);
       } else if (skill.rule === 'y_total_score') {
-        gainedScore = Object.values(effective).reduce((sum, value) => sum + value, 0) * 5;
+        gainedScore = Object.values(cpuBaseStats).reduce((sum, value) => sum + Number(value || 0), 0) * 10;
       } else if (skill.rule === 'y_response_score') {
-        const myMin = Math.min(...Object.values(effective));
-        const opponentMin = Math.min(...Object.values(opponentEffective));
-        gainedScore = Math.max(0, myMin - opponentMin) * 20;
+        const responseStat = cpuRank[0] || 'hp';
+        gainedScore = Math.max(0, effective[responseStat] - opponentEffective[responseStat]) * 40;
       } else if (skill.rule === 'y_burst') {
-        gainedScore = 100;
+        cpuBurstStat = cpuRank[0] || 'hp';
+        gainedScore = effective[cpuBurstStat] * 10;
+        const currentBoost = workingCpu.statBoost?.[cpuBurstStat] || 1;
+        workingCpu = {
+          ...workingCpu,
+          statBoost: { ...(workingCpu.statBoost || {}), [cpuBurstStat]: currentBoost * 2 },
+        };
       } else if (skill.rule === 'y_crash') {
-        gainedScore = Object.values(effective).reduce((sum, value) => sum + value, 0) * 2;
-        Object.entries(opponentEffective).forEach(([key, value]) => {
-          debuffs[key as StatKey] = Math.ceil(value * 0.25);
+        const third = cpuRank[2] || 'dexterity';
+        const fourth = cpuRank[3] || 'charm';
+        gainedScore = (effective[third] + effective[fourth]) * 10;
+        Object.entries(playerBaseStats).forEach(([key, value]) => {
+          debuffs[key as StatKey] = Math.ceil(Number(value || 0) * 0.25);
         });
       } else {
         gainedScore = effective.hp * 10;
@@ -5243,6 +5264,10 @@ if (!actionSubmitted) {
         side: 'right',
       });
 
+      setOppAvatars((prev) =>
+        prev.map((avatar, index) => (index === activeIndex ? workingCpu : avatar)),
+      );
+
       if (Object.keys(debuffs).length > 0 && !workingPlayer.debuffImmune) {
         setMyAvatars((prev) =>
           prev.map((avatar, index) =>
@@ -5264,7 +5289,7 @@ if (!actionSubmitted) {
       const nextCpuUsed = {
         ...cpuUsedSkillsByClass,
         [usedKey]:
-          skill.maxUsesPerClass > 0 && !usedForClass.includes(skill.id)
+          skill.maxUsesPerClass > 0
             ? [...usedForClass, skill.id]
             : usedForClass,
       };
@@ -5306,8 +5331,8 @@ if (!actionSubmitted) {
       if (next.nextPhase === 'setup') {
         setFirstPlayer(null);
         setStartSeasonIdx(null);
-        // 2年目・3年目は同じデッキを継続使用し、デッキ変更は不可。
-        // デッキはすでに確定済みなので、次のコイントスへそのまま進める。
+        // 2年目・3年目は同じチームを継続使用し、チーム変更は不可。
+        // チームはすでに確定済みなので、次のコイントスへそのまま進める。
         setMyDeckReady(true);
         setDeckConfirmed(true);
         setPreparationMessage(`${next.currentYear}年目の準備を開始します。\nコイントスを行ってください。`);
@@ -5670,7 +5695,7 @@ const handleUseSupportCard = async (
     }
 
     // -------------------------------------------------------
-    // キャラ3人をデッキから完全再生成
+    // キャラ3人をチームから完全再生成
     // -------------------------------------------------------
 
     const loadedAvatars =
@@ -5729,8 +5754,8 @@ const handleUseSupportCard = async (
       {},
     );
 
-    // 新しいゲームではデッキは既存選択を継続する。
-    // ただし「このデッキではじめる」は再度押せる状態へ戻す。
+    // 新しいゲームではチームは既存選択を継続する。
+    // ただし「このチームではじめる」は再度押せる状態へ戻す。
     setMyDeckReady(
       true,
     );
@@ -6531,7 +6556,7 @@ const field =
     }
   };
 
-  // ===== 準備画面用：現在選択中デッキの概要 =====
+  // ===== 準備画面用：現在選択中チームの概要 =====
   const getDeckSupportSummary = (deck: Deck | null) => {
     if (!deck?.supportCardIds?.length) return 'サポートなし';
 
@@ -6556,7 +6581,7 @@ const field =
     }
   };
 
-  // ===== デッキ選択 =====
+  // ===== チーム選択 =====
   const handleSelectDeck = async (deckId: string) => {
     if (battlePhase !== 'setup' || currentYear !== 1) return;
     const loaded = loadDeckAndAvatars(deckId);
@@ -6596,10 +6621,10 @@ const field =
     );
   
     setPreparationMessage(
-      'デッキを変更しました。もう一度「このデッキではじめる」を押してください。',
+      'チームを変更しました。もう一度「このチームではじめる」を押してください。',
     );
     } else {
-      setPreparationMessage(`デッキ「${selectedDeck?.name || '新しいデッキ'}」を選択しました。`);
+      setPreparationMessage(`チーム「${selectedDeck?.name || '新しいチーム'}」を選択しました。`);
     }
   };
 
@@ -6649,7 +6674,7 @@ const field =
       myTurn &&
       !(
         skill.maxUsesPerClass > 0 &&
-        usedThisClass.includes(skill.id)
+        usedThisClass.filter((skillId) => skillId === skill.id).length >= skill.maxUsesPerClass
       ) &&
       !hasSkillSeal(
         myActiveAvatar,
@@ -6818,7 +6843,7 @@ const field =
                       あなた
                     </div>
                     <div className="mt-1 text-sm font-black text-indigo-950">
-                      {deckConfirmed ? '準備完了' : myDeckReady ? '確認待ち' : 'デッキ未選択'}
+                      {deckConfirmed ? '準備完了' : myDeckReady ? '確認待ち' : 'チーム未選択'}
                     </div>
                   </div>
                   <div className="rounded-2xl border border-slate-200 bg-white/90 p-3">
@@ -6855,7 +6880,7 @@ const field =
                     }
                     className="rounded-2xl bg-white px-4 py-3 text-xs font-black text-slate-700 shadow-sm ring-1 ring-slate-200 transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-35"
                   >
-                    デッキを変更
+                    チームを変更
                   </button>
                   <button
                     type="button"
@@ -6863,7 +6888,7 @@ const field =
                     disabled={!myDeckReady || deckConfirmed || currentYear !== 1}
                     className="rounded-2xl bg-indigo-600 px-4 py-3 text-xs font-black text-white shadow-lg shadow-indigo-200 transition hover:bg-indigo-700 disabled:cursor-not-allowed disabled:opacity-35"
                   >
-                    このデッキではじめる
+                    このチームではじめる
                   </button>
                 </div>
               </>
@@ -7009,7 +7034,7 @@ const field =
                   <button
                     type="button"
                     onClick={() => setModalAvatar(myActiveAvatar)}
-                    className="block w-[92px] shrink-0"
+                    className="block w-[92px] shrink-0 translate-y-1.5"
                   >
                     <div ref={myActiveCardAnchorRef}>
                       <BattleCardReveal
@@ -7066,7 +7091,7 @@ const field =
                   <button
                     type="button"
                     onClick={() => setModalAvatar(oppActiveAvatar)}
-                    className="block w-[92px] shrink-0"
+                    className="block w-[92px] shrink-0 translate-y-1.5"
                   >
                     <div ref={opponentActiveCardAnchorRef}>
                       <BattleCardReveal
@@ -7207,7 +7232,7 @@ const field =
                   const skillIndex = index;
                   const used =
                     skill.maxUsesPerClass > 0 &&
-                    usedThisClass.includes(skill.id);
+                    usedThisClass.filter((skillId) => skillId === skill.id).length >= skill.maxUsesPerClass;
                   const sealed = hasSkillSeal(
                     myActiveAvatar,
                     skillIndex,
@@ -7563,9 +7588,7 @@ const field =
               <div className="mt-3 flex items-center justify-between rounded-xl bg-slate-50 px-3 py-2 text-[10px] font-black text-slate-500">
                 <span>
                   {selectedSkillDetail.maxUsesPerClass
-                    ? usedThisClass.includes(selectedSkillDetail.id)
-                      ? 'このクラスは使用済み'
-                      : 'このクラス1回まで'
+                    ? `${usedThisClass.filter((skillId) => skillId === selectedSkillDetail.id).length}/${selectedSkillDetail.maxUsesPerClass}回使用`
                     : '回数制限なし'}
                 </span>
                 {hasSkillSeal(

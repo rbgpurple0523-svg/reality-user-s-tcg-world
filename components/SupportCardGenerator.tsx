@@ -709,6 +709,14 @@ export default function SupportCardGenerator({ selectedEmotion, onBackToHub, onB
   });
 
   const savedSupportEntries = entries.filter((entry) => entry.cardType === 'emotion');
+
+  const handlePerformanceEmotionSelect = (emotion: EmotionPreset) => {
+    setSelectedEmotionId(emotion.id);
+    setEffectName(emotion.name);
+    setFlavorText(getEmotionFlavorText(emotion));
+    setErrorMessage('');
+  };
+
   const basicInfoComplete = Boolean(profileUrl.trim() && userName.trim() && imageDataUrl && password.trim());
   const effectComplete = Boolean(effectName.trim());
   const flavorComplete = Boolean(flavorText.trim());
@@ -1124,7 +1132,7 @@ export default function SupportCardGenerator({ selectedEmotion, onBackToHub, onB
                     <EmotionMiniMap selectedEmotionId={activeEmotion.id} onSelect={handleEmotionChange} />
                   </div>
                 ) : (
-                  <div className="mt-3 space-y-2">
+                  <div className="mt-3 max-h-[48dvh] space-y-2 overflow-y-auto pr-1">
                     {pickerEmotions.length === 0 ? (
                       <div className="py-10 text-center text-xs font-bold text-gray-500">条件に一致するエモーションがありません。</div>
                     ) : (
@@ -1134,7 +1142,7 @@ export default function SupportCardGenerator({ selectedEmotion, onBackToHub, onB
                           <button
                             key={emotion.id}
                             type="button"
-                            onClick={() => handleEmotionChange(emotion)}
+                            onClick={() => handlePerformanceEmotionSelect(emotion)}
                             className={`w-full rounded-2xl border p-3 text-left transition ${selected ? 'border-purple-500 bg-purple-50 ring-2 ring-purple-200' : 'border-gray-200 bg-white hover:border-purple-300'}`}
                           >
                             <div className="flex items-start justify-between gap-3">
@@ -1157,8 +1165,18 @@ export default function SupportCardGenerator({ selectedEmotion, onBackToHub, onB
               </div>
             </div>
 
-            <div className="shrink-0 border-t border-gray-200 p-3">
-              <button type="button" onClick={() => setActiveModal(null)} className="w-full rounded-xl bg-gray-900 py-2.5 text-xs font-black text-white">閉じる</button>
+            <div className="shrink-0 border-t border-gray-200 bg-white p-3">
+              {pickerMode === 'performance' ? (
+                <button
+                  type="button"
+                  onClick={() => setActiveModal(null)}
+                  className="w-full rounded-xl bg-purple-700 py-3 text-xs font-black text-white shadow-sm"
+                >
+                  このエモーションで登録に進む
+                </button>
+              ) : (
+                <button type="button" onClick={() => setActiveModal(null)} className="w-full rounded-xl bg-gray-900 py-2.5 text-xs font-black text-white">閉じる</button>
+              )}
             </div>
           </div>
         </div>
