@@ -23,6 +23,12 @@ const STAT_LABELS: Record<StatKey, string> = {
   charm: '愛嬌',
 };
 
+const STAT_ENGLISH: Record<StatKey, string> = {
+  hp: 'Active',
+  intellect: 'Wise',
+  dexterity: 'Technical',
+  charm: 'Charming',
+};
 
 const RADIAL_CODES = [
   'a1', 'a2', 'a3', 'a4', 'a5', 'a6',
@@ -138,6 +144,19 @@ function getCoordinateDisplayCode(coordinate: CoordinatePreset) {
   return `${coordinate.code[0].toUpperCase()}-${coordinate.code.slice(1)}`;
 }
 
+function getSelectedCoordinateName(coordinate: CoordinatePreset) {
+  if (coordinate.code === 'n1') return 'コーデN-1';
+
+  const englishByCode: Record<string, string> = {
+    a: STAT_ENGLISH.hp,
+    w: STAT_ENGLISH.intellect,
+    t: STAT_ENGLISH.dexterity,
+    c: STAT_ENGLISH.charm,
+  };
+
+  return `コーデ${englishByCode[coordinate.code[0].toLowerCase()] ?? getCoordinateDisplayCode(coordinate)}`;
+}
+
 function getPrimaryStat(coordinate: CoordinatePreset): StatKey {
   return getStatsRank(coordinate)[0];
 }
@@ -201,13 +220,13 @@ function RadarChart({
 
         {showLabels && (
           <>
-            <text x={center} y="8" textAnchor="middle" fontSize="9" fontWeight="800" fill="currentColor">情熱</text>
-            <text x={center} y="18" textAnchor="middle" fontSize="7" fontWeight="700" fill="currentColor" opacity="0.7">Power</text>
-            <text x={size - 4} y={center - 1} textAnchor="end" fontSize="9" fontWeight="800" fill="currentColor">知性</text>
+            <text x={center} y="8" textAnchor="middle" fontSize="9" fontWeight="800" fill="currentColor">🔥 情熱</text>
+            <text x={center} y="18" textAnchor="middle" fontSize="7" fontWeight="700" fill="currentColor" opacity="0.7">Active</text>
+            <text x={size - 4} y={center - 1} textAnchor="end" fontSize="9" fontWeight="800" fill="currentColor">▽ 知性</text>
             <text x={size - 4} y={center + 10} textAnchor="end" fontSize="7" fontWeight="700" fill="currentColor" opacity="0.7">Wise</text>
-            <text x={center} y={size - 15} textAnchor="middle" fontSize="9" fontWeight="800" fill="currentColor">技能</text>
-            <text x={center} y={size - 5} textAnchor="middle" fontSize="7" fontWeight="700" fill="currentColor" opacity="0.7">Technique</text>
-            <text x="4" y={center - 1} textAnchor="start" fontSize="9" fontWeight="800" fill="currentColor">愛嬌</text>
+            <text x={center} y={size - 15} textAnchor="middle" fontSize="9" fontWeight="800" fill="currentColor">⬡ 技能</text>
+            <text x={center} y={size - 5} textAnchor="middle" fontSize="7" fontWeight="700" fill="currentColor" opacity="0.7">Technical</text>
+            <text x="4" y={center - 1} textAnchor="start" fontSize="9" fontWeight="800" fill="currentColor">♥ 愛嬌</text>
             <text x="4" y={center + 10} textAnchor="start" fontSize="7" fontWeight="700" fill="currentColor" opacity="0.7">Charming</text>
           </>
         )}
@@ -307,8 +326,8 @@ export default function CoordinateRadialMap({
   const isEntryMode = mode === 'entry';
   const isPickerMode = mode === 'picker';
   const displaySvgSize = isEntryMode ? 440 : 340;
-  const displayOuterRadius = isEntryMode ? 175 : 132;
-  const displayInnerRadius = isEntryMode ? 88 : 58;
+  const displayOuterRadius = isEntryMode ? 158 : 122;
+  const displayInnerRadius = isEntryMode ? 82 : 53;
   const displayCenterCircleRadius = isEntryMode ? 46 : 34;
   const center = displaySvgSize / 2;
 
@@ -319,11 +338,24 @@ export default function CoordinateRadialMap({
           <div className="flex flex-col sm:flex-row sm:items-end sm:justify-between gap-3">
             <div>
               <div className="text-[9px] font-black tracking-[0.18em] text-indigo-500">COORDINATE MAP</div>
-              <h3 className="mt-1 text-base font-black text-gray-900">コーデの性能マップ</h3>
-              <p className="mt-1 text-[10px] font-bold leading-5 text-gray-600">
-                コーデは、キャラカードの4つのステータスの得意・不得意を決める「性能タイプ」です。
-              </p>
-              {!isEntryMode && (
+              <h3 className="mt-1 text-base font-black text-gray-900">
+                {isPickerMode ? 'コーデマップからコーデを選ぶ' : 'コーデの性能マップ'}
+              </h3>
+              {isPickerMode ? (
+                <>
+                  <p className="mt-1 text-[10px] font-bold leading-5 text-gray-600">
+                    どんなスタイルの着こなしで参加する？理想の姿に似合うステータスのコーデを選ぼう
+                  </p>
+                  <p className="mt-0.5 text-[10px] font-bold leading-5 text-indigo-700">
+                    コーデは、あなたの魅せるスタイルそのものです。選んだコーデのステータスが、このキャラの対戦での基礎ステータスになります。輪の1区画が1つのステータスタイプ。気になる区画をタップして、ステータスを確認しながら選びましょう。
+                  </p>
+                </>
+              ) : (
+                <p className="mt-1 text-[10px] font-bold leading-5 text-gray-600">
+                  コーデは、キャラカードの4つのステータスの得意・不得意を決める「性能タイプ」です。
+                </p>
+              )}
+              {!isEntryMode && !isPickerMode && (
                 <p className="mt-0.5 text-[10px] font-bold leading-5 text-indigo-700">
                   輪の1区画が1つの性能タイプ。気になる区画をタップして、能力バランスを確認できます。
                 </p>
@@ -347,18 +379,18 @@ export default function CoordinateRadialMap({
                 viewBox={`0 0 ${displaySvgSize} ${displaySvgSize}`}
                 className="w-full h-auto"
                 role="img"
-                aria-label="コーデの性能マップ"
+                aria-label={isPickerMode ? 'コーデマップからコーデを選ぶ' : 'コーデの性能マップ'}
               >
                 <circle cx={center} cy={center} r={displayOuterRadius} fill="none" stroke="#e5e7eb" strokeWidth="1" />
                 <circle cx={center} cy={center} r={displayInnerRadius} fill="white" stroke="#c7d2fe" strokeWidth="2" />
 
-                <text x={center} y="11" textAnchor="middle" fontSize="14" fontWeight="900" fill="#111827">情熱</text>
-                <text x={center} y="25" textAnchor="middle" fontSize="9" fontWeight="700" fill="#6b7280">Power</text>
-                <text x={displaySvgSize - 8} y={center - 5} textAnchor="end" fontSize="14" fontWeight="900" fill="#111827">知性</text>
+                <text x={center} y="11" textAnchor="middle" fontSize="14" fontWeight="900" fill="#111827">🔥 情熱</text>
+                <text x={center} y="25" textAnchor="middle" fontSize="9" fontWeight="700" fill="#6b7280">Active</text>
+                <text x={displaySvgSize - 8} y={center - 5} textAnchor="end" fontSize="14" fontWeight="900" fill="#111827">▽ 知性</text>
                 <text x={displaySvgSize - 8} y={center + 9} textAnchor="end" fontSize="9" fontWeight="700" fill="#6b7280">Wise</text>
-                <text x={center} y={displaySvgSize - 20} textAnchor="middle" fontSize="14" fontWeight="900" fill="#111827">技能</text>
-                <text x={center} y={displaySvgSize - 7} textAnchor="middle" fontSize="9" fontWeight="700" fill="#6b7280">Technique</text>
-                <text x={8} y={center - 5} textAnchor="start" fontSize="14" fontWeight="900" fill="#111827">愛嬌</text>
+                <text x={center} y={displaySvgSize - 20} textAnchor="middle" fontSize="14" fontWeight="900" fill="#111827">⬡ 技能</text>
+                <text x={center} y={displaySvgSize - 7} textAnchor="middle" fontSize="9" fontWeight="700" fill="#6b7280">Technical</text>
+                <text x={8} y={center - 5} textAnchor="start" fontSize="14" fontWeight="900" fill="#111827">♥ 愛嬌</text>
                 <text x={8} y={center + 9} textAnchor="start" fontSize="9" fontWeight="700" fill="#6b7280">Charming</text>
 
                 {RADIAL_CODES.map((code, index) => {
@@ -368,7 +400,7 @@ export default function CoordinateRadialMap({
                   const startAngle = START_ANGLE + index * SLICE_ANGLE;
                   const endAngle = startAngle + SLICE_ANGLE;
                   const middleAngle = startAngle + SLICE_ANGLE / 2;
-                  const labelRadius = (displayOuterRadius + displayInnerRadius) / 2;
+                  const labelRadius = (displayOuterRadius + displayInnerRadius) / 2 + 10;
                   const labelPoint = polarToCartesian(center, center, labelRadius, middleAngle);
                   const count = getEntryCount(coordinate.id);
                   const presetEntries = getEntriesForCoordinate(coordinate);
@@ -477,7 +509,7 @@ export default function CoordinateRadialMap({
                         stroke={isSelected ? '#6366f1' : '#a5b4fc'}
                         strokeWidth={isSelected ? 5 : 3}
                       />
-                      <text x={center} y={center - (isEntryMode ? 27 : 7)} textAnchor="middle" fontSize={isEntryMode ? 13 : 10} fontWeight="900" fill="#6366f1" letterSpacing="1">A-1</text>
+                      <text x={center} y={center - (isEntryMode ? 27 : 7)} textAnchor="middle" fontSize={isEntryMode ? 13 : 10} fontWeight="900" fill="#6366f1" letterSpacing="1">N-1</text>
 
                       <text
                         x={center}
@@ -501,7 +533,7 @@ export default function CoordinateRadialMap({
                     if (!coordinate) return null;
                     const startAngle = START_ANGLE + index * SLICE_ANGLE;
                     const middleAngle = startAngle + SLICE_ANGLE / 2;
-                    const labelRadius = (displayOuterRadius + displayInnerRadius) / 2;
+                    const labelRadius = (displayOuterRadius + displayInnerRadius) / 2 + 10;
                     const labelPoint = polarToCartesian(center, center, labelRadius, middleAngle);
                     const presetEntries = getEntriesForCoordinate(coordinate).slice(0, 3);
                     if (presetEntries.length === 0) return null;
@@ -595,7 +627,7 @@ export default function CoordinateRadialMap({
                 <div className="text-[8px] font-black tracking-[0.14em] text-indigo-500">SELECTED</div>
                 <div className="mt-0.5 flex items-center gap-1.5">
                   <span className="shrink-0 rounded-md bg-indigo-100 px-1.5 py-1 text-[9px] font-black text-indigo-800">{getCoordinateDisplayCode(selectedCoordinate)}</span>
-                  <h4 className="truncate text-[12px] font-black text-indigo-950">{selectedCoordinate.name}</h4>
+                  <h4 className="truncate text-[12px] font-black text-indigo-950">{getSelectedCoordinateName(selectedCoordinate)}</h4>
                 </div>
                 <div className="mt-0.5 truncate text-[8px] font-black text-indigo-800">{getRankText(selectedCoordinate)}</div>
                 <div className="mt-0.5 text-[8px] font-bold text-gray-500">エントリー {selectedCount} / {maxEntryLimit}人{selectedIsLocked ? ' ・ 満員' : ''}</div>

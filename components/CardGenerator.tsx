@@ -742,10 +742,10 @@ export default function CardGenerator({
                       <div className="flex min-w-0 flex-col items-center">
                         <MiniRadarChart stats={currentCoordinate.stats} />
                         <div className="mt-1 grid w-full grid-cols-1 gap-1 text-[8px] font-black text-gray-600">
-                          <div className="flex items-center justify-between"><span>情熱</span><span>{currentCoordinate.stats.hp}</span></div>
-                          <div className="flex items-center justify-between"><span>知性</span><span>{currentCoordinate.stats.intellect}</span></div>
-                          <div className="flex items-center justify-between"><span>技能</span><span>{currentCoordinate.stats.dexterity}</span></div>
-                          <div className="flex items-center justify-between"><span>愛嬌</span><span>{currentCoordinate.stats.charm}</span></div>
+                          <div className="flex items-center justify-between"><span>🔥 情熱</span><span>{currentCoordinate.stats.hp}</span></div>
+                          <div className="flex items-center justify-between"><span>▽ 知性</span><span>{currentCoordinate.stats.intellect}</span></div>
+                          <div className="flex items-center justify-between"><span>⬡ 技能</span><span>{currentCoordinate.stats.dexterity}</span></div>
+                          <div className="flex items-center justify-between"><span>♥ 愛嬌</span><span>{currentCoordinate.stats.charm}</span></div>
                         </div>
                       </div>
                     )}
@@ -830,6 +830,10 @@ export default function CardGenerator({
                   {[0, 1, 2, 3].map((index) => (
                     <div key={index} className="rounded-2xl border border-pink-100 bg-pink-50/50 p-3">
                       <div className="font-black text-pink-700">スキル{index + 1}</div>
+                      <div className="mt-2 rounded-xl border border-pink-100 bg-white px-3 py-2">
+                        <div className="text-[8px] font-black text-pink-500">効果説明</div>
+                        <p className="mt-0.5 text-[9px] font-bold leading-4 text-gray-600">{currentCoordinate.skillDescriptions[index]}</p>
+                      </div>
                       <input type="text" value={customSkills[index]} onChange={(e) => handleSkillChange(index, e.target.value)} maxLength={40} className="mt-2 w-full rounded-xl border px-3 py-2.5" />
                     </div>
                   ))}
@@ -922,7 +926,7 @@ export default function CardGenerator({
             </div>
             <div className="p-4 text-[10px] leading-5 text-gray-700">
               <div className="font-black text-pink-800">スキル名</div>
-              <p className="mt-1">4つのスキル名は、自分のキャラらしく設定できます。具体的な「できること」の説明は、内容が決まり次第ここに追加します。</p>
+              <p className="mt-1">4つのスキル名は、自分のキャラらしく設定できます。各スキルの下に、そのコーデでの効果説明を表示しています。</p>
             </div>
             <div className="border-t border-gray-200 p-3">
               <button type="button" onClick={() => setShowSkillsHelp(false)} className="w-full rounded-xl bg-gray-900 py-2.5 text-xs font-black text-white">閉じる</button>

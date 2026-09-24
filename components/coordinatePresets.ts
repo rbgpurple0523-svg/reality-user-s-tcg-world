@@ -222,10 +222,10 @@ const skillDescriptionsFor = (
   const rank = STAT_RANKS[code];
 
   return [
-    `${STAT_LABELS[rank[0]]}×10でスコアを獲得する。`,
-    `${STAT_LABELS[rank[1]]}×${STAT_LABELS[rank[2]]}でスコアを獲得する。`,
-    `(自分の${STAT_LABELS[rank[0]]}−相手の${STAT_LABELS[rank[0]]})×20でスコアを獲得する。`,
-    `(${STAT_LABELS[rank[1]]}＋${STAT_LABELS[rank[3]]})×5でスコアを獲得し、相手の${STAT_LABELS[rank[0]]}を半減する（1回のみ）。`,
+    `キャラの一番の魅力を素直に押し出すスキル（${STAT_LABELS[rank[0]]}×10スコア）`,
+    `二番目・三番目の魅力の掛け合わせに新しい価値を見出すスキル（${STAT_LABELS[rank[1]]}×${STAT_LABELS[rank[2]]}スコア）`,
+    `キャラの一番の魅力で力量の差を見せつけるスキル（（自身の${STAT_LABELS[rank[0]]}−相手の${STAT_LABELS[rank[0]]}）×20）`,
+    `キャラの一番の魅力がより引き立つ状況を作るスキル（（${STAT_LABELS[rank[1]]}＋${STAT_LABELS[rank[3]]}）×5&相手の${STAT_LABELS[rank[0]]}を50%ダウン、1回のみ）`,
   ];
 };
 
@@ -237,7 +237,7 @@ export const COORDINATE_PRESETS: CoordinatePreset[] =
     return {
       id: `coord_${code}`,
       code,
-      name: `コーデ ${code === 'n1' ? 'A-1' : code[0].toUpperCase() + '-' + code.slice(1)}`,
+      name: `コーデ ${code === 'n1' ? 'N-1' : code[0].toUpperCase() + '-' + code.slice(1)}`,
       color: '赤',
       archetype: ARCHETYPE_BY_PRIMARY[STAT_RANKS[code][0]],
       season: '春',
