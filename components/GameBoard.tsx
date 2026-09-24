@@ -70,10 +70,10 @@ const INITIAL_HAND_SIZE = 4;
 
 const STAT_KEYS: StatKey[] = ['hp', 'intellect', 'dexterity', 'charm'];
 const STAT_LABELS: Record<StatKey, string> = {
-  hp: '体力',
-  intellect: '知略',
-  dexterity: '器用',
-  charm: '特技',
+  hp: '情熱',
+  intellect: '知性',
+  dexterity: '技能',
+  charm: '愛嬌',
 };
 
 type Skill = {
@@ -90,10 +90,10 @@ type Skill = {
 };
 
 const LEGACY_SKILLS: Skill[] = [
-  { id: 'skill_1', name: 'ボディビル', description: '体力×10でスコアを獲得する。', maxUsesPerClass: 0, type: 'score', rule: 'primary_score', primaryStat: 'hp' },
+  { id: 'skill_1', name: 'ボディビル', description: '情熱×10でスコアを獲得する。', maxUsesPerClass: 0, type: 'score', rule: 'primary_score', primaryStat: 'hp' },
   { id: 'skill_2', name: 'やる気元気', description: '自分のデバフを解除し、このキャラへのデバフを無効化する。', maxUsesPerClass: 0, type: 'debuff_clear', rule: 'primary_score' },
   { id: 'skill_3', name: '計画性', description: '智略を基準にスコアを獲得する。', maxUsesPerClass: 0, type: 'score', rule: 'primary_score', primaryStat: 'intellect' },
-  { id: 'skill_4', name: 'タックル&寝技', description: '相手の体力を自分の特技分だけ下げる。', maxUsesPerClass: 1, type: 'debuff_attack', rule: 'combo_score_and_debuff', primaryStat: 'hp', secondaryStat: 'charm' },
+  { id: 'skill_4', name: 'タックル&寝技', description: '相手の情熱を自分の愛嬌分だけ下げる。', maxUsesPerClass: 1, type: 'debuff_attack', rule: 'combo_score_and_debuff', primaryStat: 'hp', secondaryStat: 'charm' },
 ];
 
 function getPresetForCard(card: AvatarCard & { presetId?: string; coordinateCode?: string; code?: string }) {
@@ -110,7 +110,7 @@ function buildPresetSkills(
 ): Skill[] {
   const names = customNames?.length ? customNames : preset.defaultSkills;
 
-  if (preset.code === 'a1') {
+  if (preset.code === 'n1') {
     return [
       { id: 'skill_1', name: names[0] || preset.defaultSkills[0], description: preset.skillDescriptions[0], maxUsesPerClass: 0, type: 'score', rule: 'y_total_score' },
       { id: 'skill_2', name: names[1] || preset.defaultSkills[1], description: preset.skillDescriptions[1], maxUsesPerClass: 0, type: 'score', rule: 'y_response_score' },
@@ -445,10 +445,10 @@ function RadarChart({
   // ラベルはレーダーの各頂点方向に十分離して配置。
   const labelPositions = angles.map((angle) => point(max, angle, r + size * 0.072));
   const labels = [
-    ['体力', currentValues[0]],
-    ['知略', currentValues[1]],
-    ['器用', currentValues[2]],
-    ['特技', currentValues[3]],
+    ['情熱', currentValues[0]],
+    ['知性', currentValues[1]],
+    ['技能', currentValues[2]],
+    ['愛嬌', currentValues[3]],
   ];
 
   return (
@@ -4586,17 +4586,17 @@ if (!actionSubmitted) {
     const absoluteAmount = Math.abs(amount);
     const direction = amount >= 0 ? '増加' : '減少';
 
-    if (preset.effectCategory === '体力') {
-      return `${targetLabel}の体力を${durationLabel}${absoluteAmount}${direction}させる。${preset.note?.includes('0') ? '（0は下回らない）' : ''}`;
+    if (preset.effectCategory === '情熱') {
+      return `${targetLabel}の情熱を${durationLabel}${absoluteAmount}${direction}させる。${preset.note?.includes('0') ? '（0は下回らない）' : ''}`;
     }
-    if (preset.effectCategory === '知略') {
-      return `${targetLabel}の知略を${durationLabel}${absoluteAmount}${direction}させる。${preset.note?.includes('0') ? '（0は下回らない）' : ''}`;
+    if (preset.effectCategory === '知性') {
+      return `${targetLabel}の知性を${durationLabel}${absoluteAmount}${direction}させる。${preset.note?.includes('0') ? '（0は下回らない）' : ''}`;
     }
-    if (preset.effectCategory === '器用') {
-      return `${targetLabel}の器用を${durationLabel}${absoluteAmount}${direction}させる。${preset.note?.includes('0') ? '（0は下回らない）' : ''}`;
+    if (preset.effectCategory === '技能') {
+      return `${targetLabel}の技能を${durationLabel}${absoluteAmount}${direction}させる。${preset.note?.includes('0') ? '（0は下回らない）' : ''}`;
     }
-    if (preset.effectCategory === '特技') {
-      return `${targetLabel}の特技を${durationLabel}${absoluteAmount}${direction}させる。${preset.note?.includes('0') ? '（0は下回らない）' : ''}`;
+    if (preset.effectCategory === '愛嬌') {
+      return `${targetLabel}の愛嬌を${durationLabel}${absoluteAmount}${direction}させる。${preset.note?.includes('0') ? '（0は下回らない）' : ''}`;
     }
     if (preset.effectCategory === '全ステータス') {
       return `${targetLabel}の全ステータスを${durationLabel}${absoluteAmount}${direction}させる。${preset.note?.includes('0') ? '（0は下回らない）' : ''}`;
@@ -4717,10 +4717,10 @@ if (!actionSubmitted) {
 
     const amount = parseEmotionAmount(preset.effectAmount);
     const statMap: Partial<Record<EmotionPreset['effectCategory'], StatKey>> = {
-      '体力': 'hp',
-      '知略': 'intellect',
-      '器用': 'dexterity',
-      '特技': 'charm',
+      '情熱': 'hp',
+      '知性': 'intellect',
+      '技能': 'dexterity',
+      '愛嬌': 'charm',
     };
 
     let nextActor: BattleAvatar = {
@@ -4956,7 +4956,7 @@ if (!actionSubmitted) {
 
   // ===== CPUサポートカード選択 =====
   // CPUは「必ず使う」ではなく、手札と状況を見て1枚だけ先に使います。
-  // 1) 体力・知略・器用・特技の減少系は、相手の該当値が高いほど優先。
+  // 1) 情熱・知性・技能・愛嬌の減少系は、相手の該当値が高いほど優先。
   // 2) 自分の上昇系は、自分の該当値が低いほど優先。
   // 3) ドロー系は手札が少ないときに優先。
   // 4) 候補がなければ、手札からランダムに1枚を選択。
@@ -4998,10 +4998,10 @@ if (!actionSubmitted) {
       let score = 2 + Math.random() * 4;
       const amount = Number((preset.effectAmount || '').replace(/[^0-9.-]/g, '')) || 0;
       const targetStat: StatKey | null =
-        preset.effectCategory === '体力' ? 'hp' :
-        preset.effectCategory === '知略' ? 'intellect' :
-        preset.effectCategory === '器用' ? 'dexterity' :
-        preset.effectCategory === '特技' ? 'charm' : null;
+        preset.effectCategory === '情熱' ? 'hp' :
+        preset.effectCategory === '知性' ? 'intellect' :
+        preset.effectCategory === '技能' ? 'dexterity' :
+        preset.effectCategory === '愛嬌' ? 'charm' : null;
       if (targetStat) {
         if (preset.target === '相手') score += playerAvatar.stats[targetStat] * (amount / 20) * 0.08;
         if (preset.target === '自分') score += Math.max(0, 50 - cpuAvatar.stats[targetStat]) * (amount / 20) * 0.08;
@@ -7449,7 +7449,7 @@ const field =
             <div className="w-full max-w-sm rounded-3xl bg-white p-5 shadow-2xl">
               <div className="flex items-start justify-between gap-3">
                 <div>
-                  <div className="text-xs font-black text-slate-400">A-1コーデ</div>
+                  <div className="text-xs font-black text-slate-400">N-1コーデ</div>
                   <h3 className="mt-1 text-xl font-black text-slate-950">ステータスを選択</h3>
                 </div>
                 <button

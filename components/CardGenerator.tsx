@@ -742,10 +742,10 @@ export default function CardGenerator({
                       <div className="flex min-w-0 flex-col items-center">
                         <MiniRadarChart stats={currentCoordinate.stats} />
                         <div className="mt-1 grid w-full grid-cols-1 gap-1 text-[8px] font-black text-gray-600">
-                          <div className="flex items-center justify-between"><span>体力</span><span>{currentCoordinate.stats.hp}</span></div>
-                          <div className="flex items-center justify-between"><span>知略</span><span>{currentCoordinate.stats.intellect}</span></div>
-                          <div className="flex items-center justify-between"><span>器用</span><span>{currentCoordinate.stats.dexterity}</span></div>
-                          <div className="flex items-center justify-between"><span>特技</span><span>{currentCoordinate.stats.charm}</span></div>
+                          <div className="flex items-center justify-between"><span>情熱</span><span>{currentCoordinate.stats.hp}</span></div>
+                          <div className="flex items-center justify-between"><span>知性</span><span>{currentCoordinate.stats.intellect}</span></div>
+                          <div className="flex items-center justify-between"><span>技能</span><span>{currentCoordinate.stats.dexterity}</span></div>
+                          <div className="flex items-center justify-between"><span>愛嬌</span><span>{currentCoordinate.stats.charm}</span></div>
                         </div>
                       </div>
                     )}

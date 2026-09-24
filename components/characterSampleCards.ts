@@ -1,7 +1,8 @@
 import { AvatarCard } from '@/types/card';
+import { STAT_RANKS } from './coordinatePresets';
 
 export interface CharacterSampleCard extends AvatarCard {
-  /** 対応する公式コーデ（coord_p1〜coord_s6 / coord_a1）のID */
+  /** 対応する公式コーデ（coord_a1〜coord_c6 / coord_n1）のID */
   presetId: string;
   /** 仮カードなので、ユーザー登録カードとは区別する */
   isVirtual: true;
@@ -9,10 +10,14 @@ export interface CharacterSampleCard extends AvatarCard {
   customSkills: [string, string, string, string];
 }
 
-const makeSkills = (
-  code: string,
-  rank: [string, string, string, string],
-): [string, string, string, string] => {
+const makeSkills = (code: string): [string, string, string, string] => {
+  const labels: Record<string, string> = {
+    hp: '情熱',
+    intellect: '知性',
+    dexterity: '技能',
+    charm: '愛嬌',
+  };
+
   if (code === 'a1') {
     return [
       'オールラウンド・スコア',
@@ -22,16 +27,14 @@ const makeSkills = (
     ];
   }
 
-  const labels: Record<string, string> = {
-    hp: '体力',
-    intellect: '知略',
-    dexterity: '器用',
-    charm: '特技',
-  };
+  const rank = STAT_RANKS[code];
+  if (!rank) {
+    throw new Error(`Unknown coordinate code: ${code}`);
+  }
 
   return [
     `${labels[rank[0]]}ブースト`,
-    `${labels[rank[2]]}×${labels[rank[3]]}スコア`,
+    `${labels[rank[1]]}×${labels[rank[2]]}スコア`,
     `${labels[rank[0]]}対抗スコア`,
     `${labels[rank[1]]}＋${labels[rank[3]]}スコア`,
   ];
@@ -45,7 +48,7 @@ const makeSkills = (
 export const CHARACTER_SAMPLE_CARDS: CharacterSampleCard[] = [
   {
     id: 'character_sample_yukata',
-    presetId: 'coord_p3',
+    presetId: 'coord_a3',
     isVirtual: true,
     profileUrl: 'https://reality.app/user/001_yukatasan',
     userName: '浴衣さん',
@@ -57,7 +60,7 @@ export const CHARACTER_SAMPLE_CARDS: CharacterSampleCard[] = [
     passwordHash: '',
     createdAt: '',
     updatedAt: '',
-    customSkills: makeSkills('p3', ['hp', 'intellect', 'dexterity', 'charm']),
+    customSkills: makeSkills('a3'),
   },
   {
     id: 'character_sample_tsundere',
@@ -73,11 +76,11 @@ export const CHARACTER_SAMPLE_CARDS: CharacterSampleCard[] = [
     passwordHash: '',
     createdAt: '',
     updatedAt: '',
-    customSkills: makeSkills('t1', ['dexterity', 'hp', 'intellect', 'charm']),
+    customSkills: makeSkills('t1'),
   },
   {
     id: 'character_sample_baby',
-    presetId: 'coord_a1',
+    presetId: 'coord_n1',
     isVirtual: true,
     profileUrl: 'https://reality.app/user/003_babysan',
     userName: 'ベイビーさん',
@@ -89,7 +92,7 @@ export const CHARACTER_SAMPLE_CARDS: CharacterSampleCard[] = [
     passwordHash: '',
     createdAt: '',
     updatedAt: '',
-    customSkills: makeSkills('a1', ['hp', 'intellect', 'dexterity', 'charm']),
+    customSkills: makeSkills('n1'),
   },
   {
     id: 'character_sample_police',
@@ -105,11 +108,11 @@ export const CHARACTER_SAMPLE_CARDS: CharacterSampleCard[] = [
     passwordHash: '',
     createdAt: '',
     updatedAt: '',
-    customSkills: makeSkills('w2', ['intellect', 'hp', 'dexterity', 'charm']),
+    customSkills: makeSkills('w2'),
   },
   {
     id: 'character_sample_genki',
-    presetId: 'coord_s3',
+    presetId: 'coord_c3',
     isVirtual: true,
     profileUrl: 'https://reality.app/user/005_genkisan',
     userName: '元気さん',
@@ -121,11 +124,11 @@ export const CHARACTER_SAMPLE_CARDS: CharacterSampleCard[] = [
     passwordHash: '',
     createdAt: '',
     updatedAt: '',
-    customSkills: makeSkills('s3', ['charm', 'intellect', 'dexterity', 'hp']),
+    customSkills: makeSkills('c3'),
   },
   {
     id: 'character_sample_farmer',
-    presetId: 'coord_p4',
+    presetId: 'coord_a4',
     isVirtual: true,
     profileUrl: 'https://reality.app/user/006_noukasan',
     userName: '農家さん',
@@ -137,6 +140,6 @@ export const CHARACTER_SAMPLE_CARDS: CharacterSampleCard[] = [
     passwordHash: '',
     createdAt: '',
     updatedAt: '',
-    customSkills: makeSkills('p4', ['hp', 'dexterity', 'intellect', 'charm']),
+    customSkills: makeSkills('a4'),
   },
 ];

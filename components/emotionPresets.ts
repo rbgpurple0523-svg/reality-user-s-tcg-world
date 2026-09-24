@@ -12,10 +12,10 @@ export type EmotionAxisKey =
   | 'philosophy';
 
 export type EmotionEffectCategory =
-  | '体力'
-  | '知略'
-  | '器用'
-  | '特技'
+  | '情熱'
+  | '知性'
+  | '技能'
+  | '愛嬌'
   | '全ステータス'
   | 'スコア'
   | 'サポートカード使用数'
@@ -94,29 +94,29 @@ export const EMOTION_PRESETS: EmotionPreset[] = [
     id: 'emo_01', name: '差し入れのドリンク', duration: '一時', target: '自分',
     emotionPhrase: '誰かを元気づけたい、というあなたに',
     emotionAxes: { challenge: 5, compassion: 95, temptation: 0, freedom: 0, philosophy: 0 },
-    effectCategory: '体力', statEffect: '体力増加', effectAmount: '+20',
-    description: '自分の体力を増加させる。',
+    effectCategory: '情熱', statEffect: '情熱増加', effectAmount: '+20',
+    description: '自分の情熱を増加させる。',
   },
   {
     id: 'emo_02', name: '一冊の本', duration: '一時', target: '自分',
     emotionPhrase: '一緒に考えるのが好き、というあなたに',
     emotionAxes: { challenge: 5, compassion: 55, temptation: 0, freedom: 5, philosophy: 35 },
-    effectCategory: '知略', statEffect: '知略増加', effectAmount: '+20',
-    description: '自分の知略を増加させる。',
+    effectCategory: '知性', statEffect: '知性増加', effectAmount: '+20',
+    description: '自分の知性を増加させる。',
   },
   {
     id: 'emo_03', name: 'ファンアート', duration: '一時', target: '自分',
     emotionPhrase: '思いを形で伝えたい、というあなたに',
     emotionAxes: { challenge: 5, compassion: 55, temptation: 0, freedom: 25, philosophy: 15 },
-    effectCategory: '器用', statEffect: '器用増加', effectAmount: '+20',
-    description: '自分の器用を増加させる。',
+    effectCategory: '技能', statEffect: '技能増加', effectAmount: '+20',
+    description: '自分の技能を増加させる。',
   },
   {
     id: 'emo_04', name: 'スポットライト', duration: '一時', target: '自分',
     emotionPhrase: '最高の瞬間を分かち合いたい、というあなたに',
     emotionAxes: { challenge: 10, compassion: 75, temptation: 10, freedom: 5, philosophy: 0 },
-    effectCategory: '特技', statEffect: '特技増加', effectAmount: '+20',
-    description: '自分の特技を増加させる。',
+    effectCategory: '愛嬌', statEffect: '愛嬌増加', effectAmount: '+20',
+    description: '自分の愛嬌を増加させる。',
   },
   {
     id: 'emo_05', name: '朝の一杯', duration: '一時', target: '自分',
@@ -129,29 +129,29 @@ export const EMOTION_PRESETS: EmotionPreset[] = [
     id: 'emo_06', name: '底なしの沼へようこそ', duration: '一時', target: '相手',
     emotionPhrase: '沼へ引きずり込みたい、というあなたに',
     emotionAxes: { challenge: 25, compassion: 0, temptation: 75, freedom: 0, philosophy: 0 },
-    effectCategory: '体力', statEffect: '体力減少', effectAmount: '-20',
-    description: '相手の体力を減少させる。', note: '0を下回らない',
+    effectCategory: '情熱', statEffect: '情熱減少', effectAmount: '-20',
+    description: '相手の情熱を減少させる。', note: '0を下回らない',
   },
   {
     id: 'emo_07', name: '仕掛けられた謎', duration: '一時', target: '相手',
     emotionPhrase: '知恵比べなら負けない、というあなたに',
     emotionAxes: { challenge: 60, compassion: 0, temptation: 5, freedom: 0, philosophy: 35 },
-    effectCategory: '知略', statEffect: '知略減少', effectAmount: '-20',
-    description: '相手の知略を減少させる。', note: '0を下回らない',
+    effectCategory: '知性', statEffect: '知性減少', effectAmount: '-20',
+    description: '相手の知性を減少させる。', note: '0を下回らない',
   },
   {
     id: 'emo_08', name: '万華鏡のきらめき', duration: '一時', target: '相手',
     emotionPhrase: '思わず見入ってしまうような瞬間を作りたい、というあなたに',
     emotionAxes: { challenge: 5, compassion: 5, temptation: 80, freedom: 10, philosophy: 0 },
-    effectCategory: '器用', statEffect: '器用減少', effectAmount: '-20',
-    description: '相手の器用を減少させる。', note: '0を下回らない',
+    effectCategory: '技能', statEffect: '技能減少', effectAmount: '-20',
+    description: '相手の技能を減少させる。', note: '0を下回らない',
   },
   {
     id: 'emo_09', name: '我が家のテンポ', duration: '一時', target: '相手',
     emotionPhrase: '自分たちのペースにみんなを巻き込んでいきたい、というあなたに',
     emotionAxes: { challenge: 5, compassion: 10, temptation: 75, freedom: 20, philosophy: 0 },
-    effectCategory: '特技', statEffect: '特技減少', effectAmount: '-20',
-    description: '相手の特技を減少させる。', note: '0を下回らない',
+    effectCategory: '愛嬌', statEffect: '愛嬌減少', effectAmount: '-20',
+    description: '相手の愛嬌を減少させる。', note: '0を下回らない',
   },
   {
     id: 'emo_10', name: '片道きっぷ', duration: '一時', target: '相手',
@@ -164,29 +164,29 @@ export const EMOTION_PRESETS: EmotionPreset[] = [
     id: 'emo_11', name: 'あたたかいお茶', duration: '永続', target: '自分',
     emotionPhrase: 'ずっと元気でいてほしい、と願うあなたに',
     emotionAxes: { challenge: 0, compassion: 90, temptation: 0, freedom: 10, philosophy: 0 },
-    effectCategory: '体力', statEffect: '体力増加', effectAmount: '+10',
-    description: '自分の体力を増加させる。',
+    effectCategory: '情熱', statEffect: '情熱増加', effectAmount: '+10',
+    description: '自分の情熱を増加させる。',
   },
   {
     id: 'emo_12', name: '使い込んだルーペ', duration: '永続', target: '自分',
     emotionPhrase: '知的な営みが人生を豊かにする、と信じるあなたに',
     emotionAxes: { challenge: 0, compassion: 20, temptation: 0, freedom: 5, philosophy: 75 },
-    effectCategory: '知略', statEffect: '知略増加', effectAmount: '+10',
-    description: '自分の知略を増加させる。',
+    effectCategory: '知性', statEffect: '知性増加', effectAmount: '+10',
+    description: '自分の知性を増加させる。',
   },
   {
     id: 'emo_13', name: '宝物のスケッチブック', duration: '永続', target: '自分',
     emotionPhrase: 'これからも大事にしたい作品がある、というあなたに',
     emotionAxes: { challenge: 0, compassion: 15, temptation: 0, freedom: 10, philosophy: 75 },
-    effectCategory: '器用', statEffect: '器用増加', effectAmount: '+10',
-    description: '自分の器用を増加させる。',
+    effectCategory: '技能', statEffect: '技能増加', effectAmount: '+10',
+    description: '自分の技能を増加させる。',
   },
   {
     id: 'emo_14', name: 'サイン入り色紙', duration: '永続', target: '自分',
     emotionPhrase: 'みんなの記憶に残りつづける存在でありたい、というあなたに',
     emotionAxes: { challenge: 5, compassion: 20, temptation: 40, freedom: 5, philosophy: 30 },
-    effectCategory: '特技', statEffect: '特技増加', effectAmount: '+10',
-    description: '自分の特技を増加させる。',
+    effectCategory: '愛嬌', statEffect: '愛嬌増加', effectAmount: '+10',
+    description: '自分の愛嬌を増加させる。',
   },
   {
     id: 'emo_15', name: 'お守り', duration: '永続', target: '自分',
@@ -199,29 +199,29 @@ export const EMOTION_PRESETS: EmotionPreset[] = [
     id: 'emo_16', name: 'ヴィンテージの一品', duration: '永続', target: '相手',
     emotionPhrase: '年を重ねることも悪いことばかりじゃない、というあなたに',
     emotionAxes: { challenge: 0, compassion: 25, temptation: 0, freedom: 15, philosophy: 60 },
-    effectCategory: '体力', statEffect: '体力減少', effectAmount: '-10',
-    description: '相手の体力を減少させる。', note: '0を下回らない',
+    effectCategory: '情熱', statEffect: '情熱減少', effectAmount: '-10',
+    description: '相手の情熱を減少させる。', note: '0を下回らない',
   },
   {
     id: 'emo_17', name: 'ダークホースの予感', duration: '永続', target: '相手',
     emotionPhrase: '計算通りにいかないことが面白い、というあなたに',
     emotionAxes: { challenge: 10, compassion: 10, temptation: 10, freedom: 45, philosophy: 25 },
-    effectCategory: '知略', statEffect: '知略減少', effectAmount: '-10',
-    description: '相手の知略を減少させる。', note: '0を下回らない',
+    effectCategory: '知性', statEffect: '知性減少', effectAmount: '-10',
+    description: '相手の知性を減少させる。', note: '0を下回らない',
   },
   {
     id: 'emo_18', name: '不器用な折り紙', duration: '永続', target: '相手',
     emotionPhrase: '不器用でも一生懸命な姿が好き、というあなたに',
     emotionAxes: { challenge: 25, compassion: 60, temptation: 0, freedom: 15, philosophy: 0 },
-    effectCategory: '器用', statEffect: '器用減少', effectAmount: '-10',
-    description: '相手の器用を減少させる。', note: '0を下回らない',
+    effectCategory: '技能', statEffect: '技能減少', effectAmount: '-10',
+    description: '相手の技能を減少させる。', note: '0を下回らない',
   },
   {
     id: 'emo_19', name: '未開の白地図', duration: '永続', target: '相手',
     emotionPhrase: '新しい自分探しの時間を持つのもいいね、というあなたに',
     emotionAxes: { challenge: 5, compassion: 5, temptation: 15, freedom: 60, philosophy: 15 },
-    effectCategory: '特技', statEffect: '特技減少', effectAmount: '-10',
-    description: '相手の特技を減少させる。', note: '0を下回らない',
+    effectCategory: '愛嬌', statEffect: '愛嬌減少', effectAmount: '-10',
+    description: '相手の愛嬌を減少させる。', note: '0を下回らない',
   },
   {
     id: 'emo_20', name: '雨のち晴れの予報', duration: '永続', target: '相手',

@@ -8,10 +8,10 @@ export const VIRTUAL_SUPPORT_PREFIX = 'emotion_sample_';
 export const DEFAULT_VIRTUAL_SUPPORT_COLOR_HEX = '#22D3EE';
 
 const EMOTION_CATEGORY_ICONS: Record<string, string> = {
-  '体力': '♥',
-  '知略': '◆',
-  '器用': '✦',
-  '特技': '★',
+  '情熱': '🔥',
+  '知性': '▽',
+  '技能': '⬡',
+  '愛嬌': '♥',
   '全ステータス': '✚',
   'スコア': '●',
   'サポートカード使用数': '↕',

@@ -832,10 +832,10 @@ export default function DeckBuilder({ onGoToCpuBattle, onGoToBattle, initialDeck
   const getArchetypeDistribution = (card: AvatarCard) => {
     const stats = getCharacterStats(card);
     const labels: Array<[string, number]> = [
-      ['体力', stats.hp],
-      ['知略', stats.intellect],
-      ['器用', stats.dexterity],
-      ['特技', stats.charm],
+      ['情熱', stats.hp],
+      ['知性', stats.intellect],
+      ['技能', stats.dexterity],
+      ['愛嬌', stats.charm],
     ];
     const sorted = [...labels].sort((a, b) => b[1] - a[1]);
     const groups: Array<{ labels: string[]; value: number }> = [];
@@ -902,10 +902,10 @@ export default function DeckBuilder({ onGoToCpuBattle, onGoToBattle, initialDeck
       if (!match) return;
       const amount = Number(match[0]);
       if (!Number.isFinite(amount)) return;
-      if (preset.effectCategory === '体力') delta.hp += amount;
-      if (preset.effectCategory === '知略') delta.intellect += amount;
-      if (preset.effectCategory === '器用') delta.dexterity += amount;
-      if (preset.effectCategory === '特技') delta.charm += amount;
+      if (preset.effectCategory === '情熱') delta.hp += amount;
+      if (preset.effectCategory === '知性') delta.intellect += amount;
+      if (preset.effectCategory === '技能') delta.dexterity += amount;
+      if (preset.effectCategory === '愛嬌') delta.charm += amount;
       if (preset.effectCategory === '全ステータス') {
         delta.hp += amount;
         delta.intellect += amount;
@@ -925,7 +925,7 @@ export default function DeckBuilder({ onGoToCpuBattle, onGoToBattle, initialDeck
     compareStats?: { hp: number; intellect: number; dexterity: number; charm: number };
     size?: number;
   }) => {
-    const labels = ['体力', '知略', '器用', '特技'];
+    const labels = ['情熱', '知性', '技能', '愛嬌'];
     const values = [stats.hp, stats.intellect, stats.dexterity, stats.charm];
     const compareValues = compareStats
       ? [compareStats.hp, compareStats.intellect, compareStats.dexterity, compareStats.charm]
@@ -1295,7 +1295,7 @@ export default function DeckBuilder({ onGoToCpuBattle, onGoToBattle, initialDeck
                     <div className="text-sm font-black text-gray-950">{selectedCharacterDetail.userName}</div>
                     <div className="mt-1 grid grid-cols-2 gap-1 text-[9px] font-black text-gray-600">
                       {(['hp','intellect','dexterity','charm'] as const).map(key => (
-                        <div key={key} className="rounded-lg bg-white px-2 py-1">{key === 'hp' ? '体力' : key === 'intellect' ? '知略' : key === 'dexterity' ? '器用' : '特技'} {getCharacterStats(selectedCharacterDetail)[key]}</div>
+                        <div key={key} className="rounded-lg bg-white px-2 py-1">{key === 'hp' ? '情熱' : key === 'intellect' ? '知性' : key === 'dexterity' ? '技能' : '愛嬌'} {getCharacterStats(selectedCharacterDetail)[key]}</div>
                       ))}
                     </div>
                     <div className="mt-2 flex flex-wrap gap-1.5">
@@ -1438,10 +1438,10 @@ export default function DeckBuilder({ onGoToCpuBattle, onGoToBattle, initialDeck
                 <div className="text-[9px] font-black text-purple-700">サポートによるステータス変化（自分対象のみ）</div>
                 <div className="mt-2 grid grid-cols-2 gap-2 sm:grid-cols-4">
                   {([
-                    ['体力', getSupportStatDelta.hp],
-                    ['知略', getSupportStatDelta.intellect],
-                    ['器用', getSupportStatDelta.dexterity],
-                    ['特技', getSupportStatDelta.charm],
+                    ['情熱', getSupportStatDelta.hp],
+                    ['知性', getSupportStatDelta.intellect],
+                    ['技能', getSupportStatDelta.dexterity],
+                    ['愛嬌', getSupportStatDelta.charm],
                   ] as Array<[string, number]>).map(([label, delta]) => (
                     <div key={label} className="rounded-xl bg-white px-2 py-2 text-center">
                       <div className="text-[8px] font-bold text-gray-400">{label}</div>

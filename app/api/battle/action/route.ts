@@ -99,9 +99,6 @@ type SupportCardState = {
   name?: string;
   description?: string;
   presetId?: string;
-  flavorText?: string;
-  colorHex?: string;
-  colorType?: string;
 };
 
 type BattleAction = {
@@ -353,7 +350,7 @@ const getCanonicalSkill = (
   const description =
     preset.skillDescriptions[index];
 
-  if (preset.code === 'a1') {
+  if (preset.code === 'n1') {
     const rules: SkillRule[] = [
       'y_total_score',
       'y_response_score',
@@ -637,7 +634,7 @@ const calculateSkillResult = (
   ) {
     if (!selectedBoostStat) {
       throw new Error(
-        'A-1技②には対応ステータスが必要です。',
+        'N-1技②には対応ステータスが必要です。',
       );
     }
 
@@ -652,7 +649,7 @@ const calculateSkillResult = (
   ) {
     if (!selectedBoostStat) {
       throw new Error(
-        'A-1技③には強化ステータスが必要です。',
+        'N-1技③には強化ステータスが必要です。',
       );
     }
 
@@ -854,10 +851,10 @@ const calculateSupportEffectResult = (
   const statMap: Partial<
     Record<EmotionPreset['effectCategory'], StatKey>
   > = {
-    '体力': 'hp',
-    '知略': 'intellect',
-    '器用': 'dexterity',
-    '特技': 'charm',
+    '情熱': 'hp',
+    '知性': 'intellect',
+    '技能': 'dexterity',
+    '愛嬌': 'charm',
   };
 
   let actorScoreDelta = 0;
@@ -2347,14 +2344,6 @@ export async function POST(
                 preset.id,
               supportName:
                 preset.name,
-              supportFlavorText:
-                typeof supportCard.flavorText === 'string'
-                  ? supportCard.flavorText.trim().slice(0, 120)
-                  : '',
-              supportColorHex:
-                typeof supportCard.colorHex === 'string' && /^#[0-9a-fA-F]{6}$/.test(supportCard.colorHex)
-                  ? supportCard.colorHex.toUpperCase()
-                  : undefined,
               actorScoreDelta:
                 actualActorScoreDelta,
               targetScoreDelta:
@@ -2375,14 +2364,6 @@ export async function POST(
                 requestedSupportCardId,
               supportPresetId:
                 preset.id,
-              supportFlavorText:
-                typeof supportCard.flavorText === 'string'
-                  ? supportCard.flavorText.trim().slice(0, 120)
-                  : '',
-              supportColorHex:
-                typeof supportCard.colorHex === 'string' && /^#[0-9a-fA-F]{6}$/.test(supportCard.colorHex)
-                  ? supportCard.colorHex.toUpperCase()
-                  : undefined,
               submittedAt:
                 processedAt,
               supportCardConsumed: true,
@@ -2463,14 +2444,6 @@ export async function POST(
                 preset.id,
               supportName:
                 preset.name,
-              supportFlavorText:
-                typeof supportCard.flavorText === 'string'
-                  ? supportCard.flavorText.trim().slice(0, 120)
-                  : '',
-              supportColorHex:
-                typeof supportCard.colorHex === 'string' && /^#[0-9a-fA-F]{6}$/.test(supportCard.colorHex)
-                  ? supportCard.colorHex.toUpperCase()
-                  : undefined,
               actorScoreDelta:
                 actualActorScoreDelta,
               targetScoreDelta:
@@ -2619,7 +2592,7 @@ export async function POST(
               ))
           ) {
             throw new Error(
-              'このA-1技にはselectedBoostStatが必要です。',
+              'このN-1技にはselectedBoostStatが必要です。',
             );
           }
 

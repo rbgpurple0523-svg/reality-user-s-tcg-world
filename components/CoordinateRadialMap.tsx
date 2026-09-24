@@ -17,18 +17,18 @@ interface CoordinateRadialMapProps {
 }
 
 const STAT_LABELS: Record<StatKey, string> = {
-  hp: '体力',
-  intellect: '知略',
-  dexterity: '器用',
-  charm: '特技',
+  hp: '情熱',
+  intellect: '知性',
+  dexterity: '技能',
+  charm: '愛嬌',
 };
 
 
 const RADIAL_CODES = [
-  'p1', 'p2', 'p3', 'p4', 'p5', 'p6',
+  'a1', 'a2', 'a3', 'a4', 'a5', 'a6',
   'w1', 'w2', 'w3', 'w4', 'w5', 'w6',
   't1', 't2', 't3', 't4', 't5', 't6',
-  's1', 's2', 's3', 's4', 's5', 's6',
+  'c1', 'c2', 'c3', 'c4', 'c5', 'c6',
 ] as const;
 
 const START_ANGLE = 225;
@@ -39,31 +39,31 @@ const CENTER_CIRCLE_RADIUS = 36;
 const SVG_SIZE = 350;
 
 const LEGACY_COORDINATE_ID_TO_CODE: Record<string, string> = {
-  coord_a: 'p6',
-  coord_b: 'p5',
-  coord_c: 'p4',
-  coord_d: 'p2',
-  coord_e: 'p3',
-  coord_f: 'p1',
+  coord_a: 'a6',
+  coord_b: 'a5',
+  coord_c: 'a4',
+  coord_d: 'a2',
+  coord_e: 'a3',
+  coord_f: 'a1',
   coord_g: 'w2',
   coord_h: 'w1',
   coord_i: 't3',
-  coord_j: 's6',
+  coord_j: 'c6',
   coord_k: 't4',
-  coord_l: 's5',
+  coord_l: 'c5',
   coord_m: 'w5',
   coord_n: 'w3',
   coord_o: 't1',
-  coord_p: 's4',
+  coord_p: 'c4',
   coord_q: 't6',
-  coord_r: 's2',
+  coord_r: 'c2',
   coord_s: 'w6',
   coord_t: 'w4',
   coord_u: 't2',
-  coord_v: 's3',
+  coord_v: 'c3',
   coord_w: 't5',
-  coord_x: 's1',
-  coord_y: 'a1',
+  coord_x: 'c1',
+  coord_y: 'n1',
 };
 
 const PRIMARY_STYLES: Record<StatKey, { fill: string; stroke: string; text: string }> = {
@@ -124,8 +124,8 @@ function getStatsRank(coordinate: CoordinatePreset): StatKey[] {
 }
 
 function getRankText(coordinate: CoordinatePreset) {
-  if (coordinate.code === 'a1') {
-    return '体力＝知略＝器用＝特技';
+  if (coordinate.code === 'n1') {
+    return '情熱＝知性＝技能＝愛嬌';
   }
 
   return getStatsRank(coordinate)
@@ -134,7 +134,7 @@ function getRankText(coordinate: CoordinatePreset) {
 }
 
 function getCoordinateDisplayCode(coordinate: CoordinatePreset) {
-  if (coordinate.code === 'a1') return 'A-1';
+  if (coordinate.code === 'n1') return 'N-1';
   return `${coordinate.code[0].toUpperCase()}-${coordinate.code.slice(1)}`;
 }
 
@@ -201,24 +201,24 @@ function RadarChart({
 
         {showLabels && (
           <>
-            <text x={center} y="8" textAnchor="middle" fontSize="9" fontWeight="800" fill="currentColor">体力</text>
+            <text x={center} y="8" textAnchor="middle" fontSize="9" fontWeight="800" fill="currentColor">情熱</text>
             <text x={center} y="18" textAnchor="middle" fontSize="7" fontWeight="700" fill="currentColor" opacity="0.7">Power</text>
-            <text x={size - 4} y={center - 1} textAnchor="end" fontSize="9" fontWeight="800" fill="currentColor">知略</text>
-            <text x={size - 4} y={center + 10} textAnchor="end" fontSize="7" fontWeight="700" fill="currentColor" opacity="0.7">Wisdom</text>
-            <text x={center} y={size - 15} textAnchor="middle" fontSize="9" fontWeight="800" fill="currentColor">器用</text>
+            <text x={size - 4} y={center - 1} textAnchor="end" fontSize="9" fontWeight="800" fill="currentColor">知性</text>
+            <text x={size - 4} y={center + 10} textAnchor="end" fontSize="7" fontWeight="700" fill="currentColor" opacity="0.7">Wise</text>
+            <text x={center} y={size - 15} textAnchor="middle" fontSize="9" fontWeight="800" fill="currentColor">技能</text>
             <text x={center} y={size - 5} textAnchor="middle" fontSize="7" fontWeight="700" fill="currentColor" opacity="0.7">Technique</text>
-            <text x="4" y={center - 1} textAnchor="start" fontSize="9" fontWeight="800" fill="currentColor">特技</text>
-            <text x="4" y={center + 10} textAnchor="start" fontSize="7" fontWeight="700" fill="currentColor" opacity="0.7">Special</text>
+            <text x="4" y={center - 1} textAnchor="start" fontSize="9" fontWeight="800" fill="currentColor">愛嬌</text>
+            <text x="4" y={center + 10} textAnchor="start" fontSize="7" fontWeight="700" fill="currentColor" opacity="0.7">Charming</text>
           </>
         )}
       </svg>
 
       {showLabels && (
         <div className="mt-1 grid grid-cols-2 gap-x-6 gap-y-1 text-xs font-bold text-gray-700">
-          <span>体力 {stats.hp}</span>
-          <span>知略 {stats.intellect}</span>
-          <span>器用 {stats.dexterity}</span>
-          <span>特技 {stats.charm}</span>
+          <span>情熱 {stats.hp}</span>
+          <span>知性 {stats.intellect}</span>
+          <span>技能 {stats.dexterity}</span>
+          <span>愛嬌 {stats.charm}</span>
         </div>
       )}
     </div>
@@ -237,7 +237,7 @@ export default function CoordinateRadialMap({
   const initialCoordinate = initialSelectedId
     ? coordinates.find((coordinate) => coordinate.id === initialSelectedId)
     : null;
-  const [selectedCode, setSelectedCode] = useState(initialCoordinate?.code ?? 'a1');
+  const [selectedCode, setSelectedCode] = useState(initialCoordinate?.code ?? 'n1');
 
   useEffect(() => {
     if (!initialSelectedId) return;
@@ -253,7 +253,7 @@ export default function CoordinateRadialMap({
   const selectedCoordinate = useMemo(
     () =>
       coordinateMap.get(selectedCode) ??
-      coordinateMap.get('a1') ??
+      coordinateMap.get('n1') ??
       coordinates[0] ??
       null,
     [coordinateMap, selectedCode, coordinates],
@@ -352,14 +352,14 @@ export default function CoordinateRadialMap({
                 <circle cx={center} cy={center} r={displayOuterRadius} fill="none" stroke="#e5e7eb" strokeWidth="1" />
                 <circle cx={center} cy={center} r={displayInnerRadius} fill="white" stroke="#c7d2fe" strokeWidth="2" />
 
-                <text x={center} y="11" textAnchor="middle" fontSize="14" fontWeight="900" fill="#111827">体力</text>
+                <text x={center} y="11" textAnchor="middle" fontSize="14" fontWeight="900" fill="#111827">情熱</text>
                 <text x={center} y="25" textAnchor="middle" fontSize="9" fontWeight="700" fill="#6b7280">Power</text>
-                <text x={displaySvgSize - 8} y={center - 5} textAnchor="end" fontSize="14" fontWeight="900" fill="#111827">知略</text>
-                <text x={displaySvgSize - 8} y={center + 9} textAnchor="end" fontSize="9" fontWeight="700" fill="#6b7280">Wisdom</text>
-                <text x={center} y={displaySvgSize - 20} textAnchor="middle" fontSize="14" fontWeight="900" fill="#111827">器用</text>
+                <text x={displaySvgSize - 8} y={center - 5} textAnchor="end" fontSize="14" fontWeight="900" fill="#111827">知性</text>
+                <text x={displaySvgSize - 8} y={center + 9} textAnchor="end" fontSize="9" fontWeight="700" fill="#6b7280">Wise</text>
+                <text x={center} y={displaySvgSize - 20} textAnchor="middle" fontSize="14" fontWeight="900" fill="#111827">技能</text>
                 <text x={center} y={displaySvgSize - 7} textAnchor="middle" fontSize="9" fontWeight="700" fill="#6b7280">Technique</text>
-                <text x={8} y={center - 5} textAnchor="start" fontSize="14" fontWeight="900" fill="#111827">特技</text>
-                <text x={8} y={center + 9} textAnchor="start" fontSize="9" fontWeight="700" fill="#6b7280">Special</text>
+                <text x={8} y={center - 5} textAnchor="start" fontSize="14" fontWeight="900" fill="#111827">愛嬌</text>
+                <text x={8} y={center + 9} textAnchor="start" fontSize="9" fontWeight="700" fill="#6b7280">Charming</text>
 
                 {RADIAL_CODES.map((code, index) => {
                   const coordinate = coordinateMap.get(code);
@@ -451,12 +451,12 @@ export default function CoordinateRadialMap({
                 })}
 
                 {(() => {
-                  const centerPreset = coordinateMap.get('a1');
+                  const centerPreset = coordinateMap.get('n1');
                   if (!centerPreset) return null;
 
                   const count = getEntryCount(centerPreset.id);
                   const presetEntries = getEntriesForCoordinate(centerPreset);
-                  const isSelected = selectedCode === 'a1';
+                  const isSelected = selectedCode === 'n1';
                   const isFull = count >= maxEntryLimit;
                   const canKeepCurrentSelection =
                     mode === 'picker' && centerPreset.id === initialSelectedId;
@@ -540,7 +540,7 @@ export default function CoordinateRadialMap({
                   })}
 
                   {(() => {
-                    const centerPreset = coordinateMap.get('a1');
+                    const centerPreset = coordinateMap.get('n1');
                     if (!centerPreset) return null;
                     const presetEntries = getEntriesForCoordinate(centerPreset).slice(0, 3);
                     if (presetEntries.length === 0) return null;
