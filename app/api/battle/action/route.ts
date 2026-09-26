@@ -688,10 +688,25 @@ const calculateSkillResult = (
   } else if (
     skill.rule === 'y_crash'
   ) {
-    const thirdStat = baseRank[2] ?? 'dexterity';
-    const fourthStat = baseRank[3] ?? 'charm';
+    const baseRankOrder = new Map(
+      baseRank.map((stat, index) => [stat, index]),
+    );
+    const lowEffectiveRank = STAT_KEYS.slice().sort(
+      (a, b) => {
+        const valueDiff =
+          effective[a] - effective[b];
+        if (valueDiff !== 0) return valueDiff;
+        return (
+          (baseRankOrder.get(a) ?? STAT_KEYS.indexOf(a)) -
+          (baseRankOrder.get(b) ?? STAT_KEYS.indexOf(b))
+        );
+      },
+    );
+    const lowStat = lowEffectiveRank[0] ?? 'hp';
+    const secondLowStat =
+      lowEffectiveRank[1] ?? 'intellect';
     gainedScore =
-      (effective[thirdStat] + effective[fourthStat]) * 10;
+      (effective[lowStat] + effective[secondLowStat]) * 10;
 
     for (const key of STAT_KEYS) {
       debuffs[key] =
