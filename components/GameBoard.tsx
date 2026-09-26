@@ -743,6 +743,7 @@ void ensureAnonymousAuth()
   const [opponentDeckCount, setOpponentDeckCount] = useState(0);
   const lastActionRef = useRef<string>('');
   const lastSkillActionRef = useRef<string>('');
+  const lastSupportActionRef = useRef<string>('');
   const lastObservedBattlePhaseRef = useRef<string>('');
   const lastObservedYearRef = useRef<number>(1);
   const initializedRef = useRef(false);
@@ -2114,8 +2115,37 @@ if (
   lastSkillActionRef.current =
     lastSkillAction.actionId;
 
+  const gainedScore = Number(lastSkillAction.gainedScore || 0);
   addLog(
-    `相手が「${lastSkillAction.skillName || '技'}」を発動しました。`,
+    gainedScore > 0
+      ? `相手が「${lastSkillAction.skillName || '技'}」を発動しました。 +${gainedScore}スコア`
+      : `相手が「${lastSkillAction.skillName || '技'}」を発動しました。`,
+  );
+}
+
+const lastSupportAction =
+  currentOpponentPlayerData.lastSupportAction;
+
+if (
+  lastSupportAction?.actionId &&
+  lastSupportAction.actionId !== lastSupportActionRef.current
+) {
+  lastSupportActionRef.current = lastSupportAction.actionId;
+
+  const actorScoreDelta = Number(lastSupportAction.actorScoreDelta || 0);
+  const targetScoreDelta = Number(lastSupportAction.targetScoreDelta || 0);
+  const scoreParts: string[] = [];
+
+  if (actorScoreDelta !== 0) {
+    scoreParts.push(`相手 ${actorScoreDelta > 0 ? '+' : ''}${actorScoreDelta}スコア`);
+  }
+  if (targetScoreDelta !== 0) {
+    scoreParts.push(`あなた ${targetScoreDelta > 0 ? '+' : ''}${targetScoreDelta}スコア`);
+  }
+
+  addLog(
+    `相手がサポート「${lastSupportAction.supportName || 'サポートカード'}」を使用しました。` +
+      (scoreParts.length > 0 ? ` ${scoreParts.join(' / ')}` : ''),
   );
 }
 
@@ -3830,7 +3860,7 @@ useEffect(() => {
         setFirstPlayer(result);
         setStartSeasonIdx(0);
         setPreparationMessage(
-          `コイントス結果：${result === 'host' ? '自分' : 'CPU'}が先手です。\n春から${ROLE_NAMES[currentYear - 1]}戦を開始します。`,
+          `コイントス結果：${result === 'host' ? '自分' : 'CPU'}が先手です。\n春から${roleDisplayNames[ROLE_NAMES[currentYear - 1]]}戦を開始します。`,
         );
         addLog(`🪙 コイントス結果：${result === 'host' ? '自分' : 'CPU'}が先手です。`);
         setBattlePhase('battle');
@@ -3851,7 +3881,7 @@ useEffect(() => {
       setFirstPlayer(result.firstPlayer);
       setStartSeasonIdx(0);
       setPreparationMessage(
-        `🪙 コイントス結果：${result.firstPlayer === playerRole ? '自分' : '相手'}が先手です。春から${ROLE_NAMES[currentYear - 1]}戦を開始します。`,
+        `🪙 コイントス結果：${result.firstPlayer === playerRole ? '自分' : '相手'}が先手です。春から${roleDisplayNames[ROLE_NAMES[currentYear - 1]]}戦を開始します。`,
       );
       addLog(`🪙 コイントス結果：${result.firstPlayer === playerRole ? '自分' : '相手'}が先手です。`);
     } catch (error) {
@@ -5083,7 +5113,17 @@ if (!actionSubmitted) {
         });
 
         workingCpuHand = workingCpuHand.filter((_, index) => index !== supportChoice.index);
-        addLog(`CPUがサポート「${supportChoice.card.name}」を使用しました。`);
+        const cpuSupportScoreParts: string[] = [];
+        if (applied.scoreDelta !== 0) {
+          cpuSupportScoreParts.push(`CPU ${applied.scoreDelta > 0 ? '+' : ''}${applied.scoreDelta}スコア`);
+        }
+        if (applied.targetScoreDelta !== 0) {
+          cpuSupportScoreParts.push(`あなた ${applied.targetScoreDelta > 0 ? '+' : ''}${applied.targetScoreDelta}スコア`);
+        }
+        addLog(
+          `CPUがサポート「${supportChoice.card.name}」を使用しました。` +
+            (cpuSupportScoreParts.length > 0 ? ` ${cpuSupportScoreParts.join(' / ')}` : ''),
+        );
         const cpuAvatarsAfterSupport =
           applied.actorSupportControlEffect
             ? applySupportControlToAllAvatars(
@@ -5510,8 +5550,16 @@ const handleUseSupportCard = async (
         }
       }
 
+      const localSupportScoreParts: string[] = [];
+      if (applied.scoreDelta !== 0) {
+        localSupportScoreParts.push(`自分 ${applied.scoreDelta > 0 ? '+' : ''}${applied.scoreDelta}スコア`);
+      }
+      if (applied.targetScoreDelta !== 0) {
+        localSupportScoreParts.push(`相手 ${applied.targetScoreDelta > 0 ? '+' : ''}${applied.targetScoreDelta}スコア`);
+      }
       addLog(
         `サポート「${card.name}」を使用しました。` +
+          (localSupportScoreParts.length > 0 ? ` ${localSupportScoreParts.join(' / ')}` : '') +
           (
             supportPreset?.description
               ? ` ${supportPreset.description}`
@@ -5594,8 +5642,16 @@ const handleUseSupportCard = async (
     }
     setSelectedSupportCardIndex(null);
 
+    const onlineSupportScoreParts: string[] = [];
+    if (applied.scoreDelta !== 0) {
+      onlineSupportScoreParts.push(`自分 ${applied.scoreDelta > 0 ? '+' : ''}${applied.scoreDelta}スコア`);
+    }
+    if (applied.targetScoreDelta !== 0) {
+      onlineSupportScoreParts.push(`相手 ${applied.targetScoreDelta > 0 ? '+' : ''}${applied.targetScoreDelta}スコア`);
+    }
     addLog(
       `サポート「${card.name}」を使用しました。` +
+        (onlineSupportScoreParts.length > 0 ? ` ${onlineSupportScoreParts.join(' / ')}` : '') +
         (
           supportPreset?.description
             ? ` ${supportPreset.description}`
@@ -7036,7 +7092,7 @@ const field =
                   あなた　{currentRoleDisplayName}
                 </div>
                 <div className="mt-1 flex items-end justify-center gap-2">
-                  <div className="flex min-w-0 flex-1 flex-col items-center justify-end">
+                  <div className="flex min-w-0 flex-1 -translate-y-1 flex-col items-center justify-end">
                     <div className="max-w-full truncate text-center text-xs font-black text-slate-950">
                       {myActiveAvatar.card.userName}
                     </div>
@@ -7065,14 +7121,16 @@ const field =
                       </div>
                     </button>
                   </div>
-                  <VerticalScoreGauge
-                    label=""
-                    score={currentMyClassScore}
+                  <div className="translate-y-2">
+                    <VerticalScoreGauge
+                      label=""
+                      score={currentMyClassScore}
                     side="self"
                     active={myTurn}
                     compact
-                    baseHeightPx={142}
-                  />
+                      baseHeightPx={142}
+                    />
+                  </div>
                 </div>
                 <button
                   type="button"
@@ -7095,7 +7153,7 @@ const field =
                   相手　{currentRoleDisplayName}
                 </div>
                 <div className="mt-1 flex items-end justify-center gap-2">
-                  <div className="flex min-w-0 flex-1 flex-col items-center justify-end">
+                  <div className="flex min-w-0 flex-1 -translate-y-1 flex-col items-center justify-end">
                     <div className="max-w-full truncate text-center text-xs font-black text-slate-950">
                       {oppActiveAvatar.card.userName}
                     </div>
@@ -7124,14 +7182,16 @@ const field =
                       </div>
                     </button>
                   </div>
-                  <VerticalScoreGauge
-                    label=""
-                    score={currentOppClassScore}
+                  <div className="translate-y-2">
+                    <VerticalScoreGauge
+                      label=""
+                      score={currentOppClassScore}
                     side="opponent"
                     active={!myTurn}
                     compact
-                    baseHeightPx={142}
-                  />
+                      baseHeightPx={142}
+                    />
+                  </div>
                 </div>
                 <button
                   type="button"
@@ -7286,8 +7346,8 @@ const field =
                 </section>
               </div>
               {!myTurn && (
-                <div className="absolute inset-0 z-30 flex items-center justify-center rounded-2xl bg-white/55 backdrop-blur-[1px]">
-                  <div className="rounded-2xl border border-slate-200 bg-white/90 px-5 py-3 text-sm font-black text-slate-800 shadow-lg">
+                <div className="pointer-events-none absolute inset-0 z-30 flex items-center justify-center rounded-2xl bg-white/15 backdrop-blur-[0.5px]">
+                  <div className="rounded-2xl border border-slate-300/80 bg-white/90 px-5 py-3 text-sm font-black text-slate-800 shadow-lg">
                     相手のターンです
                   </div>
                 </div>
