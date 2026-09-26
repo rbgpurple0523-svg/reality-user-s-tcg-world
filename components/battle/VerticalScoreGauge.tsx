@@ -104,13 +104,13 @@ export default function VerticalScoreGauge({
 
         <div
           className="absolute z-30 whitespace-nowrap rounded-md bg-slate-950/85 px-1.5 py-0.5 text-[8px] font-black text-white shadow"
-          style={{ left: compact ? 1 : 28, top: 'calc(50% - 7px)' }}
+          style={{ left: compact ? -22 : 28, top: 'calc(50% - 7px)' }}
         >
           {SCORE_GAUGE_MID_SCORE}
         </div>
         <div
           className="absolute z-30 whitespace-nowrap rounded-md bg-slate-950/85 px-1.5 py-0.5 text-[8px] font-black text-white shadow"
-          style={{ left: compact ? 1 : 28, top: -8 }}
+          style={{ left: compact ? -22 : 28, top: -8 }}
         >
           {SCORE_GAUGE_REFERENCE_SCORE}
         </div>
