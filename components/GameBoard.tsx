@@ -7362,10 +7362,10 @@ const field =
                 </div>
                 <div className="mt-1 flex items-end justify-center gap-2">
                   <div className="flex min-w-0 flex-1 -translate-y-10 flex-col items-center justify-end">
-                    <div className="max-w-full -translate-y-2 truncate text-center text-xs font-black text-slate-950">
+                    <div className="max-w-full -translate-y-3 truncate text-center text-xs font-black text-slate-950">
                       {myActiveAvatar.card.userName}
                     </div>
-                    <div className="mt-0.5 -translate-y-2 text-center text-[10px] font-black text-indigo-700">
+                    <div className="mt-0.5 -translate-y-3 text-center text-[10px] font-black text-indigo-700">
                       {currentMyClassScore} スコア
                     </div>
                     <button
@@ -7423,10 +7423,10 @@ const field =
                 </div>
                 <div className="mt-1 flex items-end justify-center gap-2">
                   <div className="flex min-w-0 flex-1 -translate-y-10 flex-col items-center justify-end">
-                    <div className="max-w-full truncate text-center text-xs font-black text-slate-950">
+                    <div className="max-w-full -translate-y-3 truncate text-center text-xs font-black text-slate-950">
                       {oppActiveAvatar.card.userName}
                     </div>
-                    <div className="mt-0.5 text-center text-[10px] font-black text-rose-700">
+                    <div className="mt-0.5 -translate-y-3 text-center text-[10px] font-black text-rose-700">
                       {currentOppClassScore} スコア
                     </div>
                     <button
