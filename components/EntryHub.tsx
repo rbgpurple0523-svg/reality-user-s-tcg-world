@@ -31,6 +31,7 @@ export interface EntryRecord {
   color?: CardColor;
   colorHex?: string;
   colorType?: ColorType;
+  showProfileUrl?: boolean;
   season?: Season;
   archetype?: Archetype;
   hp?: number;

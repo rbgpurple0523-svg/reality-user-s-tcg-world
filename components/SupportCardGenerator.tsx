@@ -300,6 +300,8 @@ export default function SupportCardGenerator({ selectedEmotion, onBackToHub, onB
   const [effectName, setEffectName] = useState(activeEmotion.name);
   const [flavorText, setFlavorText] = useState(getEmotionFlavorText(activeEmotion));
   const [selectedColorHex, setSelectedColorHex] = useState('#22D3EE');
+  const [showProfileUrl, setShowProfileUrl] = useState(true);
+  const [showProfileUrlGuide, setShowProfileUrlGuide] = useState(false);
 
   const [entries, setEntries] = useState<EntryRecord[]>([]);
   const [myTokens, setMyTokens] = useState<string[]>([]);
@@ -350,6 +352,7 @@ export default function SupportCardGenerator({ selectedEmotion, onBackToHub, onB
       flavorText,
       colorHex: selectedColorHex,
       colorType: selectedColorType,
+      showProfileUrl,
     };
 
     const hasDraft =
@@ -373,6 +376,7 @@ export default function SupportCardGenerator({ selectedEmotion, onBackToHub, onB
     }
   }, [
     profileUrl,
+    showProfileUrl,
     userName,
     imageDataUrl,
     selectedEmotionId,
@@ -396,9 +400,11 @@ export default function SupportCardGenerator({ selectedEmotion, onBackToHub, onB
         effectName?: string;
         flavorText?: string;
         colorHex?: string;
+        showProfileUrl?: boolean;
       };
 
-      setProfileUrl(draft.profileUrl || '');
+      setProfileUrl(normalizeProfileUrl(draft.profileUrl || ''));
+      setShowProfileUrl(draft.showProfileUrl !== false);
       setUserName(draft.userName || '');
       setImageDataUrl(draft.imageDataUrl || '');
       if (draft.selectedEmotionId) setSelectedEmotionId(draft.selectedEmotionId);
@@ -452,6 +458,11 @@ export default function SupportCardGenerator({ selectedEmotion, onBackToHub, onB
     setActiveModal(null);
   };
 
+const handleProfileUrlChange = (value: string) => {
+  setProfileUrl(normalizeProfileUrl(value));
+  setErrorMessage('');
+};
+
   const handleImageUpload = (e: ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
@@ -486,7 +497,10 @@ export default function SupportCardGenerator({ selectedEmotion, onBackToHub, onB
     `token_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`;
 
   const normalizeProfileUrl = (value: string) =>
-    value.trim().toLowerCase().replace(/\/$/, '');
+   value
+     .trim()
+     .replace(/#REALITY$/i, '')
+     .replace(/\/$/, '');
 
   const validateBeforeConfirm = () => {
     if (!profileUrl.trim() || !profileUrl.startsWith('https://reality.app/profile/')) {
@@ -591,6 +605,7 @@ export default function SupportCardGenerator({ selectedEmotion, onBackToHub, onB
       colorHex: selectedColorHex,
       colorType: selectedColorType,
       ownerToken,
+      showProfileUrl,
       firstUser: editingEntry?.firstUser || '自分',
       createdAt: editingEntry?.createdAt || now,
       updatedAt: now,
@@ -649,7 +664,8 @@ export default function SupportCardGenerator({ selectedEmotion, onBackToHub, onB
   const handleEdit = (entry: EntryRecord) => {
     if (!authorizeEntry(entry)) return;
 
-    setProfileUrl(entry.profileUrl || '');
+    setProfileUrl(normalizeProfileUrl(entry.profileUrl || ''));
+    setShowProfileUrl(entry.showProfileUrl !== false);
     setUserName(entry.userName || '');
     setImageDataUrl(entry.imageDataUrl || '');
     setPassword(entry.passwordHash || '');
@@ -931,8 +947,14 @@ export default function SupportCardGenerator({ selectedEmotion, onBackToHub, onB
                     <div className="rounded-2xl border border-gray-200 bg-gray-50 p-3">
                       <div className="text-[9px] font-black tracking-[0.12em] text-gray-500">REGISTERED USER</div>
                       <div className="mt-1 text-sm font-black text-gray-950">{userName || '未設定'}</div>
-                      <div className="mt-3 text-[8px] font-black text-gray-400">REALITYプロフィールURL</div>
-                      <div className="mt-0.5 break-all text-[10px] font-bold text-gray-700">{profileUrl || '未設定'}</div>
+{showProfileUrl && (
+  <>
+    <div className="mt-3 text-[8px] font-black text-gray-400">REALITYプロフィールURL</div>
+    <div className="mt-0.5 break-all text-[10px] font-bold text-gray-700">
+      {normalizeProfileUrl(profileUrl) || '未設定'}
+    </div>
+  </>
+)}
                     </div>
                   </div>
 
@@ -990,8 +1012,39 @@ export default function SupportCardGenerator({ selectedEmotion, onBackToHub, onB
                   </div>
 
                   <div>
-                    <label className="mb-1 block font-bold">REALITY プロフURL <span className="text-red-500">*</span></label>
-                    <input type="text" value={profileUrl} onChange={(e) => setProfileUrl(e.target.value)} placeholder="https://reality.app/profile/xxxxxx" className="w-full rounded-xl border px-3 py-2.5" />
+<div className="mb-1 flex items-center justify-between gap-2">
+  <label className="block font-bold">
+    REALITY プロフURL <span className="text-red-500">*</span>
+  </label>
+  <button
+    type="button"
+    onClick={() => setShowProfileUrlGuide(true)}
+    className="rounded-lg border border-indigo-200 bg-indigo-50 px-2.5 py-1.5 text-[9px] font-black text-indigo-700"
+  >
+    手順
+  </button>
+</div>
+
+<input
+  type="text"
+  value={profileUrl}
+  onChange={(e) => handleProfileUrlChange(e.target.value)}
+  placeholder="https://reality.app/profile/xxxxxx"
+  className="w-full rounded-xl border px-3 py-2.5"
+/>
+
+<label className="mt-2 flex cursor-pointer items-center justify-between gap-3 rounded-xl border border-gray-200 bg-gray-50 px-3 py-2.5">
+  <span className="text-[10px] font-bold text-gray-700">プロフURLをカードに表示する</span>
+  <span className={`relative inline-flex h-6 w-11 shrink-0 items-center rounded-full transition ${showProfileUrl ? 'bg-purple-600' : 'bg-gray-300'}`}>
+    <input
+      type="checkbox"
+      checked={showProfileUrl}
+      onChange={(e) => setShowProfileUrl(e.target.checked)}
+      className="peer sr-only"
+    />
+    <span className={`pointer-events-none h-4 w-4 rounded-full bg-white shadow transition ${showProfileUrl ? 'translate-x-6' : 'translate-x-1'}`} />
+  </span>
+</label>
                     <p className="mt-1 text-[9px] leading-4 text-gray-500">同じREALITYユーザーがサポートカードを複数登録することを防ぐために使用します。1ユーザーにつき1枚まで登録できます。</p>
                   </div>
 
@@ -1181,6 +1234,55 @@ export default function SupportCardGenerator({ selectedEmotion, onBackToHub, onB
           </div>
         </div>
       )}
+
+
+{showProfileUrlGuide && (
+  <div className="fixed inset-0 z-[100] flex items-center justify-center bg-slate-950/70 p-3 backdrop-blur-sm">
+    <div className="w-full max-w-sm overflow-hidden rounded-3xl bg-white shadow-2xl">
+      <div className="flex items-center justify-between gap-3 border-b border-gray-200 px-4 py-3">
+        <div className="text-sm font-black">REALITYプロフィールURLの取得手順</div>
+        <button
+          type="button"
+          onClick={() => setShowProfileUrlGuide(false)}
+          className="rounded-lg bg-gray-100 px-2.5 py-1.5 text-xs font-black"
+        >
+          ✕
+        </button>
+      </div>
+
+      <div className="min-h-0 max-h-[78dvh] overflow-y-auto p-4 text-[10px] leading-5 text-gray-700">
+        <div className="font-black text-indigo-800">
+          ① 自分のREALITYプロフィールを開き、共有ボタンをタップ
+        </div>
+        <img
+          src="/tcg_card/REALITY_USERURL_copy_1.jpg"
+          alt="REALITYプロフィール画面で共有ボタンをタップする手順"
+          className="mt-2 w-full rounded-2xl border border-gray-200 bg-gray-50 object-contain"
+        />
+
+        <div className="mt-5 font-black text-indigo-800">
+          ② プロフィールURLをコピーする
+        </div>
+        <img
+          src="/tcg_card/REALITY_USERURL_copy_2.jpg"
+          alt="REALITYプロフィールURLをコピーする手順"
+          className="mt-2 w-full rounded-2xl border border-gray-200 bg-gray-50 object-contain"
+        />
+      </div>
+
+      <div className="border-t border-gray-200 p-3">
+        <button
+          type="button"
+          onClick={() => setShowProfileUrlGuide(false)}
+          className="w-full rounded-xl bg-gray-900 py-2.5 text-xs font-black text-white"
+        >
+          閉じる
+        </button>
+      </div>
+    </div>
+  </div>
+)}
+
 
       {activeModal === 'saved' && (
         <div className="fixed inset-0 z-[90] flex items-end justify-center bg-slate-950/70 p-0 sm:items-center sm:p-4">
