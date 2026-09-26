@@ -7390,7 +7390,7 @@ const field =
                       </div>
                     </button>
                   </div>
-                  <div className="translate-y-2">
+                  <div className="translate-y-6">
                     <VerticalScoreGauge
                       label=""
                       score={currentMyClassScore}
@@ -7451,7 +7451,7 @@ const field =
                       </div>
                     </button>
                   </div>
-                  <div className="translate-y-2">
+                  <div className="translate-y-6">
                     <VerticalScoreGauge
                       label=""
                       score={currentOppClassScore}
