@@ -11,9 +11,10 @@ getLegacyColorHex,
 } from './colorTypes';
 
 interface CardGeneratorProps {
-selectedCoordinate?: CoordinatePreset | null;
-onBackToHub?: () => void;
-onChangeCoordinate?: () => void;
+  selectedCoordinate?: CoordinatePreset | null;
+  onBackToHub?: () => void;
+  onChangeCoordinate?: () => void;
+  openSaved?: boolean;
 }
 
 const ENTRIES_KEY = 'reality_world_entries';
@@ -153,9 +154,10 @@ return (
 }
 
 export default function CardGenerator({
-selectedCoordinate,
-onBackToHub,
-onChangeCoordinate,
+  selectedCoordinate,
+  onBackToHub,
+  onChangeCoordinate,
+  openSaved,
 }: CardGeneratorProps) {
 const [currentCoordinate, setCurrentCoordinate] = useState<CoordinatePreset | null>(selectedCoordinate ?? null);
 
@@ -204,6 +206,11 @@ const [draftChecked, setDraftChecked] = useState(false);
 const [isModerating, setIsModerating] = useState(false);
 
 const [activeEditor, setActiveEditor] = useState<'basic' | 'skills' | 'color' | 'flavor' | 'saved' | null>(null);
+useEffect(() => {
+  if (openSaved) {
+    setActiveEditor('saved');
+  }
+}, [openSaved]);
 const [showProfileHelp, setShowProfileHelp] = useState(false);
 const [showSkillsHelp, setShowSkillsHelp] = useState(false);
 const [isColorTouched, setIsColorTouched] = useState(false);

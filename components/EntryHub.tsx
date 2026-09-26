@@ -295,10 +295,11 @@ export default function EntryHub({
   const [emoTargetFilter, setEmoTargetFilter] = useState('ALL');
   const [emoStatFilter, setEmoStatFilter] = useState('ALL');
   const [emoDurationFilter, setEmoDurationFilter] = useState('ALL');
-  const [activeGenerator, setActiveGenerator] = useState<{
-    type: 'coordinate' | 'emotion';
-    preset: CoordinatePreset | EmotionPreset;
-  } | null>(null);
+const [activeGenerator, setActiveGenerator] = useState<{
+  type: 'coordinate' | 'emotion';
+  preset: CoordinatePreset | EmotionPreset;
+  openSaved?: boolean;
+} | null>(null);
 
   const reloadEntries = () => setEntries(getStoredEntries());
 
@@ -359,23 +360,25 @@ export default function EntryHub({
     setActiveGenerator(null);
   };
 
-  if (activeGenerator) {
-    if (activeGenerator.type === 'coordinate') {
-      return (
-        <CardGenerator
-          selectedCoordinate={activeGenerator.preset as CoordinatePreset}
-          onBackToHub={handleRegisteredGeneratorClose}
-        />
-      );
-    }
-
+if (activeGenerator) {
+  if (activeGenerator.type === 'coordinate') {
     return (
-      <SupportCardGenerator
-        selectedEmotion={activeGenerator.preset as EmotionPreset}
+      <CardGenerator
+        selectedCoordinate={activeGenerator.preset as CoordinatePreset}
         onBackToHub={handleRegisteredGeneratorClose}
+        openSaved={activeGenerator.openSaved}
       />
     );
   }
+
+  return (
+    <SupportCardGenerator
+      selectedEmotion={activeGenerator.preset as EmotionPreset}
+      onBackToHub={handleRegisteredGeneratorClose}
+      openSaved={activeGenerator.openSaved}
+    />
+  );
+}
 
   return (
     <div className="w-full max-w-6xl mx-auto p-4 sm:p-6 space-y-5 text-gray-900">

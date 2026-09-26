@@ -19,6 +19,7 @@ interface SupportCardGeneratorProps {
   selectedEmotion?: EmotionPreset | null;
   onBackToHub?: () => void;
   onBackToEmotionSelect?: () => void;
+  openSaved?: boolean;
 }
 
 const DRAFT_KEY = 'reality_world_support_draft';
@@ -278,7 +279,7 @@ function EmotionMiniMap({
   );
 }
 
-export default function SupportCardGenerator({ selectedEmotion, onBackToHub, onBackToEmotionSelect }: SupportCardGeneratorProps) {
+export default function SupportCardGenerator({ selectedEmotion, onBackToHub, onBackToEmotionSelect, openSaved, }: SupportCardGeneratorProps) {
   const [selectedEmotionId, setSelectedEmotionId] = useState<string>(
     selectedEmotion?.id || EMOTION_PRESETS[0]?.id || '',
   );
@@ -309,6 +310,11 @@ export default function SupportCardGenerator({ selectedEmotion, onBackToHub, onB
   const [registrationStep, setRegistrationStep] = useState<RegistrationStep>(2);
   const [activeEditor, setActiveEditor] = useState<EditorKey>(null);
   const [activeModal, setActiveModal] = useState<ModalKey>(null);
+useEffect(() => {
+  if (openSaved) {
+    setActiveModal('saved');
+  }
+}, [openSaved]);
   const [draftAvailable, setDraftAvailable] = useState(false);
   const [isColorTouched, setIsColorTouched] = useState(false);
 
