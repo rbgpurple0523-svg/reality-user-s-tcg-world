@@ -698,8 +698,13 @@ const handleProfileUrlChange = (value: string) => {
 
   const handleDelete = (entry: EntryRecord) => {
     if (!authorizeEntry(entry)) return;
-    if (!window.confirm('本当にこのエントリーを削除しますか？')) return;
-
+if (
+  !window.confirm(
+    `「${entry.customEffectName || entry.userName}」のサポートカードを削除しますか？\nこの操作は元に戻せません。`,
+  )
+) {
+  return;
+}
     const updatedEntries = entries.filter((item) => item.id !== entry.id);
     setEntries(updatedEntries);
 
@@ -708,6 +713,13 @@ const handleProfileUrlChange = (value: string) => {
     } catch {
       // Keep current in-memory state even if persistence fails.
     }
+
+if (editingId === entry.id) {
+  setEditingId(null);
+  setActiveEditor(null);
+  setSuccessMessage('✨ サポートカードを削除しました。');
+}
+
   };
 
   const pickerEmotions = EMOTION_PRESETS.filter((emotion) => {
@@ -1114,8 +1126,27 @@ const handleProfileUrlChange = (value: string) => {
               )}
             </div>
 
-            <div className="shrink-0 border-t border-gray-200 p-3">
-              <button type="button" onClick={() => setActiveEditor(null)} className="w-full rounded-xl bg-gray-900 py-2.5 text-xs font-black text-white">完了</button>
+            <div className="shrink-0 border-t border-gray-200 p-3 space-y-2">
+              {editingId && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    const entry = entries.find((item) => item.id === editingId);
+                    if (entry) handleDelete(entry);
+                  }}
+                  className="w-full rounded-xl border border-red-200 bg-red-50 py-2.5 text-xs font-black text-red-700 hover:bg-red-100"
+                >
+                  このカードを削除する
+                </button>
+              )}
+
+              <button
+                type="button"
+                onClick={() => setActiveEditor(null)}
+                className="w-full rounded-xl bg-gray-900 py-2.5 text-xs font-black text-white"
+              >
+                完了
+              </button>
             </div>
           </div>
         </div>
@@ -1324,22 +1355,19 @@ const handleProfileUrlChange = (value: string) => {
                           <div className="mt-2 rounded-xl bg-white p-2 text-[10px] leading-4 text-gray-700">💬 {entry.flavorText}</div>
                         )}
 
-                        <div className="mt-2 flex gap-2">
-                          <button
-                            type="button"
-                            onClick={() => handleEdit(entry)}
-                            className={`flex-1 rounded-xl px-3 py-2 text-[10px] font-black ${canEdit ? 'bg-purple-600 text-white' : 'bg-gray-200 text-gray-700'}`}
-                          >
-                            {canEdit ? '編集' : '所有者認証 → 編集'}
-                          </button>
-                          <button
-                            type="button"
-                            onClick={() => handleDelete(entry)}
-                            className={`flex-1 rounded-xl px-3 py-2 text-[10px] font-black ${canEdit ? 'bg-red-600 text-white' : 'bg-gray-200 text-gray-700'}`}
-                          >
-                            {canEdit ? '削除' : '所有者認証 → 削除'}
-                          </button>
-                        </div>
+<div className="mt-2">
+  <button
+    type="button"
+    onClick={() => handleEdit(entry)}
+    className={`w-full rounded-xl px-3 py-2 text-[10px] font-black ${
+      canEdit
+        ? 'bg-purple-600 text-white hover:bg-purple-700'
+        : 'bg-gray-200 text-gray-700'
+    }`}
+  >
+    {canEdit ? '編集・削除' : '所有者認証 → 編集・削除'}
+  </button>
+</div>
                       </div>
                     );
                   })}

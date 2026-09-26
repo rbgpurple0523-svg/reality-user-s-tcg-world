@@ -755,6 +755,33 @@ if (activeGenerator) {
                 return (
                   <article key={entry.id} className="rounded-2xl border border-gray-200 bg-gray-50 p-3">
                     <div className="flex items-center gap-3">
+<div className="mt-2">
+  <button
+    type="button"
+    onClick={() => {
+      const preset =
+        entry.cardType === 'coordinate'
+          ? coordinate
+          : emotion;
+
+      if (!preset) return;
+
+      setShowEntryList(false);
+      setActiveGenerator({
+        type: entry.cardType,
+        preset,
+        openSaved: true,
+      });
+    }}
+    className={`w-full rounded-xl px-3 py-2 text-[10px] font-black text-white ${
+      entry.cardType === 'coordinate'
+        ? 'bg-indigo-600 hover:bg-indigo-700'
+        : 'bg-purple-600 hover:bg-purple-700'
+    }`}
+  >
+    編集・削除
+  </button>
+</div>
                       {entry.imageDataUrl ? <img src={entry.imageDataUrl} alt="" className="h-12 w-12 rounded-xl object-cover border border-gray-200" /> : <div className="h-12 w-12 rounded-xl bg-gray-200" />}
                       <div className="min-w-0 flex-1">
                         <div className="text-[9px] font-black text-gray-400">{entry.cardType === 'coordinate' ? 'キャラカード' : 'サポートカード'}</div>

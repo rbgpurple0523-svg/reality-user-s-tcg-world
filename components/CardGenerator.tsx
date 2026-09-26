@@ -586,7 +586,13 @@ setActiveEditor('basic');
 
 const handleDelete = (entry: EntryRecord) => {
 if (!authorizeEntry(entry)) return;
-if (!window.confirm('本当にこのエントリーを削除しますか？')) return;
+if (
+  !window.confirm(
+    `「${entry.userName}」のキャラカードを削除しますか？\nこの操作は元に戻せません。`,
+  )
+) {
+  return;
+}
 
 const updated = entries.filter((item) => item.id !== entry.id);
 setEntries(updated);
@@ -603,8 +609,12 @@ setAuthorizedIds((prev) => {
   delete next[entry.id];
   return next;
 });
-if (editingId === entry.id) setEditingId(null);
-
+if (editingId === entry.id) {
+  setEditingId(null);
+  setActiveEditor(null);
+  setRegistrationStep(2);
+  setSuccessMessage('✨ キャラカードを削除しました。');
+}
 };
 
 const normalizedProfileUrlForValidation = (value: string) =>
@@ -922,8 +932,27 @@ return ( <div className="mx-auto flex h-full min-h-0 w-full max-w-5xl flex-col t
         </div>
 
         {activeEditor !== 'saved' && (
-          <div className="shrink-0 border-t border-gray-200 p-3">
-            <button type="button" onClick={() => setActiveEditor(null)} className="w-full rounded-xl bg-gray-900 py-2.5 text-xs font-black text-white">完了</button>
+          <div className="shrink-0 border-t border-gray-200 p-3 space-y-2">
+            {editingId && (
+              <button
+                type="button"
+                onClick={() => {
+                  const entry = entries.find((item) => item.id === editingId);
+                  if (entry) handleDelete(entry);
+                }}
+                className="w-full rounded-xl border border-red-200 bg-red-50 py-2.5 text-xs font-black text-red-700 hover:bg-red-100"
+              >
+                このカードを削除する
+              </button>
+            )}
+
+            <button
+              type="button"
+              onClick={() => setActiveEditor(null)}
+              className="w-full rounded-xl bg-gray-900 py-2.5 text-xs font-black text-white"
+            >
+              完了
+            </button>
           </div>
         )}
       </div>
