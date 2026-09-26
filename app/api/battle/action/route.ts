@@ -601,8 +601,9 @@ const calculateSkillResult = (
     const first = skill.primaryStat ?? baseRank[1] ?? 'intellect';
     const second = skill.secondaryStat ?? baseRank[2] ?? 'dexterity';
     gainedScore =
-      effective[first] *
-      effective[second];
+      (effective[first] +
+        effective[second]) *
+      15;
   } else if (skill.rule === 'difference_score') {
     const stat = skill.primaryStat ?? baseRank[0] ?? 'hp';
     gainedScore =
@@ -1662,7 +1663,8 @@ export async function POST(
       body.turnIndex;
 
     const requestedAvatarIndex =
-      typeof body.avatarIndex === 'number'
+      typeof body.avatarIndex === 'number' &&
+      Number.isInteger(body.avatarIndex)
         ? body.avatarIndex
         : -1;
 

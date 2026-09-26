@@ -18,11 +18,11 @@ const makeSkills = (code: string): [string, string, string, string] => {
     charm: '愛嬌',
   };
 
-  if (code === 'a1') {
+  if (code === 'n1') {
     return [
       'オールラウンド・スコア',
       '対応ステータス・スコア',
-      'オールアップ・バースト',
+      '選択ステータス・バースト',
       'オールダウン・クラッシュ',
     ];
   }

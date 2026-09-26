@@ -177,7 +177,7 @@ const skillNamesFor = (
     return [
       'オールラウンド・スコア',
       '対応ステータス・スコア',
-      'オールアップ・バースト',
+      '選択ステータス・バースト',
       'オールダウン・クラッシュ',
     ];
   }
@@ -186,7 +186,7 @@ const skillNamesFor = (
 
   return [
     `${STAT_LABELS[rank[0]]}ブースト`,
-    `${STAT_LABELS[rank[1]]}×${STAT_LABELS[rank[2]]}スコア`,
+    `${STAT_LABELS[rank[1]]}＋${STAT_LABELS[rank[2]]}スコア`,
     `${STAT_LABELS[rank[0]]}対抗スコア`,
     `${STAT_LABELS[rank[1]]}＋${STAT_LABELS[rank[3]]}スコア`,
   ];
@@ -227,7 +227,7 @@ const skillDescriptionsFor = (
 
   return [
     `自身の一番の魅力を素直に押し出すスキル［使用時の${first}×20スコア］`,
-    `自身の二番目・三番目の魅力の掛け合わせに新しい価値を見出すスキル［使用時の${second}×${third}スコア］`,
+    `自身の二番目・三番目の魅力を組み合わせて新しい価値を生み出すスキル［（使用時の${second}＋使用時の${third}）×15スコア］`,
     `自身の一番の魅力で力量の差を見せつけるスキル［（使用時の自分の${first}−相手の${first}）×40スコア］`,
     `自身の一番の魅力がより引き立つ状況を作るスキル［（使用時の${third}＋${fourth}）×10スコア＆相手の${first}を50%ダウン、1回のみ］`,
   ];

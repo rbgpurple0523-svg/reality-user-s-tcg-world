@@ -358,6 +358,7 @@ allow update: if request.auth != null
   && request.resource.data.diff(resource.data).affectedKeys().hasOnly([
   'hostDeckId',
   'readyHost',
+  'classReadyYearHost',
   'rematchHost',
   'rematchPlayerResetHost',
   'exitHost',
@@ -582,6 +583,7 @@ allow update: if request.auth != null
   && request.resource.data.diff(resource.data).affectedKeys().hasOnly([
     'guestDeckId',
     'readyGuest',
+    'classReadyYearGuest',
     'rematchGuest',
     'rematchPlayerResetGuest',
     'exitGuest',

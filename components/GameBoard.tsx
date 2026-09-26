@@ -681,6 +681,7 @@ void ensureAnonymousAuth()
   const [myHand, setMyHand] = useState<SupportCard[]>([]);
   const [myDeck, setMyDeck] = useState<SupportCard[]>([]);
   const [isDeckSelectOpen, setIsDeckSelectOpen] = useState(false);
+  const [selectedDeckPreviewId, setSelectedDeckPreviewId] = useState<string | null>(null);
   const [activeDeckId, setActiveDeckId] = useState<string | null>(() =>
     typeof window !== 'undefined' ? localStorage.getItem('reality_active_deck_id') : null,
   );
@@ -3494,10 +3495,10 @@ const handleIncomingActionRef =
           skill.secondaryStat ||
           'intellect';
 
-        const opponentBaseStats = opponentAvatar.baseStats || opponentAvatar.card.stats;
         gainedScore =
-          Number(opponentBaseStats[first] || 0) *
-          Number(opponentBaseStats[second] || 0);
+          (Number(effective[first] || 0) +
+            Number(effective[second] || 0)) *
+          15;
 
       } else if (
         skill.rule ===
@@ -4170,7 +4171,7 @@ useEffect(() => {
     } else if (skill.rule === 'product_score') {
       const first = skill.primaryStat || 'intellect';
       const second = skill.secondaryStat || 'dexterity';
-      gainedScore = getStat(effective, first) * getStat(effective, second);
+      gainedScore = (getStat(effective, first) + getStat(effective, second)) * 15;
     } else if (skill.rule === 'difference_score') {
       const stat = skill.primaryStat || 'hp';
       gainedScore = Math.max(0, getStat(effective, stat) - getStat(opponentEffective, stat)) * 40;
@@ -5155,7 +5156,10 @@ if (!actionSubmitted) {
       if (skill.rule === 'primary_score') {
         gainedScore = effective[skill.primaryStat || 'hp'] * 20;
       } else if (skill.rule === 'product_score') {
-        gainedScore = effective[skill.primaryStat || 'intellect'] * effective[skill.secondaryStat || 'dexterity'];
+        gainedScore =
+          (effective[skill.primaryStat || 'intellect'] +
+            effective[skill.secondaryStat || 'dexterity']) *
+          15;
       } else if (skill.rule === 'difference_score') {
         const stat = skill.primaryStat || 'hp';
         gainedScore = Math.max(0, effective[stat] - opponentEffective[stat]) * 40;
@@ -6466,6 +6470,98 @@ const field =
     }
   };
 
+
+  const getDeckPreviewData = (deck: Deck) => {
+    try {
+      const entriesRaw = localStorage.getItem('reality_world_entries');
+      const entries: EntryRecordWithSkills[] = entriesRaw ? JSON.parse(entriesRaw) : [];
+      const cards: Array<AvatarCard & { presetId?: string }> = [...CHARACTER_SAMPLE_CARDS];
+
+      for (const entry of entries.filter((item) => item.cardType === 'coordinate')) {
+        cards.push({
+          id: entry.id,
+          profileUrl: entry.profileUrl || '',
+          userName: entry.userName || 'キャラ',
+          imageDataUrl: entry.imageDataUrl || '',
+          color: (entry.color as '赤' | '青' | '黄') || '赤',
+          archetype: (entry.archetype as Archetype) || 'バランス型',
+          favoredSeason: '春',
+          stats: {
+            hp: entry.hp ?? 80,
+            intellect: entry.ap ?? 20,
+            dexterity: 20,
+            charm: 20,
+          },
+          passwordHash: entry.passwordHash || '',
+          createdAt: entry.createdAt || '',
+          updatedAt: entry.createdAt || '',
+          presetId: entry.presetId,
+        });
+      }
+
+      const roleItems: Array<{ role: RoleName; id: string | null }> = [
+        { role: '先鋒', id: deck.vanguardCardId },
+        { role: '中堅', id: deck.centerCardId },
+        { role: '大将', id: deck.generalCardId },
+      ];
+
+      const characters = roleItems.map(({ role, id }) => {
+        const card = cards.find((item) => item.id === id);
+        const preset = card ? getPresetForCard(card) : undefined;
+        const stats = preset?.stats || card?.stats;
+        return {
+          role,
+          name: card?.userName || '未選択',
+          imageDataUrl: card?.imageDataUrl || '',
+          stats: stats || { hp: 0, intellect: 0, dexterity: 0, charm: 0 },
+        };
+      });
+
+      const pool = getSupportPool(entries);
+      const resolvedIds = resolveSupportIdsForBattle(deck.supportCardIds || [], entries);
+      const grouped = new Map<string, { name: string; count: number; category: string }>();
+      for (const id of resolvedIds) {
+        const card = pool.find((item) => item.id === id);
+        const name = card?.name || id;
+        const existing = grouped.get(name);
+        if (existing) {
+          existing.count += 1;
+        } else {
+          const preset = card?.presetId ? EMOTION_PRESETS.find((item) => item.id === card.presetId) : undefined;
+          grouped.set(name, {
+            name,
+            count: 1,
+            category: preset?.effectCategory || 'その他',
+          });
+        }
+      }
+
+      const supportCategories = Array.from(grouped.values()).reduce<Record<string, number>>((acc, item) => {
+        acc[item.category] = (acc[item.category] || 0) + item.count;
+        return acc;
+      }, {});
+
+      const totalStats = characters.reduce(
+        (acc, character) => ({
+          hp: acc.hp + character.stats.hp,
+          intellect: acc.intellect + character.stats.intellect,
+          dexterity: acc.dexterity + character.stats.dexterity,
+          charm: acc.charm + character.stats.charm,
+        }),
+        { hp: 0, intellect: 0, dexterity: 0, charm: 0 },
+      );
+
+      return {
+        characters,
+        supports: Array.from(grouped.values()),
+        supportCategories,
+        totalStats,
+      };
+    } catch {
+      return null;
+    }
+  };
+
   // ===== チーム選択 =====
   const handleSelectDeck = async (deckId: string) => {
     if (battlePhase !== 'setup' || currentYear !== 1) return;
@@ -6515,6 +6611,20 @@ const field =
 
   // ===== 現在の技の使用状況 =====
   const usedThisClass = usedSkillsByClass[String(currentYear)] || [];
+  const supportTurnOrdinal = getBattleTurnOrdinal(currentYear, turnIndex);
+  const supportUseLimit = getSupportUsageLimitFromEffects(
+    myActiveAvatar.supportControlEffects,
+    supportTurnOrdinal,
+  );
+  const supportUseCount = getSupportUseCountFromUsedSkills(
+    usedSkillsByClass,
+    currentYear,
+    turnIndex,
+  );
+  const supportUsageLimited = Number.isFinite(supportUseLimit);
+  const supportUsageLimitReached =
+    supportUsageLimited && supportUseCount >= supportUseLimit;
+
 
   // ===== 待機キャラの表示順 =====
   // ホスト：大将 → 中堅 → 先鋒
@@ -6545,6 +6655,12 @@ const field =
   const selectedSupportBadges = selectedSupportPreset
     ? getEmotionPerformanceBadges(selectedSupportPreset)
     : undefined;
+
+  const selectedSupportIsFree =
+    selectedSupportPreset?.effectCategory === 'サポートカード使用数' &&
+    selectedSupportPreset.statEffect.includes('制限されない');
+  const selectedSupportLimitReached =
+    supportUsageLimitReached && !selectedSupportIsFree;
 
   const currentSkillTurnOrdinal = getBattleTurnOrdinal(
     currentYear,
@@ -6603,20 +6719,37 @@ const field =
                   <span className="ml-1 opacity-40">{log.length}</span>
                 </button>
               )}
-              {battlePhase === 'battle' && (
-                <span
-                  className={`hidden rounded-full px-2.5 py-1.5 text-[9px] font-black sm:inline-flex ${
-                    myTurn
-                      ? 'bg-amber-300 text-amber-950'
-                      : 'bg-slate-900 text-white'
-                  }`}
-                >
-                  {myTurn ? '自分のターン' : '相手のターン'}
-                </span>
-              )}
+
             </div>
           </div>
         </header>
+
+        {battlePhase === 'battle' && (
+          <section
+            className={`mt-2 shrink-0 rounded-2xl border px-3 py-2.5 shadow-lg ${
+              myTurn
+                ? 'border-amber-300 bg-amber-200/95 text-amber-950'
+                : 'border-slate-700 bg-slate-900/95 text-white'
+            }`}
+          >
+            <div className="flex items-center justify-between gap-3">
+              <div className="flex min-w-0 items-center gap-2.5">
+                <div className="text-2xl leading-none">{myTurn ? '🔥' : '⏳'}</div>
+                <div className="min-w-0">
+                  <div className="text-sm font-black sm:text-base">
+                    {myTurn ? 'あなたのターン' : '相手のターン'}
+                  </div>
+                  <div className={`mt-0.5 text-[9px] font-bold ${myTurn ? 'text-amber-800' : 'text-slate-300'}`}>
+                    {myTurn ? 'スキルやサポートカードを使用できます' : '相手の行動を待っています'}
+                  </div>
+                </div>
+              </div>
+              <div className={`shrink-0 rounded-full px-2.5 py-1 text-[9px] font-black ${myTurn ? 'bg-white/70 text-amber-900' : 'bg-white/10 text-white'}`}>
+                ターン {turnIndex + 1} / 8
+              </div>
+            </div>
+          </section>
+        )}
 
         {classResult && (
           <section className="mt-2 flex min-h-0 flex-1 items-center justify-center">
@@ -6919,7 +7052,7 @@ const field =
                   <button
                     type="button"
                     onClick={() => setModalAvatar(myActiveAvatar)}
-                    className="block w-[92px] shrink-0 translate-y-1.5"
+                    className="block w-[92px] shrink-0 translate-y-3"
                   >
                     <div ref={myActiveCardAnchorRef}>
                       <BattleCardReveal
@@ -6976,7 +7109,7 @@ const field =
                   <button
                     type="button"
                     onClick={() => setModalAvatar(oppActiveAvatar)}
-                    className="block w-[92px] shrink-0 translate-y-1.5"
+                    className="block w-[92px] shrink-0 translate-y-3"
                   >
                     <div ref={opponentActiveCardAnchorRef}>
                       <BattleCardReveal
@@ -7039,8 +7172,19 @@ const field =
                 </div>
               </div>
 
-              <div className="mt-0.5 text-[8px] font-bold text-slate-400">
-                タップして内容を確認 → 使用
+              <div className="mt-0.5 flex items-center justify-between gap-2">
+                <div className="text-[8px] font-bold text-slate-400">
+                  タップして内容を確認 → 使用
+                </div>
+                {supportUsageLimited && (
+                  <div className={`shrink-0 rounded-lg px-2 py-1 text-[9px] font-black ${
+                    supportUsageLimitReached
+                      ? 'border border-rose-200 bg-rose-50 text-rose-700'
+                      : 'border border-amber-200 bg-amber-50 text-amber-800'
+                  }`}>
+                    🔒{supportUseLimit}枚まで制限中
+                  </div>
+                )}
               </div>
 
               <div className="mt-1.5 flex min-h-[94px] items-end justify-center overflow-x-auto px-1 pb-1 pt-2 touch-pan-x">
@@ -7226,56 +7370,76 @@ const field =
 
         {isDeckSelectOpen && battlePhase === 'setup' && (
           <div className="fixed inset-0 z-[70] flex items-center justify-center bg-slate-950/60 px-4 py-6 backdrop-blur-sm">
-            <div className="flex max-h-[85dvh] w-full max-w-md flex-col rounded-3xl bg-white p-5 shadow-2xl">
+            <div className="flex max-h-[88dvh] w-full max-w-2xl flex-col rounded-3xl bg-white p-5 shadow-2xl">
               <div className="flex shrink-0 items-center justify-between gap-3">
                 <div>
-                  <div className="text-[9px] font-black tracking-[0.18em] text-indigo-500">
-                    TEAM
-                  </div>
-                  <h3 className="mt-0.5 text-lg font-black text-slate-950">
-                    チームを選ぶ
-                  </h3>
+                  <div className="text-[9px] font-black tracking-[0.18em] text-indigo-500">TEAM</div>
+                  <h3 className="mt-0.5 text-lg font-black text-slate-950">チームを選ぶ</h3>
                 </div>
-                <button
-                  type="button"
-                  onClick={() => setIsDeckSelectOpen(false)}
-                  className="rounded-xl bg-slate-100 px-3 py-2 text-xs font-black text-slate-600"
-                >
-                  閉じる
-                </button>
+                <button type="button" onClick={() => { setSelectedDeckPreviewId(null); setIsDeckSelectOpen(false); }} className="rounded-xl bg-slate-100 px-3 py-2 text-xs font-black text-slate-600">閉じる</button>
               </div>
               <div className="mt-4 min-h-0 space-y-2 overflow-y-auto pr-1">
                 {(() => {
                   try {
-                    const decks: Deck[] = JSON.parse(
-                      localStorage.getItem('reality_decks') || '[]',
-                    );
-                    if (!decks.length) {
+                    const decks: Deck[] = JSON.parse(localStorage.getItem('reality_decks') || '[]');
+                    if (!decks.length) return <div className="py-8 text-center text-sm font-bold text-slate-400">保存されたチームがありません。</div>;
+                    return decks.map((deck) => {
+                      const preview = selectedDeckPreviewId === deck.id ? getDeckPreviewData(deck) : null;
                       return (
-                        <div className="py-8 text-center text-sm font-bold text-slate-400">
-                          保存されたチームがありません。
+                        <div key={deck.id} className="overflow-hidden rounded-2xl border border-slate-200 bg-slate-50">
+                          <div className="p-3">
+                            <div className="flex items-center justify-between gap-3">
+                              <div className="min-w-0">
+                                <div className="truncate font-black text-slate-950">{deck.name}</div>
+                                <div className="mt-1 text-[9px] font-bold text-slate-400">キャラ3人・サポート {deck.supportCardIds?.length || 0}枚</div>
+                              </div>
+                              <div className="flex shrink-0 gap-1.5">
+                                <button type="button" onClick={() => setSelectedDeckPreviewId((prev) => prev === deck.id ? null : deck.id)} className="rounded-xl border border-slate-200 bg-white px-2.5 py-2 text-[9px] font-black text-slate-700 shadow-sm hover:bg-slate-50">{selectedDeckPreviewId === deck.id ? '詳細を閉じる' : '詳細・分析'}</button>
+                                <button type="button" onClick={() => void handleSelectDeck(deck.id)} className="rounded-xl bg-indigo-600 px-3 py-2 text-[9px] font-black text-white shadow-sm hover:bg-indigo-700">このチームを選ぶ</button>
+                              </div>
+                            </div>
+                          </div>
+                          {preview && (
+                            <div className="border-t border-slate-200 bg-white p-3">
+                              <div className="grid gap-3 lg:grid-cols-[minmax(0,1fr)_minmax(0,1fr)]">
+                                <div>
+                                  <div className="text-[9px] font-black tracking-[0.12em] text-indigo-500">CHARACTERS</div>
+                                  <div className="mt-2 space-y-1.5">
+                                    {preview.characters.map((character) => (
+                                      <div key={character.role} className="flex items-center gap-2 rounded-xl border border-slate-100 bg-slate-50 px-2 py-1.5">
+                                        <div className="w-14 shrink-0 text-[8px] font-black text-slate-400">{roleDisplayNames[character.role]}</div>
+                                        <div className="h-10 w-8 shrink-0 overflow-hidden rounded-lg bg-white ring-1 ring-slate-200">{character.imageDataUrl ? <img src={character.imageDataUrl} alt="" className="h-full w-full object-contain" /> : null}</div>
+                                        <div className="min-w-0 flex-1 truncate text-[10px] font-black text-slate-800">{character.name}</div>
+                                        <div className="shrink-0 text-right text-[8px] font-bold text-slate-500">熱{character.stats.hp}・知{character.stats.intellect}・技{character.stats.dexterity}・愛{character.stats.charm}</div>
+                                      </div>
+                                    ))}
+                                  </div>
+                                  <div className="mt-2 rounded-xl border border-indigo-100 bg-indigo-50/70 p-2">
+                                    <div className="text-[8px] font-black text-indigo-700">キャラ基礎値合計</div>
+                                    <div className="mt-1 grid grid-cols-4 gap-1 text-center text-[9px] font-black text-indigo-950"><div>熱 {preview.totalStats.hp}</div><div>知 {preview.totalStats.intellect}</div><div>技 {preview.totalStats.dexterity}</div><div>愛 {preview.totalStats.charm}</div></div>
+                                  </div>
+                                </div>
+                                <div>
+                                  <div className="text-[9px] font-black tracking-[0.12em] text-purple-500">SUPPORT CARDS</div>
+                                  <div className="mt-2 flex flex-wrap gap-1.5">
+                                    {preview.supports.length ? preview.supports.map((support) => <span key={support.name} className="rounded-lg border border-purple-100 bg-purple-50 px-2 py-1 text-[8px] font-black text-purple-900">{support.name}{support.count > 1 ? ` ×${support.count}` : ''}</span>) : <span className="text-[9px] font-bold text-slate-400">サポートなし</span>}
+                                  </div>
+                                  <div className="mt-2 rounded-xl border border-purple-100 bg-purple-50/60 p-2">
+                                    <div className="text-[8px] font-black text-purple-700">デッキ分析</div>
+                                    <div className="mt-1 space-y-0.5 text-[8px] font-bold text-purple-950">
+                                      {Object.entries(preview.supportCategories).map(([category, count]) => <div key={category} className="flex items-center justify-between gap-2"><span>{category}</span><span>{count}枚</span></div>)}
+                                      {!Object.keys(preview.supportCategories).length && <div>サポートカードなし</div>}
+                                    </div>
+                                  </div>
+                                </div>
+                              </div>
+                            </div>
+                          )}
                         </div>
                       );
-                    }
-                    return decks.map((deck) => (
-                      <button
-                        key={deck.id}
-                        type="button"
-                        onClick={() => void handleSelectDeck(deck.id)}
-                        className="w-full rounded-2xl border border-slate-200 bg-slate-50 p-3 text-left transition hover:border-indigo-300 hover:bg-indigo-50"
-                      >
-                        <div className="font-black text-slate-950">{deck.name}</div>
-                        <div className="mt-1 text-[9px] font-bold text-slate-400">
-                          キャラ3人・サポート {deck.supportCardIds?.length || 0}枚
-                        </div>
-                      </button>
-                    ));
+                    });
                   } catch {
-                    return (
-                      <div className="text-sm font-bold text-red-600">
-                        チームを読み込めませんでした。
-                      </div>
-                    );
+                    return <div className="text-sm font-bold text-red-600">チームを読み込めませんでした。</div>;
                   }
                 })()}
               </div>
@@ -7358,7 +7522,11 @@ const field =
 
               <button
                 type="button"
-                disabled={!myTurn || supportSubmittingCardIndex !== null}
+                disabled={
+                  !myTurn ||
+                  supportSubmittingCardIndex !== null ||
+                  selectedSupportLimitReached
+                }
                 onClick={() => {
                   if (selectedSupportCardIndex === null || !selectedSupportCard) return;
                   const index = selectedSupportCardIndex;
@@ -7367,7 +7535,11 @@ const field =
                 }}
                 className="mt-5 w-full rounded-2xl bg-indigo-600 px-4 py-3.5 text-sm font-black text-white shadow-lg shadow-indigo-200 transition hover:bg-indigo-700 disabled:cursor-not-allowed disabled:opacity-40"
               >
-                {myTurn ? 'このサポートカードを使用する' : '自分のターンではありません'}
+                {!myTurn
+                  ? '自分のターンではありません'
+                  : selectedSupportLimitReached
+                    ? 'このターンの枚数制限に達しました'
+                    : 'このサポートカードを使用する'}
               </button>
             </div>
           </div>
@@ -7393,7 +7565,7 @@ const field =
 
               <div className="mt-3 rounded-2xl bg-slate-50 p-3 text-xs font-bold leading-relaxed text-slate-600">
                 {skillStatSelection.mode === 'response'
-                  ? '選んだステータスの「自分 − 相手」×20でスコアを計算します。'
+                  ? '選んだステータスの「自分 − 相手」×40でスコアを計算します。'
                   : '選んだステータスを2倍にしてから、技の処理を確定します。'}
               </div>
 
@@ -7401,7 +7573,7 @@ const field =
                 {STAT_KEYS.map((stat) => {
                   const mine = getEffectiveStats(myActiveAvatar)[stat];
                   const opponent = getEffectiveStats(oppActiveAvatar)[stat];
-                  const score = Math.max(0, mine - opponent) * 20;
+                  const score = Math.max(0, mine - opponent) * 40;
                   const burstValue = mine * 2;
 
                   return (
