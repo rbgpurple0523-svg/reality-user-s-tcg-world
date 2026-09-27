@@ -15,6 +15,7 @@ interface CardGeneratorProps {
   onBackToHub?: () => void;
   onChangeCoordinate?: () => void;
   openSaved?: boolean;
+  openEntryId?: string;
 }
 
 const ENTRIES_KEY = 'reality_world_entries';
@@ -158,6 +159,7 @@ export default function CardGenerator({
   onBackToHub,
   onChangeCoordinate,
   openSaved,
+  openEntryId,
 }: CardGeneratorProps) {
 const [currentCoordinate, setCurrentCoordinate] = useState<CoordinatePreset | null>(selectedCoordinate ?? null);
 
@@ -581,8 +583,48 @@ setRegistrationStep(2);
 setEditingId(entry.id);
 setErrorMessage('');
 setActiveEditor('basic');
-
 };
+
+useEffect(() => {
+  if (!openEntryId || editingId) return;
+
+  const entry = entries.find((item) => item.id === openEntryId);
+  if (!entry) return;
+
+  if (!authorizeEntry(entry)) return;
+
+  const preset = COORDINATE_PRESETS.find((item) => item.id === entry.presetId);
+  if (preset) {
+    setCurrentCoordinate(preset);
+  }
+
+  setProfileUrl(entry.profileUrl || '');
+  setUserName(entry.userName || '');
+  setImageDataUrl(entry.imageDataUrl || '');
+  setPassword(entry.passwordHash || '');
+  setCustomSkills(
+    entry.customSkills?.length === 4
+      ? [
+          entry.customSkills[0],
+          entry.customSkills[1],
+          entry.customSkills[2],
+          entry.customSkills[3],
+        ]
+      : preset?.defaultSkills ?? emptySkills,
+  );
+  setFlavorText(entry.flavorText || '');
+  setSelectedColorHex(
+    entry.colorHex && /^#[0-9a-fA-F]{6}$/.test(entry.colorHex)
+      ? entry.colorHex.toUpperCase()
+      : getLegacyColorHex(entry.color),
+  );
+  setIsColorTouched(true);
+  setEditingId(entry.id);
+  setRegistrationStep(2);
+  setErrorMessage('');
+  setSuccessMessage('');
+  setActiveEditor('basic');
+}, [openEntryId, entries, editingId]);
 
 const handleDelete = (entry: EntryRecord) => {
 if (!authorizeEntry(entry)) return;
@@ -646,7 +688,7 @@ return ( <div className="mx-auto flex h-full min-h-0 w-full max-w-5xl flex-col t
     </div>
   </div>
 
-  {draftAvailable && !editingId && (
+  {draftAvailable && !editingId && !openEntryId && (
     <div className="mx-3 mt-2 shrink-0 rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-[10px] sm:mx-5">
       <div className="flex items-center justify-between gap-2">
         <div className="font-bold text-amber-900">前回の続きがあります</div>

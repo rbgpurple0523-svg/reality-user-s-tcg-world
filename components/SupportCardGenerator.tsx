@@ -20,6 +20,7 @@ interface SupportCardGeneratorProps {
   onBackToHub?: () => void;
   onBackToEmotionSelect?: () => void;
   openSaved?: boolean;
+  openEntryId?: string;
 }
 
 const DRAFT_KEY = 'reality_world_support_draft';
@@ -279,7 +280,13 @@ function EmotionMiniMap({
   );
 }
 
-export default function SupportCardGenerator({ selectedEmotion, onBackToHub, onBackToEmotionSelect, openSaved, }: SupportCardGeneratorProps) {
+export default function SupportCardGenerator({
+  selectedEmotion,
+  onBackToHub,
+  onBackToEmotionSelect,
+  openSaved,
+  openEntryId,
+}: SupportCardGeneratorProps) {
   const [selectedEmotionId, setSelectedEmotionId] = useState<string>(
     selectedEmotion?.id || EMOTION_PRESETS[0]?.id || '',
   );
@@ -696,6 +703,40 @@ const handleProfileUrlChange = (value: string) => {
     setSuccessMessage('');
   };
 
+useEffect(() => {
+  if (!openEntryId || editingId) return;
+
+  const entry = entries.find((item) => item.id === openEntryId);
+  if (!entry) return;
+
+  if (!authorizeEntry(entry)) return;
+
+  setProfileUrl(normalizeProfileUrl(entry.profileUrl || ''));
+  setShowProfileUrl(entry.showProfileUrl !== false);
+  setUserName(entry.userName || '');
+  setImageDataUrl(entry.imageDataUrl || '');
+  setPassword(entry.passwordHash || '');
+  setEffectName(entry.customEffectName || '');
+  setFlavorText(entry.flavorText || '');
+  setSelectedColorHex(
+    entry.colorHex && /^#[0-9a-fA-F]{6}$/.test(entry.colorHex)
+      ? entry.colorHex.toUpperCase()
+      : getLegacyColorHex(entry.color),
+  );
+  setIsColorTouched(true);
+
+  if (entry.presetId) {
+    setSelectedEmotionId(entry.presetId);
+  }
+
+  setEditingId(entry.id);
+  setRegistrationStep(2);
+  setActiveModal(null);
+  setErrorMessage('');
+  setSuccessMessage('');
+  setActiveEditor('basic');
+}, [openEntryId, entries, editingId]);
+
   const handleDelete = (entry: EntryRecord) => {
     if (!authorizeEntry(entry)) return;
 if (
@@ -793,7 +834,7 @@ if (editingId === entry.id) {
         </div>
       </div>
 
-      {draftAvailable && !editingId && (
+      {draftAvailable && !editingId && !openEntryId && (
         <div className="mx-3 mt-2 shrink-0 rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-[10px] sm:mx-5">
           <div className="flex items-center justify-between gap-2">
             <div className="font-bold text-amber-900">前回の続きがあります</div>

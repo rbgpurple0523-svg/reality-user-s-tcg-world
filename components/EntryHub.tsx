@@ -298,7 +298,7 @@ export default function EntryHub({
 const [activeGenerator, setActiveGenerator] = useState<{
   type: 'coordinate' | 'emotion';
   preset: CoordinatePreset | EmotionPreset;
-  openSaved?: boolean;
+  editEntryId?: string;
 } | null>(null);
 
   const reloadEntries = () => setEntries(getStoredEntries());
@@ -363,20 +363,20 @@ const [activeGenerator, setActiveGenerator] = useState<{
 if (activeGenerator) {
   if (activeGenerator.type === 'coordinate') {
     return (
-      <CardGenerator
-        selectedCoordinate={activeGenerator.preset as CoordinatePreset}
-        onBackToHub={handleRegisteredGeneratorClose}
-        openSaved={activeGenerator.openSaved}
-      />
+<CardGenerator
+  selectedCoordinate={activeGenerator.preset as CoordinatePreset}
+  onBackToHub={handleRegisteredGeneratorClose}
+  openEntryId={activeGenerator.editEntryId}
+/>
     );
   }
 
   return (
-    <SupportCardGenerator
-      selectedEmotion={activeGenerator.preset as EmotionPreset}
-      onBackToHub={handleRegisteredGeneratorClose}
-      openSaved={activeGenerator.openSaved}
-    />
+<SupportCardGenerator
+  selectedEmotion={activeGenerator.preset as EmotionPreset}
+  onBackToHub={handleRegisteredGeneratorClose}
+  openEntryId={activeGenerator.editEntryId}
+/>
   );
 }
 
@@ -759,19 +759,26 @@ if (activeGenerator) {
   <button
     type="button"
     onClick={() => {
-      const preset =
-        entry.cardType === 'coordinate'
-          ? coordinate
-          : emotion;
 
-      if (!preset) return;
+if (entry.cardType === 'coordinate') {
+  if (!coordinate) return;
 
-      setShowEntryList(false);
-      setActiveGenerator({
-        type: entry.cardType,
-        preset,
-        openSaved: true,
-      });
+  setShowEntryList(false);
+  setActiveGenerator({
+    type: 'coordinate',
+    preset: coordinate,
+    editEntryId: entry.id,
+  });
+} else {
+  if (!emotion) return;
+
+  setShowEntryList(false);
+  setActiveGenerator({
+    type: 'emotion',
+    preset: emotion,
+    editEntryId: entry.id,
+  });
+}
     }}
     className={`w-full rounded-xl px-3 py-2 text-[10px] font-black text-white ${
       entry.cardType === 'coordinate'
