@@ -53,6 +53,97 @@ function getDefaultSkillVoices(skills: [string, string, string, string]): [strin
   ];
 }
 
+const IMAGE_MAX_SIZE = 800;
+const IMAGE_JPEG_QUALITY = 0.82;
+const IMAGE_DATA_URL_MAX_LENGTH = 480_000;
+
+function loadImageFromSource(source: string): Promise<HTMLImageElement> {
+  return new Promise((resolve, reject) => {
+    const image = new Image();
+    image.onload = () => resolve(image);
+    image.onerror = () => reject(new Error('画像を読み込めませんでした。'));
+    image.src = source;
+  });
+}
+
+async function compressImageFile(file: File): Promise<string> {
+  const objectUrl = URL.createObjectURL(file);
+
+  try {
+    const image = await loadImageFromSource(objectUrl);
+    const scale = Math.min(1, IMAGE_MAX_SIZE / Math.max(image.naturalWidth, image.naturalHeight));
+    const width = Math.max(1, Math.round(image.naturalWidth * scale));
+    const height = Math.max(1, Math.round(image.naturalHeight * scale));
+    const canvas = document.createElement('canvas');
+    canvas.width = width;
+    canvas.height = height;
+
+    const context = canvas.getContext('2d');
+    if (!context) throw new Error('画像処理を開始できませんでした。');
+
+    context.fillStyle = '#ffffff';
+    context.fillRect(0, 0, width, height);
+    context.imageSmoothingEnabled = true;
+    context.imageSmoothingQuality = 'high';
+    context.drawImage(image, 0, 0, width, height);
+
+    const result = canvas.toDataURL('image/jpeg', IMAGE_JPEG_QUALITY);
+    if (!result || result === 'data:,') {
+      throw new Error('画像の圧縮に失敗しました。');
+    }
+
+    return result;
+  } finally {
+    URL.revokeObjectURL(objectUrl);
+  }
+}
+
+async function compressImageDataUrlIfNeeded(dataUrl: string): Promise<string> {
+  if (!dataUrl) return dataUrl;
+
+  const isJpeg = /^data:image\/(?:jpeg|jpg);/i.test(dataUrl);
+  if (isJpeg && dataUrl.length <= IMAGE_DATA_URL_MAX_LENGTH) return dataUrl;
+
+  const image = await loadImageFromSource(dataUrl);
+  const scale = Math.min(1, IMAGE_MAX_SIZE / Math.max(image.naturalWidth, image.naturalHeight));
+  const width = Math.max(1, Math.round(image.naturalWidth * scale));
+  const height = Math.max(1, Math.round(image.naturalHeight * scale));
+  const canvas = document.createElement('canvas');
+  canvas.width = width;
+  canvas.height = height;
+
+  const context = canvas.getContext('2d');
+  if (!context) throw new Error('画像処理を開始できませんでした。');
+
+  context.fillStyle = '#ffffff';
+  context.fillRect(0, 0, width, height);
+  context.imageSmoothingEnabled = true;
+  context.imageSmoothingQuality = 'high';
+  context.drawImage(image, 0, 0, width, height);
+
+  const result = canvas.toDataURL('image/jpeg', IMAGE_JPEG_QUALITY);
+  if (!result || result === 'data:,') {
+    throw new Error('画像の圧縮に失敗しました。');
+  }
+
+  return result;
+}
+
+async function prepareEntriesForStorage(entries: EntryRecord[]): Promise<EntryRecord[]> {
+  return Promise.all(
+    entries.map(async (entry) => {
+      if (!entry.imageDataUrl) return entry;
+
+      try {
+        const imageDataUrl = await compressImageDataUrlIfNeeded(entry.imageDataUrl);
+        return imageDataUrl === entry.imageDataUrl ? entry : { ...entry, imageDataUrl };
+      } catch {
+        return entry;
+      }
+    }),
+  );
+}
+
 function getStoredEntries(): EntryRecord[] {
 try {
 const saved = localStorage.getItem(ENTRIES_KEY);
@@ -391,12 +482,19 @@ setProfileUrl(normalizeProfileUrl(value));
 setErrorMessage('');
 };
 
-const handleImageUpload = (e: ChangeEvent<HTMLInputElement>) => {
+const handleImageUpload = async (e: ChangeEvent<HTMLInputElement>) => {
 const file = e.target.files?.[0];
 if (!file) return;
-const reader = new FileReader();
-reader.onload = () => setImageDataUrl(reader.result as string);
-reader.readAsDataURL(file);
+
+try {
+  const compressed = await compressImageFile(file);
+  setImageDataUrl(compressed);
+  setErrorMessage('');
+} catch {
+  setErrorMessage('画像を読み込めませんでした。別の画像をお試しください。');
+} finally {
+  e.target.value = '';
+}
 };
 
 const handleColorChange = (hex: string) => {
@@ -559,6 +657,18 @@ const normalizedCustomSkills: [string, string, string, string] = [
   customSkills[3].trim(),
 ];
 
+let normalizedImageDataUrl = imageDataUrl;
+
+try {
+  normalizedImageDataUrl = await compressImageDataUrlIfNeeded(imageDataUrl);
+  if (normalizedImageDataUrl !== imageDataUrl) {
+    setImageDataUrl(normalizedImageDataUrl);
+  }
+} catch {
+  setErrorMessage('画像の圧縮に失敗したため、保存できませんでした。別の画像をお試しください。');
+  return;
+}
+
 const newEntry: EntryRecord = {
   id: editingId || `entry_${Date.now()}`,
   presetId: currentCoordinate.id,
@@ -582,8 +692,11 @@ const updated = editingId
   ? currentEntries.map((entry) => (entry.id === editingId ? newEntry : entry))
   : [newEntry, ...currentEntries];
 
+let storageReadyEntries: EntryRecord[];
+
 try {
-  localStorage.setItem(ENTRIES_KEY, JSON.stringify(updated));
+  storageReadyEntries = await prepareEntriesForStorage(updated);
+  localStorage.setItem(ENTRIES_KEY, JSON.stringify(storageReadyEntries));
   const nextTokens = { ...getCreatorTokens(), [newEntry.id]: creatorToken };
   localStorage.setItem(TOKEN_KEY, JSON.stringify(nextTokens));
   setCreatorTokens(nextTokens);
@@ -592,7 +705,7 @@ try {
   return;
 }
 
-setEntries(updated);
+setEntries(storageReadyEntries);
 setAuthorizedIds((prev) => ({ ...prev, [newEntry.id]: true }));
 setEditingId(newEntry.id);
 setIsCompleted(true);
