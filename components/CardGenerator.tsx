@@ -28,6 +28,7 @@ userName: string;
 imageDataUrl: string;
 selectedCoordinateId: string | null;
 customSkills: [string, string, string, string];
+skillVoices: [string, string, string, string];
 flavorText?: string;
 colorHex?: string;
 colorType?: import('./colorTypes').ColorType;
@@ -35,6 +36,21 @@ showProfileUrl?: boolean;
 };
 
 const emptySkills: [string, string, string, string] = ['', '', '', ''];
+const emptySkillVoices: [string, string, string, string] = ['', '', '', ''];
+
+function getDefaultSkillVoice(skillName: string): string {
+  const normalized = skillName.trim();
+  return normalized ? `${normalized}！` : '';
+}
+
+function getDefaultSkillVoices(skills: [string, string, string, string]): [string, string, string, string] {
+  return [
+    getDefaultSkillVoice(skills[0]),
+    getDefaultSkillVoice(skills[1]),
+    getDefaultSkillVoice(skills[2]),
+    getDefaultSkillVoice(skills[3]),
+  ];
+}
 
 function getStoredEntries(): EntryRecord[] {
 try {
@@ -176,6 +192,12 @@ if (selectedCoordinate) {
     selectedCoordinate.defaultSkills[2],
     selectedCoordinate.defaultSkills[3],
   ]);
+  setSkillVoices(getDefaultSkillVoices([
+    selectedCoordinate.defaultSkills[0],
+    selectedCoordinate.defaultSkills[1],
+    selectedCoordinate.defaultSkills[2],
+    selectedCoordinate.defaultSkills[3],
+  ]));
   setFlavorText('');
   setIsColorTouched(false);
 }
@@ -187,6 +209,7 @@ const [userName, setUserName] = useState('');
 const [imageDataUrl, setImageDataUrl] = useState('');
 const [password, setPassword] = useState('');
 const [customSkills, setCustomSkills] = useState<[string, string, string, string]>(emptySkills);
+const [skillVoices, setSkillVoices] = useState<[string, string, string, string]>(emptySkillVoices);
 const [flavorText, setFlavorText] = useState('');
 const [selectedColorHex, setSelectedColorHex] = useState('#22D3EE');
 const [showProfileUrl, setShowProfileUrl] = useState(true);
@@ -247,6 +270,7 @@ const hasDraft =
   Boolean(imageDataUrl) ||
   Boolean(currentCoordinate) ||
   customSkills.some(Boolean) ||
+  skillVoices.some(Boolean) ||
   Boolean(flavorText);
 
 try {
@@ -262,6 +286,7 @@ try {
     imageDataUrl,
     selectedCoordinateId: currentCoordinate?.id ?? null,
     customSkills,
+    skillVoices,
     flavorText,
     colorHex: selectedColorHex,
     colorType: selectedColorType,
@@ -271,7 +296,7 @@ try {
   setDraftAvailable(true);
 } catch {}
 
-}, [profileUrl, userName, imageDataUrl, currentCoordinate, customSkills, flavorText, selectedColorHex, selectedColorType, showProfileUrl, draftChecked]);
+}, [profileUrl, userName, imageDataUrl, currentCoordinate, customSkills, skillVoices, flavorText, selectedColorHex, selectedColorType, showProfileUrl, draftChecked]);
 
 const restoreDraft = () => {
 try {
@@ -292,6 +317,16 @@ const preset = draft.selectedCoordinateId
       ? [draft.customSkills[0], draft.customSkills[1], draft.customSkills[2], draft.customSkills[3]]
       : preset?.defaultSkills ?? emptySkills;
   setCustomSkills(restoredSkills);
+  const restoredVoices: [string, string, string, string] =
+    draft.skillVoices?.length === 4
+      ? [
+          draft.skillVoices[0] || getDefaultSkillVoice(restoredSkills[0]),
+          draft.skillVoices[1] || getDefaultSkillVoice(restoredSkills[1]),
+          draft.skillVoices[2] || getDefaultSkillVoice(restoredSkills[2]),
+          draft.skillVoices[3] || getDefaultSkillVoice(restoredSkills[3]),
+        ]
+      : getDefaultSkillVoices(restoredSkills);
+  setSkillVoices(restoredVoices);
   setFlavorText(draft.flavorText ?? '');
   setSelectedColorHex(
     draft.colorHex && /^#[0-9a-fA-F]{6}$/.test(draft.colorHex)
@@ -335,12 +370,14 @@ onBackToHub?.();
 
 const selectCoordinatePreset = (preset: CoordinatePreset) => {
 setCurrentCoordinate(preset);
-setCustomSkills([
-preset.defaultSkills[0],
-preset.defaultSkills[1],
-preset.defaultSkills[2],
-preset.defaultSkills[3],
-]);
+const nextSkills: [string, string, string, string] = [
+  preset.defaultSkills[0],
+  preset.defaultSkills[1],
+  preset.defaultSkills[2],
+  preset.defaultSkills[3],
+];
+setCustomSkills(nextSkills);
+setSkillVoices(getDefaultSkillVoices(nextSkills));
 setErrorMessage('');
 };
 
@@ -366,11 +403,30 @@ setErrorMessage('');
 };
 
 const handleSkillChange = (index: number, value: string) => {
-setCustomSkills((prev) => {
-const next = [...prev] as [string, string, string, string];
-next[index] = value;
-return next;
-});
+  const previousSkill = customSkills[index];
+  const previousVoice = skillVoices[index];
+
+  setCustomSkills((prev) => {
+    const next = [...prev] as [string, string, string, string];
+    next[index] = value;
+    return next;
+  });
+
+  if (!previousVoice.trim() || previousVoice.trim() === getDefaultSkillVoice(previousSkill)) {
+    setSkillVoices((prev) => {
+      const next = [...prev] as [string, string, string, string];
+      next[index] = getDefaultSkillVoice(value);
+      return next;
+    });
+  }
+};
+
+const handleSkillVoiceChange = (index: number, value: string) => {
+  setSkillVoices((prev) => {
+    const next = [...prev] as [string, string, string, string];
+    next[index] = value;
+    return next;
+  });
 };
 
 const handleSubmit = async (e: FormEvent) => {
@@ -428,9 +484,18 @@ if (registrationStep === 2) {
   return;
 }
 
+const normalizedSkillVoices: [string, string, string, string] = [
+  (skillVoices[0].trim() || getDefaultSkillVoice(customSkills[0])).trim(),
+  (skillVoices[1].trim() || getDefaultSkillVoice(customSkills[1])).trim(),
+  (skillVoices[2].trim() || getDefaultSkillVoice(customSkills[2])).trim(),
+  (skillVoices[3].trim() || getDefaultSkillVoice(customSkills[3])).trim(),
+];
+setSkillVoices(normalizedSkillVoices);
+
 const moderationTexts = [
   userName.trim(),
   ...customSkills.map((skill) => skill.trim()),
+  ...normalizedSkillVoices,
   flavorText.trim(),
 ];
 
@@ -498,6 +563,7 @@ const newEntry: EntryRecord = {
   passwordHash: password,
   firstUser: editingEntry?.firstUser || userName.trim(),
   customSkills: normalizedCustomSkills,
+  skillVoices: normalizedSkillVoices,
   flavorText: flavorText.trim(),
   colorHex: selectedColorHex,
   colorType: getColorTypeFromHex(selectedColorHex),
@@ -571,6 +637,16 @@ const restoredSkills: [string, string, string, string] =
     : preset?.defaultSkills ?? emptySkills;
 
 setCustomSkills(restoredSkills);
+setSkillVoices(
+  entry.skillVoices?.length === 4
+    ? [
+        entry.skillVoices[0] || getDefaultSkillVoice(restoredSkills[0]),
+        entry.skillVoices[1] || getDefaultSkillVoice(restoredSkills[1]),
+        entry.skillVoices[2] || getDefaultSkillVoice(restoredSkills[2]),
+        entry.skillVoices[3] || getDefaultSkillVoice(restoredSkills[3]),
+      ]
+    : getDefaultSkillVoices(restoredSkills),
+);
 setFlavorText(entry.flavorText ?? '');
 setSelectedColorHex(
   entry.colorHex && /^#[0-9a-fA-F]{6}$/.test(entry.colorHex)
@@ -602,7 +678,7 @@ useEffect(() => {
   setUserName(entry.userName || '');
   setImageDataUrl(entry.imageDataUrl || '');
   setPassword(entry.passwordHash || '');
-  setCustomSkills(
+  const restoredSkills: [string, string, string, string] =
     entry.customSkills?.length === 4
       ? [
           entry.customSkills[0],
@@ -610,7 +686,17 @@ useEffect(() => {
           entry.customSkills[2],
           entry.customSkills[3],
         ]
-      : preset?.defaultSkills ?? emptySkills,
+      : preset?.defaultSkills ?? emptySkills;
+  setCustomSkills(restoredSkills);
+  setSkillVoices(
+    entry.skillVoices?.length === 4
+      ? [
+          entry.skillVoices[0] || getDefaultSkillVoice(restoredSkills[0]),
+          entry.skillVoices[1] || getDefaultSkillVoice(restoredSkills[1]),
+          entry.skillVoices[2] || getDefaultSkillVoice(restoredSkills[2]),
+          entry.skillVoices[3] || getDefaultSkillVoice(restoredSkills[3]),
+        ]
+      : getDefaultSkillVoices(restoredSkills),
   );
   setFlavorText(entry.flavorText || '');
   setSelectedColorHex(
@@ -935,7 +1021,7 @@ return ( <div className="mx-auto flex h-full min-h-0 w-full max-w-5xl flex-col t
           {activeEditor === 'skills' && currentCoordinate && (
             <div className="space-y-3 text-xs">
               <div className="flex items-start justify-between gap-2 rounded-xl border border-pink-100 bg-pink-50 px-3 py-2">
-                <p className="text-[10px] font-bold leading-4 text-pink-800">4つのスキル名を、自分のキャラらしく設定できます。</p>
+                <p className="text-[10px] font-bold leading-4 text-pink-800">4つのスキル名と、スキル使用時に表示・使用するセリフを設定できます。セリフを変更しなければ「スキル名＋！」が自動で入ります。</p>
                 <button type="button" onClick={() => setShowSkillsHelp(true)} className="shrink-0 rounded-lg border border-pink-200 bg-white px-2 py-1 text-[9px] font-black text-pink-700">説明</button>
               </div>
               {[0, 1, 2, 3].map((index) => (
@@ -945,7 +1031,11 @@ return ( <div className="mx-auto flex h-full min-h-0 w-full max-w-5xl flex-col t
                     <div className="text-[8px] font-black text-pink-500">効果説明</div>
                     <p className="mt-0.5 text-[9px] font-bold leading-4 text-gray-600">{currentCoordinate.skillDescriptions[index]}</p>
                   </div>
-                  <input type="text" value={customSkills[index]} onChange={(e) => handleSkillChange(index, e.target.value)} maxLength={40} className="mt-2 w-full rounded-xl border px-3 py-2.5" />
+                  <label className="mt-2 block text-[8px] font-black text-gray-500">スキル名</label>
+                  <input type="text" value={customSkills[index]} onChange={(e) => handleSkillChange(index, e.target.value)} maxLength={40} className="mt-1 w-full rounded-xl border px-3 py-2.5" />
+                  <label className="mt-2 block text-[8px] font-black text-pink-600">スキル使用時のセリフテキスト</label>
+                  <input type="text" value={skillVoices[index]} onChange={(e) => handleSkillVoiceChange(index, e.target.value)} maxLength={80} placeholder={getDefaultSkillVoice(customSkills[index])} className="mt-1 w-full rounded-xl border border-pink-200 bg-white px-3 py-2.5" />
+                  <p className="mt-1 text-[8px] font-bold text-gray-400">未編集なら「{getDefaultSkillVoice(customSkills[index]) || 'スキル名！'}」が入ります。</p>
                 </div>
               ))}
             </div>
@@ -1042,6 +1132,8 @@ return ( <div className="mx-auto flex h-full min-h-0 w-full max-w-5xl flex-col t
         <div className="p-4 text-[10px] leading-5 text-gray-700">
           <div className="font-black text-pink-800">スキル名</div>
           <p className="mt-1">4つのスキル名は、自分のキャラらしく設定できます。各スキルの下に、そのコーデでの効果説明を表示しています。</p>
+          <div className="mt-4 font-black text-pink-800">スキル使用時のセリフテキスト</div>
+          <p className="mt-1">スキルを使用するときに使うセリフを設定できます。自分で編集しなければ「スキル名＋！」が自動で入ります。</p>
         </div>
         <div className="border-t border-gray-200 p-3">
           <button type="button" onClick={() => setShowSkillsHelp(false)} className="w-full rounded-xl bg-gray-900 py-2.5 text-xs font-black text-white">閉じる</button>
