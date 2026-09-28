@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import CardGenerator from './CardGenerator';
 import SupportCardGenerator from './SupportCardGenerator';
 import { EMOTION_PRESETS } from './emotionPresets';
@@ -45,6 +45,8 @@ interface EntryHubProps {
   onGoToDeckBuilder?: () => void;
   onStartCharacterRegistration?: (preset?: CoordinatePreset) => void;
   onStartSupportRegistration?: (preset?: EmotionPreset) => void;
+  openEntryList?: boolean;
+  onEntryListClose?: () => void;
 }
 
 const ENTRIES_KEY = 'reality_world_entries';
@@ -106,67 +108,6 @@ function getEmotionMapPosition(emotion: EmotionPreset): { x: number; y: number }
     y: Math.min(91, Math.max(9, weighted.y / total + jitterY)),
   };
 }
-
-function getSeparatedEmotionMapPositions(): Record<string, { x: number; y: number }> {
-  const positions = EMOTION_PRESETS.map((emotion) => ({
-    id: emotion.id,
-    ...getEmotionMapPosition(emotion),
-  }));
-
-  const vertexClearance = 10;
-  const minimumDistance = 5.6;
-
-  for (let iteration = 0; iteration < 10; iteration += 1) {
-    for (const point of positions) {
-      for (const axis of EMOTION_AXIS_ORDER) {
-        const vertex = EMOTION_AXIS_CONFIG[axis];
-        const dx = point.x - vertex.x;
-        const dy = point.y - vertex.y;
-        const distance = Math.hypot(dx, dy);
-
-        if (distance > 0 && distance < vertexClearance) {
-          const push = (vertexClearance - distance) / distance;
-          point.x += dx * push * 0.7;
-          point.y += dy * push * 0.7;
-        }
-      }
-    }
-
-    for (let i = 0; i < positions.length; i += 1) {
-      for (let j = i + 1; j < positions.length; j += 1) {
-        const a = positions[i];
-        const b = positions[j];
-        let dx = a.x - b.x;
-        let dy = a.y - b.y;
-        let distance = Math.hypot(dx, dy);
-
-        if (distance === 0) {
-          const seed = a.id.length * 17 + b.id.length * 31 + i + j;
-          dx = ((seed % 3) - 1) * 0.01;
-          dy = (((seed * 7) % 3) - 1) * 0.01;
-          distance = Math.hypot(dx, dy) || 0.01;
-        }
-
-        if (distance < minimumDistance) {
-          const push = ((minimumDistance - distance) / distance) * 0.45;
-          a.x += dx * push;
-          a.y += dy * push;
-          b.x -= dx * push;
-          b.y -= dy * push;
-        }
-      }
-    }
-
-    for (const point of positions) {
-      point.x = Math.min(93, Math.max(7, point.x));
-      point.y = Math.min(93, Math.max(7, point.y));
-    }
-  }
-
-  return Object.fromEntries(positions.map((point) => [point.id, { x: point.x, y: point.y }]));
-}
-
-const emotionMapPositions = getSeparatedEmotionMapPositions();
 
 function getStoredEntries(): EntryRecord[] {
   if (typeof window === 'undefined') return [];
@@ -247,7 +188,7 @@ function EmotionMap({
       })}
 
       {emotions.map((emotion) => {
-        const position = emotionMapPositions[emotion.id] || getEmotionMapPosition(emotion);
+        const position = getEmotionMapPosition(emotion);
         const registered = isRegistered(emotion.id);
         const selected = emotion.id === selectedEmotionId;
         return (
@@ -283,6 +224,8 @@ export default function EntryHub({
   onGoToDeckBuilder,
   onStartCharacterRegistration,
   onStartSupportRegistration,
+  openEntryList,
+  onEntryListClose,
 }: EntryHubProps) {
   const [libraryMode, setLibraryMode] = useState<LibraryMode>('coordinate');
   const [supportMode, setSupportMode] = useState<SupportMode>('feeling');
@@ -295,13 +238,24 @@ export default function EntryHub({
   const [emoTargetFilter, setEmoTargetFilter] = useState('ALL');
   const [emoStatFilter, setEmoStatFilter] = useState('ALL');
   const [emoDurationFilter, setEmoDurationFilter] = useState('ALL');
-const [activeGenerator, setActiveGenerator] = useState<{
-  type: 'coordinate' | 'emotion';
-  preset: CoordinatePreset | EmotionPreset;
-  editEntryId?: string;
-} | null>(null);
+  const [activeGenerator, setActiveGenerator] = useState<{
+    type: 'coordinate' | 'emotion';
+    preset: CoordinatePreset | EmotionPreset;
+    editEntryId?: string;
+  } | null>(null);
 
   const reloadEntries = () => setEntries(getStoredEntries());
+
+  useEffect(() => {
+    if (openEntryList) {
+      setShowEntryList(true);
+    }
+  }, [openEntryList]);
+
+  const handleCloseEntryList = () => {
+    setShowEntryList(false);
+    onEntryListClose?.();
+  };
 
   const totalPossibleSlots = COORDINATE_PRESETS.length + EMOTION_PRESETS.length;
 
@@ -360,25 +314,31 @@ const [activeGenerator, setActiveGenerator] = useState<{
     setActiveGenerator(null);
   };
 
-if (activeGenerator) {
-  if (activeGenerator.type === 'coordinate') {
+  const handleRegisteredGeneratorComplete = () => {
+    reloadEntries();
+    setActiveGenerator(null);
+    setShowEntryList(true);
+  };
+
+  if (activeGenerator) {
+    if (activeGenerator.type === 'coordinate') {
+      return (
+        <CardGenerator
+          selectedCoordinate={activeGenerator.preset as CoordinatePreset}
+          onBackToHub={handleRegisteredGeneratorClose}
+          onOpenEntryList={handleRegisteredGeneratorComplete}
+          openEntryId={activeGenerator.editEntryId}
+        />
+      );
+    }
+
     return (
-<CardGenerator
-  selectedCoordinate={activeGenerator.preset as CoordinatePreset}
-  onBackToHub={handleRegisteredGeneratorClose}
-  openEntryId={activeGenerator.editEntryId}
-/>
+      <SupportCardGenerator
+        selectedEmotion={activeGenerator.preset as EmotionPreset}
+        onBackToHub={handleRegisteredGeneratorClose}
+      />
     );
   }
-
-  return (
-<SupportCardGenerator
-  selectedEmotion={activeGenerator.preset as EmotionPreset}
-  onBackToHub={handleRegisteredGeneratorClose}
-  openEntryId={activeGenerator.editEntryId}
-/>
-  );
-}
 
   return (
     <div className="w-full max-w-6xl mx-auto p-4 sm:p-6 space-y-5 text-gray-900">
@@ -399,7 +359,7 @@ if (activeGenerator) {
                   onClick={onGoToDeckBuilder}
                   className="rounded-xl bg-white px-4 py-2.5 text-xs font-black text-indigo-900 shadow-sm transition hover:bg-indigo-50"
                 >
-                  チームを編成する
+                  チームを構築する
                 </button>
               )}
               {onBackToMenu && (
@@ -443,7 +403,7 @@ if (activeGenerator) {
           }`}
         >
           <div className="text-sm font-black">👤 キャラカード</div>
-          <div className="mt-1 text-[10px] font-bold opacity-75">コーデマップからコーデを選ぶ</div>
+          <div className="mt-1 text-[10px] font-bold opacity-75">コーデの性能マップから探す</div>
         </button>
 
         <button
@@ -466,7 +426,7 @@ if (activeGenerator) {
             <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
               <div>
                 <div className="text-[9px] font-black tracking-[0.18em] text-indigo-500">CHARACTER CARDS</div>
-                <h2 className="mt-1 text-xl font-black">コーデマップからコーデを選ぶ</h2>
+                <h2 className="mt-1 text-xl font-black">コーデの性能マップ</h2>
                 <p className="mt-1 text-[10px] leading-relaxed text-gray-600">
                   気になるコーデをタップすると、その性能と登録済みカードを確認できます。
                 </p>
@@ -501,7 +461,7 @@ if (activeGenerator) {
             <div className="flex flex-col gap-4 md:flex-row md:items-end md:justify-between">
               <div>
                 <div className="text-[9px] font-black tracking-[0.18em] text-purple-500">SUPPORT CARDS</div>
-                <h2 className="mt-1 text-xl font-black">エモーションマップ</h2>
+                <h2 className="mt-1 text-xl font-black">エモーションを探す</h2>
                 <p className="mt-1 text-[10px] leading-relaxed text-gray-600">
                   「どんな想い？」から探すか、「どんな効果？」から探すかを切り替えられます。
                 </p>
@@ -558,7 +518,7 @@ if (activeGenerator) {
                 <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
                   <div>
                     <div className="text-[9px] font-black tracking-[0.16em] text-purple-500">PERFORMANCE SEARCH</div>
-                    <div className="mt-1 text-sm font-black text-purple-950">効果条件からサポートカードを探す</div>
+                    <div className="mt-1 text-sm font-black text-purple-950">効果条件からエモーションを探す</div>
                     <div className="mt-1 text-[10px] font-bold text-gray-600">
                       {emoTargetFilter === 'ALL' && emoStatFilter === 'ALL' && emoDurationFilter === 'ALL'
                         ? 'すべての条件で表示中'
@@ -746,7 +706,7 @@ if (activeGenerator) {
                 <div className="text-[9px] font-black tracking-[0.16em] text-gray-400">REGISTERED CARDS</div>
                 <h3 className="mt-1 text-base font-black">登録済みカード</h3>
               </div>
-              <button type="button" onClick={() => setShowEntryList(false)} className="rounded-full bg-gray-100 px-3 py-1.5 text-[10px] font-black text-gray-600">閉じる</button>
+              <button type="button" onClick={handleCloseEntryList} className="rounded-full bg-gray-100 px-3 py-1.5 text-[10px] font-black text-gray-600">閉じる</button>
             </div>
             <div className="space-y-3 p-5">
               {entries.map((entry) => {
@@ -755,40 +715,32 @@ if (activeGenerator) {
                 return (
                   <article key={entry.id} className="rounded-2xl border border-gray-200 bg-gray-50 p-3">
                     <div className="flex items-center gap-3">
-<div className="mt-2">
-  <button
-    type="button"
-    onClick={() => {
+                      <div className="shrink-0">
+                        <button
+                          type="button"
+                          onClick={() => {
+                            if (entry.cardType === 'coordinate') {
+                              const preset = COORDINATE_PRESETS.find((item) => item.id === entry.presetId);
+                              if (!preset) return;
+                              handleCloseEntryList();
+                              setActiveGenerator({ type: 'coordinate', preset, editEntryId: entry.id });
+                              return;
+                            }
 
-if (entry.cardType === 'coordinate') {
-  if (!coordinate) return;
-
-  setShowEntryList(false);
-  setActiveGenerator({
-    type: 'coordinate',
-    preset: coordinate,
-    editEntryId: entry.id,
-  });
-} else {
-  if (!emotion) return;
-
-  setShowEntryList(false);
-  setActiveGenerator({
-    type: 'emotion',
-    preset: emotion,
-    editEntryId: entry.id,
-  });
-}
-    }}
-    className={`w-full rounded-xl px-3 py-2 text-[10px] font-black text-white ${
-      entry.cardType === 'coordinate'
-        ? 'bg-indigo-600 hover:bg-indigo-700'
-        : 'bg-purple-600 hover:bg-purple-700'
-    }`}
-  >
-    編集・削除
-  </button>
-</div>
+                            const preset = EMOTION_PRESETS.find((item) => item.id === entry.presetId);
+                            if (!preset) return;
+                            handleCloseEntryList();
+                            setActiveGenerator({ type: 'emotion', preset, editEntryId: entry.id });
+                          }}
+                          className={`rounded-xl px-3 py-2 text-[10px] font-black text-white ${
+                            entry.cardType === 'coordinate'
+                              ? 'bg-indigo-600 hover:bg-indigo-700'
+                              : 'bg-purple-600 hover:bg-purple-700'
+                          }`}
+                        >
+                          編集・削除
+                        </button>
+                      </div>
                       {entry.imageDataUrl ? <img src={entry.imageDataUrl} alt="" className="h-12 w-12 rounded-xl object-cover border border-gray-200" /> : <div className="h-12 w-12 rounded-xl bg-gray-200" />}
                       <div className="min-w-0 flex-1">
                         <div className="text-[9px] font-black text-gray-400">{entry.cardType === 'coordinate' ? 'キャラカード' : 'サポートカード'}</div>

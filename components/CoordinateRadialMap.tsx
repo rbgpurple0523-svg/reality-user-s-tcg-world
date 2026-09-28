@@ -124,7 +124,7 @@ function getStatsRank(coordinate: CoordinatePreset): StatKey[] {
     charm: coordinate.stats.charm,
   };
 
-  return (Object.entries(values) as [StatKey, number][])
+  return (Object.entries(values) as [StatKey, number] [])
     .sort((a, b) => b[1] - a[1])
     .map(([key]) => key);
 }
@@ -344,14 +344,9 @@ export default function CoordinateRadialMap({
                 {isPickerMode ? 'コーデマップからコーデを選ぶ' : 'コーデの性能マップ'}
               </h3>
               {isPickerMode ? (
-                <>
-                  <p className="mt-1 text-[10px] font-bold leading-5 text-gray-600">
-                    どんなスタイルの着こなしで参加する？理想の姿に似合うステータスのコーデを選ぼう
-                  </p>
-                  <p className="mt-0.5 text-[10px] font-bold leading-5 text-indigo-700">
-                    コーデは、あなたの魅せるスタイルそのものです。選んだコーデのステータスが、このキャラの対戦での基礎ステータスになります。輪の1区画が1つのステータスタイプ。気になる区画をタップして、ステータスを確認しながら選びましょう。
-                  </p>
-                </>
+                <p className="mt-0.5 text-[10px] font-bold leading-5 text-indigo-700">
+                  コーデは、あなたの魅せるスタイルそのものです。選んだコーデのステータスが、このキャラの対戦での基礎ステータスになります。輪の1区画が1つのステータスタイプ。気になる区画をタップして、ステータスを確認しながら選びましょう。
+                </p>
               ) : (
                 <p className="mt-1 text-[10px] font-bold leading-5 text-gray-600">
                   コーデは、キャラカードの4つのステータスの得意・不得意を決める「性能タイプ」です。
@@ -622,7 +617,7 @@ export default function CoordinateRadialMap({
       {selectedCoordinate && (
         isPickerMode ? (
           <section className="px-2 py-1.5">
-            <div className="flex items-center gap-2">
+            <div className="flex items-start gap-2">
               <div className="shrink-0 rounded-xl border border-indigo-100 bg-white p-0.5">
                 <RadarChart stats={selectedCoordinate.stats} size={84} showLabels={false} />
               </div>
@@ -634,6 +629,10 @@ export default function CoordinateRadialMap({
                 </div>
                 <div className="mt-0.5 truncate text-[8px] font-black text-indigo-800">{getRankText(selectedCoordinate)}</div>
                 <div className="mt-0.5 text-[8px] font-bold text-gray-500">エントリー {selectedCount} / {maxEntryLimit}人{selectedIsLocked ? ' ・ 満員' : ''}</div>
+                <div className="mt-2 rounded-xl border border-indigo-100 bg-indigo-50/70 px-2.5 py-2">
+                  <div className="text-[8px] font-black tracking-[0.12em] text-indigo-500">CHARACTER IMAGE</div>
+                  <p className="mt-1 text-[9px] font-bold leading-4 text-gray-700">{selectedCoordinate.description}</p>
+                </div>
               </div>
               <button
                 type="button"

@@ -16,6 +16,7 @@ interface CardGeneratorProps {
   onChangeCoordinate?: () => void;
   openSaved?: boolean;
   openEntryId?: string;
+  onOpenEntryList?: () => void;
 }
 
 const ENTRIES_KEY = 'reality_world_entries';
@@ -176,12 +177,14 @@ export default function CardGenerator({
   onChangeCoordinate,
   openSaved,
   openEntryId,
+  onOpenEntryList,
 }: CardGeneratorProps) {
 const [currentCoordinate, setCurrentCoordinate] = useState<CoordinatePreset | null>(selectedCoordinate ?? null);
 
 useEffect(() => {
 setCurrentCoordinate(selectedCoordinate ?? null);
 setRegistrationStep(2);
+setIsCompleted(false);
 setActiveEditor(null);
 setShowProfileUrl(true);
 
@@ -240,6 +243,7 @@ const [showProfileHelp, setShowProfileHelp] = useState(false);
 const [showSkillsHelp, setShowSkillsHelp] = useState(false);
 const [isColorTouched, setIsColorTouched] = useState(false);
 const [registrationStep, setRegistrationStep] = useState<2 | 3>(2);
+const [isCompleted, setIsCompleted] = useState(false);
 
 const maxEntryLimit = useMemo(
 () => getMaxEntryLimit(entries),
@@ -335,6 +339,7 @@ const preset = draft.selectedCoordinateId
   );
   setIsColorTouched(Boolean(draft.colorHex && /^#[0-9a-fA-F]{6}$/.test(draft.colorHex)));
   setShowProfileUrl(draft.showProfileUrl !== false);
+  setIsCompleted(false);
   setDraftAvailable(false);
   setSuccessMessage('前回の続きから復元しました。');
   setTimeout(() => setSuccessMessage(''), 2000);
@@ -478,6 +483,7 @@ if (!userName.trim() || !imageDataUrl || !password.trim() || customSkills.some((
 }
 
 if (registrationStep === 2) {
+  setIsCompleted(false);
   setRegistrationStep(3);
   setActiveEditor(null);
   setSuccessMessage('登録内容を確認してください。');
@@ -588,7 +594,8 @@ try {
 
 setEntries(updated);
 setAuthorizedIds((prev) => ({ ...prev, [newEntry.id]: true }));
-setEditingId(null);
+setEditingId(newEntry.id);
+setIsCompleted(true);
 setSuccessMessage(editingEntry ? '✨ キャラカードを更新しました！' : '✨ キャラカードを登録しました！');
 setRegistrationStep(3);
 setActiveEditor(null);
@@ -655,6 +662,7 @@ setSelectedColorHex(
 );
 setIsColorTouched(true);
 setShowProfileUrl(entry.showProfileUrl !== false);
+setIsCompleted(false);
 setRegistrationStep(2);
 setEditingId(entry.id);
 setErrorMessage('');
@@ -705,6 +713,7 @@ useEffect(() => {
       : getLegacyColorHex(entry.color),
   );
   setIsColorTouched(true);
+  setIsCompleted(false);
   setEditingId(entry.id);
   setRegistrationStep(2);
   setErrorMessage('');
@@ -739,6 +748,7 @@ setAuthorizedIds((prev) => {
 });
 if (editingId === entry.id) {
   setEditingId(null);
+  setIsCompleted(false);
   setActiveEditor(null);
   setRegistrationStep(2);
   setSuccessMessage('✨ キャラカードを削除しました。');
@@ -947,9 +957,19 @@ return ( <div className="mx-auto flex h-full min-h-0 w-full max-w-5xl flex-col t
     </div>
 
     <div className="shrink-0 border-t border-gray-200 bg-white px-3 py-2.5 sm:px-5">
-      <button type="submit" disabled={isModerating || !currentCoordinate || (registrationStep === 2 && currentEntriesIsFull && !editingId)} className="w-full rounded-2xl bg-pink-600 px-4 py-3 text-sm font-black text-white shadow disabled:cursor-not-allowed disabled:bg-pink-300">
-        {isModerating ? '安全確認中…' : registrationStep === 2 ? '③ 登録内容を確認' : editingId ? 'このカードを更新する' : 'このカードで参加する'}
-      </button>
+      {registrationStep === 3 && isCompleted ? (
+        <button
+          type="button"
+          onClick={() => (onOpenEntryList ? onOpenEntryList() : onBackToHub?.())}
+          className="w-full rounded-2xl bg-pink-600 px-4 py-3 text-sm font-black text-white shadow transition hover:bg-pink-700"
+        >
+          キャラカードの一覧画面へ
+        </button>
+      ) : (
+        <button type="submit" disabled={isModerating || !currentCoordinate || (registrationStep === 2 && currentEntriesIsFull && !editingId)} className="w-full rounded-2xl bg-pink-600 px-4 py-3 text-sm font-black text-white shadow disabled:cursor-not-allowed disabled:bg-pink-300">
+          {isModerating ? '安全確認中…' : registrationStep === 2 ? '③ 登録内容を確認' : editingId ? 'このカードを更新する' : 'このカードで参加する'}
+        </button>
+      )}
     </div>
   </form>
 
@@ -991,6 +1011,7 @@ return ( <div className="mx-auto flex h-full min-h-0 w-full max-w-5xl flex-col t
                   placeholder="https://reality.app/profile/xxxxxx"
                   className="w-full rounded-xl border px-3 py-2.5"
                 />
+                <p className="mt-1 text-[9px] font-bold leading-4 text-gray-500">同じREALITYユーザーがキャラカードを複数登録することを防ぐために使用します。1ユーザーにつき1枚まで登録できます。</p>
                 <label className="mt-2 flex cursor-pointer items-center justify-between gap-3 rounded-xl border border-gray-200 bg-gray-50 px-3 py-2.5">
                   <span className="text-[10px] font-bold text-gray-700">プロフURLをカードに表示する</span>
                   <span className={`relative inline-flex h-6 w-11 shrink-0 items-center rounded-full transition ${showProfileUrl ? 'bg-indigo-600' : 'bg-gray-300'}`}>
@@ -1007,7 +1028,7 @@ return ( <div className="mx-auto flex h-full min-h-0 w-full max-w-5xl flex-col t
 
               <div>
                 <label className="mb-1 block font-bold">アバター画像 <span className="text-red-500">*</span></label>
-                <input type="file" accept="image/*" onChange={handleImageUpload} className="w-full text-xs" />
+                <input type="file" accept="image/*" onChange={handleImageUpload} className="w-full text-xs file:mr-3 file:rounded-lg file:border-0 file:bg-rose-100 file:px-3 file:py-2 file:text-[10px] file:font-black file:text-rose-700 hover:file:bg-rose-200" />
               </div>
 
               <div>

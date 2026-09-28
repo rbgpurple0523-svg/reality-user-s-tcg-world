@@ -382,6 +382,7 @@ export default function Home() {
   const [pickerEntries, setPickerEntries] = useState<EntryRecord[]>([]);
   const [pickerMaxEntryLimit, setPickerMaxEntryLimit] = useState(1);
   const [showIntro, setShowIntro] = useState(true);
+  const [openEntryHubList, setOpenEntryHubList] = useState(false);
 
   useEffect(() => {
     try {
@@ -468,12 +469,14 @@ export default function Home() {
   };
 
   const handleStartCharacterRegistration = (preset?: CoordinatePreset) => {
+    setOpenEntryHubList(false);
     setSelectedCoordinate(preset ?? null);
     setRegistrationReturnView('entryHub');
     setCurrentView('coordinateSelect');
   };
 
   const handleStartSupportRegistration = (preset?: EmotionPreset) => {
+    setOpenEntryHubList(false);
     setSelectedEmotion(preset ?? null);
     setRegistrationReturnView('entryHub');
     setCurrentView('emotionSelect');
@@ -494,6 +497,7 @@ export default function Home() {
   };
 
   const handleReturnToRegistrationEntry = () => {
+    setOpenEntryHubList(false);
     setCurrentView(registrationReturnView);
   };
 
@@ -504,6 +508,7 @@ export default function Home() {
   };
 
   const handleReturnToMenu = () => {
+    setOpenEntryHubList(false);
     setActiveRoomId(null);
     setIsHostPlayer(false);
     setEditingDeckId(null);
@@ -647,7 +652,7 @@ export default function Home() {
 
               <button
                 type="button"
-                onClick={() => setCurrentView('entryHub')}
+                onClick={() => { setOpenEntryHubList(false); setCurrentView('entryHub'); }}
                 className="rounded-2xl border border-purple-200 bg-purple-50 px-5 py-5 text-left shadow-sm transition hover:bg-purple-100"
               >
                 <div className="text-base font-black text-purple-950">🗂️ カードライブラリ</div>
@@ -811,6 +816,10 @@ export default function Home() {
           <CardGenerator
             selectedCoordinate={selectedCoordinate}
             onBackToHub={() => setCurrentView('cardRegisterSelect')}
+            onOpenEntryList={() => {
+              setOpenEntryHubList(true);
+              setCurrentView('entryHub');
+            }}
             onChangeCoordinate={() => {
               setSelectedCoordinate(null);
               setCurrentView('coordinateSelect');
@@ -832,6 +841,8 @@ export default function Home() {
             onGoToDeckBuilder={handleStartDeckBuilderFromMenu}
             onStartCharacterRegistration={handleStartCharacterRegistration}
             onStartSupportRegistration={handleStartSupportRegistration}
+            openEntryList={openEntryHubList}
+            onEntryListClose={() => setOpenEntryHubList(false)}
           />
         )}
 
