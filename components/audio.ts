@@ -293,6 +293,6 @@ export function playSe(key: SeKey) {
         : ['battle', 'skill', SE_FILES[key]];
   const audio = new Audio(getAudioPath('se', ...pathParts));
   audio.preload = 'auto';
-  audio.volume = 0.10;
+  audio.volume = 0.00;
   void audio.play().catch(() => undefined);
 }

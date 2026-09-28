@@ -492,8 +492,6 @@ try {
   setErrorMessage('');
 } catch {
   setErrorMessage('画像を読み込めませんでした。別の画像をお試しください。');
-} finally {
-  e.target.value = '';
 }
 };
 
