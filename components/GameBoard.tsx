@@ -723,6 +723,9 @@ void ensureAnonymousAuth()
   const [classReadyYearHost, setClassReadyYearHost] = useState(0);
   const [classReadyYearGuest, setClassReadyYearGuest] = useState(0);
 
+  const getBattleBgmSection = (year: number) =>
+    year === 1 ? 'feather' : year === 2 ? 'aurora' : 'star';
+
   useEffect(() => {
     if (battlePhase === 'setup') {
       return;
@@ -738,12 +741,7 @@ void ensureAnonymousAuth()
       return;
     }
 
-    const section = currentYear === 1
-      ? 'feather'
-      : currentYear === 2
-        ? 'aurora'
-        : 'star';
-    playBgm(section);
+    playBgm(getBattleBgmSection(currentYear));
   }, [battlePhase, currentYear]);
 
   const [activeCardsRevealed, setActiveCardsRevealed] = useState(false);
@@ -3889,6 +3887,7 @@ useEffect(() => {
         addLog(`🪙 コイントス結果：${result === 'host' ? '自分' : 'CPU'}が先手です。`);
         setBattlePhase('battle');
         setTurnIndex(0);
+        playBgm(getBattleBgmSection(currentYear));
         return;
       }
 
@@ -3904,6 +3903,7 @@ useEffect(() => {
 
       setFirstPlayer(result.firstPlayer);
       setStartSeasonIdx(0);
+      playBgm(getBattleBgmSection(currentYear));
       setPreparationMessage(
         `🪙 コイントス結果：${result.firstPlayer === playerRole ? '自分' : '相手'}が先手です。春から${roleDisplayNames[ROLE_NAMES[currentYear - 1]]}戦を開始します。`,
       );
