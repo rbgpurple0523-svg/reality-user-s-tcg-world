@@ -724,6 +724,10 @@ void ensureAnonymousAuth()
   const [classReadyYearGuest, setClassReadyYearGuest] = useState(0);
 
   useEffect(() => {
+    if (battlePhase === 'setup') {
+      return;
+    }
+
     if (battlePhase === 'waiting') {
       stopBgm();
       return;

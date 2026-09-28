@@ -461,6 +461,12 @@ export default function Home() {
     setCurrentView('deckBuilder');
   };
 
+  const handleReturnFromDeckBuilder = () => {
+    const returnView = deckBuilderReturnView;
+    setEditingDeckId(null);
+    setCurrentView(returnView);
+  };
+
   const handleStartCharacterRegistration = (preset?: CoordinatePreset) => {
     setSelectedCoordinate(preset ?? null);
     setRegistrationReturnView('entryHub');
@@ -832,7 +838,7 @@ export default function Home() {
         {currentView === 'deckBuilder' && (
           <DeckBuilder
             initialDeckId={editingDeckId}
-            onGoToCpuBattle={editingDeckId ? handleReturnToMenu : handleStartCpuBattle}
+            onGoToCpuBattle={editingDeckId ? handleReturnFromDeckBuilder : handleStartCpuBattle}
             battleButtonLabel={editingDeckId ? '⚔️ 対戦へ戻る※自動保存されます' : '⚔️ CPU対戦で試す※自動保存されます'}
             onGoToEntryHub={() => setCurrentView('entryHub')}
           />

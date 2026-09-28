@@ -45,6 +45,12 @@ let currentBgm: HTMLAudioElement | null = null;
 let currentBgmSection: BgmSection | null = null;
 let requestedBgmSection: BgmSection | null = null;
 let lastPickedTrack: Partial<Record<BgmSection, string>> = {};
+let bgmFadeTimer: number | null = null;
+let bgmTransitionId = 0;
+let fadingOutBgm: HTMLAudioElement | null = null;
+
+const BGM_VOLUME = 0.3;
+const BGM_FADE_MS = 450;
 
 function readAudioSettings(): AudioSettings {
   if (typeof window === 'undefined') return DEFAULT_AUDIO_SETTINGS;
@@ -86,11 +92,54 @@ export function subscribeAudioSettings(listener: () => void) {
   return () => window.removeEventListener(AUDIO_SETTINGS_EVENT, handleChange);
 }
 
+function clearBgmFade() {
+  if (bgmFadeTimer !== null && typeof window !== 'undefined') {
+    window.clearInterval(bgmFadeTimer);
+    bgmFadeTimer = null;
+  }
+}
+
+function fadeAudio(audio: HTMLAudioElement, from: number, to: number, duration: number, transitionId: number, onComplete?: () => void) {
+  if (typeof window === 'undefined') return;
+
+  audio.volume = from;
+  const start = performance.now();
+  const finish = () => {
+    audio.volume = to;
+    onComplete?.();
+  };
+
+  bgmFadeTimer = window.setInterval(() => {
+    if (transitionId !== bgmTransitionId) {
+      clearBgmFade();
+      return;
+    }
+
+    const progress = Math.min(1, (performance.now() - start) / duration);
+    const eased = 1 - Math.pow(1 - progress, 3);
+    audio.volume = from + (to - from) * eased;
+
+    if (progress >= 1) {
+      clearBgmFade();
+      finish();
+    }
+  }, 20);
+}
+
 export function setBgmEnabled(enabled: boolean) {
   const current = readAudioSettings();
   writeAudioSettings({ ...current, bgmEnabled: enabled });
 
   if (!enabled) {
+    bgmTransitionId += 1;
+    clearBgmFade();
+
+    if (fadingOutBgm && fadingOutBgm !== currentBgm) {
+      fadingOutBgm.pause();
+      fadingOutBgm.currentTime = 0;
+    }
+    fadingOutBgm = null;
+
     currentBgm?.pause();
     currentBgm = null;
     currentBgmSection = null;
@@ -134,23 +183,102 @@ export function playBgm(section: BgmSection) {
     return;
   }
 
+  const transitionId = ++bgmTransitionId;
+  clearBgmFade();
+
+  if (fadingOutBgm && fadingOutBgm !== currentBgm) {
+    fadingOutBgm.pause();
+    fadingOutBgm.currentTime = 0;
+  }
+  fadingOutBgm = null;
+
+  const previousBgm = currentBgm;
+  const previousVolume = previousBgm?.volume ?? 0;
   const track = pickTrack(section);
   const audio = new Audio(getAudioPath('bgm', section, track));
   audio.loop = true;
   audio.preload = 'auto';
-  audio.volume = 0.35;
+  audio.volume = previousBgm ? 0 : BGM_VOLUME;
 
-  currentBgm?.pause();
   currentBgm = audio;
   currentBgmSection = section;
 
   void audio.play().catch(() => undefined);
+
+  if (!previousBgm) {
+    fadeAudio(audio, 0, BGM_VOLUME, BGM_FADE_MS, transitionId);
+    return;
+  }
+
+  fadingOutBgm = previousBgm;
+  const startedAt = performance.now();
+  bgmFadeTimer = window.setInterval(() => {
+    if (transitionId !== bgmTransitionId) {
+      clearBgmFade();
+      return;
+    }
+
+    const progress = Math.min(1, (performance.now() - startedAt) / BGM_FADE_MS);
+    const eased = 1 - Math.pow(1 - progress, 3);
+
+    previousBgm.volume = Math.max(0, previousVolume * (1 - eased));
+    audio.volume = BGM_VOLUME * eased;
+
+    if (progress >= 1) {
+      clearBgmFade();
+      previousBgm.pause();
+      previousBgm.currentTime = 0;
+      previousBgm.volume = previousVolume;
+      if (fadingOutBgm === previousBgm) {
+        fadingOutBgm = null;
+      }
+      audio.volume = BGM_VOLUME;
+    }
+  }, 20);
 }
 
 export function stopBgm() {
-  currentBgm?.pause();
-  currentBgm = null;
-  currentBgmSection = null;
+  bgmTransitionId += 1;
+  clearBgmFade();
+
+  const audio = currentBgm;
+  if (fadingOutBgm && fadingOutBgm !== audio) {
+    fadingOutBgm.pause();
+    fadingOutBgm.currentTime = 0;
+    fadingOutBgm = null;
+  }
+
+  if (!audio) {
+    currentBgmSection = null;
+    return;
+  }
+
+  const transitionId = bgmTransitionId;
+  const fromVolume = audio.volume;
+  const startedAt = performance.now();
+  bgmFadeTimer = window.setInterval(() => {
+    if (transitionId !== bgmTransitionId) {
+      clearBgmFade();
+      return;
+    }
+
+    const progress = Math.min(1, (performance.now() - startedAt) / BGM_FADE_MS);
+    const eased = 1 - Math.pow(1 - progress, 3);
+    audio.volume = Math.max(0, fromVolume * (1 - eased));
+
+    if (progress >= 1) {
+      clearBgmFade();
+      audio.pause();
+      audio.currentTime = 0;
+      if (currentBgm === audio) {
+        currentBgm = null;
+        currentBgmSection = null;
+      }
+      if (fadingOutBgm === audio) {
+        fadingOutBgm = null;
+      }
+    }
+  }, 20);
 }
 
 export function playSe(key: SeKey) {
