@@ -1,6 +1,7 @@
 'use client';
 
 import React, { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
+import { playBgm, playSe, stopBgm } from '@/components/audio';
 import { db, ensureAnonymousAuth } from '@/lib/firebase';
 import {
   doc,
@@ -721,6 +722,25 @@ void ensureAnonymousAuth()
   const [guestDeckId, setGuestDeckId] = useState<string | null>(null);
   const [classReadyYearHost, setClassReadyYearHost] = useState(0);
   const [classReadyYearGuest, setClassReadyYearGuest] = useState(0);
+
+  useEffect(() => {
+    if (battlePhase === 'waiting') {
+      stopBgm();
+      return;
+    }
+
+    if (battlePhase === 'finished') {
+      playBgm('result');
+      return;
+    }
+
+    const section = currentYear === 1
+      ? 'feather'
+      : currentYear === 2
+        ? 'aurora'
+        : 'star';
+    playBgm(section);
+  }, [battlePhase, currentYear]);
 
   const [activeCardsRevealed, setActiveCardsRevealed] = useState(false);
   const [battleDealAnimationKey, setBattleDealAnimationKey] = useState(0);
@@ -2777,11 +2797,7 @@ const submitTurnDrawAction = async (
 
 const submitBattleAction = async (
   action: BattleActionPayload,
-): Promise<{
-  gainedScore?: number;
-  actorScoreDelta?: number;
-  targetScoreDelta?: number;
-} | false> => {
+) => {
   if (
     !isOnline ||
     !roomId ||
@@ -2847,9 +2863,6 @@ const submitBattleAction = async (
           (await response.json()) as {
             ok?: boolean;
             error?: string;
-            result?: {
-              gainedScore?: number;
-            };
           };
 
         if (
@@ -2862,7 +2875,7 @@ const submitBattleAction = async (
           );
         }
 
-        return responseData.result ?? {};
+        return true;
       } catch (error) {
         console.error(
           'Skill Action API送信エラー:',
@@ -2882,91 +2895,59 @@ const submitBattleAction = async (
     //
     // オンラインではサーバーAPIだけがカード消費・効果計算・
     // Avatar状態・スコア・使用回数を確定する。
+    // クライアントが計算したavatars / hand / deck / scoreは
+    // 正式状態としてFirestoreへ書き込まない。
     // =====================================================
 
     if (action.type === 'PLAY_SUPPORT') {
       if (!action.supportCardId) {
-        addLog(
-          '⚠️ supportCardIdがありません。',
-        );
+        addLog('⚠️ supportCardIdがありません。');
         return false;
       }
 
       try {
-        const idToken =
-          await currentUser.getIdToken();
+        const idToken = await currentUser.getIdToken();
+        const response = await fetch('/api/battle/action', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            Authorization: `Bearer ${idToken}`,
+          },
+          body: JSON.stringify({
+            roomId,
+            actionId,
+            type: action.type,
+            year: action.year,
+            turnIndex: action.turnIndex,
+            avatarIndex: action.avatarIndex,
+            supportCardId: action.supportCardId,
+            supportPresetId: action.supportPresetId,
+            supportFlavorText: action.supportFlavorText,
+            supportColorHex: action.supportColorHex || DEFAULT_SUPPORT_COLOR_HEX,
+          }),
+        });
 
-        const response =
-          await fetch(
-            '/api/battle/action',
-            {
-              method: 'POST',
-              headers: {
-                'Content-Type':
-                  'application/json',
-                Authorization:
-                  `Bearer ${idToken}`,
-              },
-              body: JSON.stringify({
-                roomId,
-                actionId,
-                type: action.type,
-                year: action.year,
-                turnIndex: action.turnIndex,
-                avatarIndex:
-                  action.avatarIndex,
-                supportCardId:
-                  action.supportCardId,
-                supportPresetId:
-                  action.supportPresetId,
-                supportFlavorText:
-                  action.supportFlavorText,
-                supportColorHex:
-                  action.supportColorHex ||
-                  DEFAULT_SUPPORT_COLOR_HEX,
-              }),
-            },
-          );
+        const responseData = (await response.json()) as {
+          ok?: boolean;
+          error?: string;
+        };
 
-        const responseData =
-          (await response.json()) as {
-            ok?: boolean;
-            error?: string;
-            result?: {
-              actorScoreDelta?: number;
-              targetScoreDelta?: number;
-            };
-          };
-
-        if (
-          !response.ok ||
-          responseData.ok !== true
-        ) {
+        if (!response.ok || responseData.ok !== true) {
           throw new Error(
             responseData.error ||
               'Battle Support Action APIに失敗しました。',
           );
         }
 
-        return responseData.result ?? {};
+        return true;
       } catch (error) {
-        console.error(
-          'Support Action API送信エラー:',
-          error,
-        );
-
-        addLog(
-          '⚠️ サポートActionの送信に失敗しました。',
-        );
-
+        console.error('Support Action API送信エラー:', error);
+        addLog('⚠️ サポートActionの送信に失敗しました。');
         return false;
       }
     }
 
-    addLog(
-      '⚠️ 未対応のオンラインActionです。',
-    );
-
+    addLog('⚠️ 未対応のオンラインActionです。');
     return false;
   } catch (error) {
     console.error(
@@ -4346,6 +4327,7 @@ useEffect(() => {
 
     // ===== CPU対戦：Firebaseを使わずローカル状態だけを更新 =====
     if (!isOnline) {
+      playSe(skillIndex === 3 ? 'skill4' : 'skill123');
       await playSkillPreResultEffect({
         effectKey: getCharacterSkillBattleEffect(
           skillPreset,
@@ -4438,16 +4420,10 @@ const actionId =
     .toString(36)
     .slice(2)}`;
 
-let submittedResult:
-  | {
-      gainedScore?: number;
-      actorScoreDelta?: number;
-      targetScoreDelta?: number;
-    }
-  | false = false;
+let actionSubmitted = false;
 
 try {
-  submittedResult =
+  actionSubmitted =
     await submitBattleAction({
       actionId,
 
@@ -4475,7 +4451,7 @@ try {
     false;
 }
 
-if (!submittedResult) {
+if (!actionSubmitted) {
   addLog(
     `「${skill.name}」の送信に失敗しました。`,
   );
@@ -4483,21 +4459,8 @@ if (!submittedResult) {
   return;
 }
 
-// =====================================================
-// サーバー確定結果を、演出完了を待たず実況へ追加
-// =====================================================
-
-const confirmedGainedScore =
-  Number(
-    submittedResult.gainedScore ??
-      gainedScore,
-  );
-
-addLog(
-  `「${skill.name}」発動！ +${confirmedGainedScore}スコア`,
-);
-
-await skillEffectPromise;
+    playSe(skillIndex === 3 ? 'skill4' : 'skill123');
+    await skillEffectPromise;
 
     const onlineNextMyAvatars =
       next.currentYear !== currentYear
@@ -4578,7 +4541,9 @@ await skillEffectPromise;
     // ログ
     // =====================================================
 
-    
+    addLog(
+      `「${skill.name}」発動！`,
+    );
 
     if (
       Object.keys(debuffs).length >
@@ -4705,6 +4670,17 @@ await skillEffectPromise;
   const parseEmotionAmount = (value?: string) => {
     const match = value?.match(/[-+]?\d+(?:\.\d+)?/);
     return match ? Number(match[0]) : 0;
+  };
+
+  const playSupportUseSe = (preset?: EmotionPreset) => {
+    const isSelfStatusBoost = Boolean(
+      preset &&
+      preset.target === '自分' &&
+      ['情熱', '知性', '技能', '愛嬌', '全ステータス'].includes(preset.effectCategory) &&
+      parseEmotionAmount(preset.effectAmount) > 0,
+    );
+
+    playSe(isSelfStatusBoost ? 'supportStatBoost' : 'supportOther');
   };
 
   const appendSupportAvatarEffect = (
@@ -5545,6 +5521,7 @@ const handleUseSupportCard = async (
     // =====================================================
 
     if (!isOnline) {
+      playSupportUseSe(supportPreset);
       await playSupportPreResultEffect({
         effectKey: getSupportBattleEffect(
           supportPreset,
@@ -5666,59 +5643,8 @@ const handleUseSupportCard = async (
       return;
     }
 
+    playSupportUseSe(supportPreset);
     setUsedSkillsByClass(nextUsedSkills);
-
-    const confirmedActorScoreDelta =
-      Number(
-        submitted.actorScoreDelta ??
-          applied.scoreDelta,
-      );
-
-    const confirmedTargetScoreDelta =
-      Number(
-        submitted.targetScoreDelta ??
-          applied.targetScoreDelta,
-      );
-
-    const onlineSupportScoreParts: string[] = [];
-
-    if (
-      confirmedActorScoreDelta !== 0
-    ) {
-      onlineSupportScoreParts.push(
-        `自分 ${
-          confirmedActorScoreDelta > 0
-            ? '+'
-            : ''
-        }${confirmedActorScoreDelta}スコア`,
-      );
-    }
-
-    if (
-      confirmedTargetScoreDelta !== 0
-    ) {
-      onlineSupportScoreParts.push(
-        `相手 ${
-          confirmedTargetScoreDelta > 0
-            ? '+'
-            : ''
-        }${confirmedTargetScoreDelta}スコア`,
-      );
-    }
-
-    addLog(
-      `サポート「${card.name}」を使用しました。` +
-        (
-          onlineSupportScoreParts.length > 0
-            ? ` ${onlineSupportScoreParts.join(' / ')}`
-            : ''
-        ) +
-        (
-          supportPreset?.description
-            ? ` ${supportPreset.description}`
-            : ''
-        ),
-    );
 
     await playSupportPreResultEffect({
       effectKey: getSupportBattleEffect(
@@ -5751,7 +5677,22 @@ const handleUseSupportCard = async (
     }
     setSelectedSupportCardIndex(null);
 
-    
+    const onlineSupportScoreParts: string[] = [];
+    if (applied.scoreDelta !== 0) {
+      onlineSupportScoreParts.push(`自分 ${applied.scoreDelta > 0 ? '+' : ''}${applied.scoreDelta}スコア`);
+    }
+    if (applied.targetScoreDelta !== 0) {
+      onlineSupportScoreParts.push(`相手 ${applied.targetScoreDelta > 0 ? '+' : ''}${applied.targetScoreDelta}スコア`);
+    }
+    addLog(
+      `サポート「${card.name}」を使用しました。` +
+        (onlineSupportScoreParts.length > 0 ? ` ${onlineSupportScoreParts.join(' / ')}` : '') +
+        (
+          supportPreset?.description
+            ? ` ${supportPreset.description}`
+            : ''
+        ),
+    );
   } finally {
     supportSubmitInProgressRef.current = false;
     setSupportSubmittingCardIndex(null);
@@ -6809,16 +6750,6 @@ const field =
     onlineDecksConfirmed &&
     onlineClassPreparationConfirmed;
 
-  const currentPrepDeck =
-    activeDeckId
-      ? loadDeckDefinition(activeDeckId)
-      : null;
-
-  const currentPrepPreview =
-    currentPrepDeck
-      ? getDeckPreviewData(currentPrepDeck)
-      : null;
-
   const selectedSupportCard =
     selectedSupportCardIndex !== null
       ? myHand[selectedSupportCardIndex]
@@ -6943,7 +6874,7 @@ const field =
           </section>
         )}
 
-                {battlePhase === 'setup' && !classResult && (
+        {battlePhase === 'setup' && !classResult && (
           <section className="mt-2 flex min-h-0 flex-1 flex-col gap-2 overflow-hidden">
             {!canShowCoinToss ? (
               <>
@@ -6957,9 +6888,8 @@ const field =
                         対戦準備
                       </h2>
                     </div>
-
                     {preparationMessage && (
-                      <div className="max-w-[58%] whitespace-pre-line text-right text-[9px] font-bold leading-relaxed text-slate-500">
+                      <div className="max-w-[58%] text-right text-[9px] font-bold leading-relaxed text-slate-500">
                         {preparationMessage}
                       </div>
                     )}
@@ -6978,13 +6908,11 @@ const field =
                         <div className="text-[8px] font-black text-slate-400">
                           {roleDisplayNames[avatar.roleName]}
                         </div>
-
                         <img
                           src={avatar.card.imageDataUrl}
                           alt=""
                           className="mx-auto mt-1 h-16 w-12 rounded-xl bg-white object-contain p-0.5 sm:h-20 sm:w-14"
                         />
-
                         <div className="mt-1 truncate text-[9px] font-black text-slate-800">
                           {avatar.card.userName}
                         </div>
@@ -6992,148 +6920,16 @@ const field =
                     ))}
                   </div>
 
-                  <div className="mt-2 rounded-2xl border border-slate-200 bg-slate-50 p-2.5">
-                    <div className="flex items-center justify-between gap-2">
-                      <div className="text-[10px] font-black text-slate-600">
-                        サポートカード一覧
-                      </div>
-
-                      <div className="text-sm font-black text-indigo-700">
-                        {currentPrepPreview?.supports.reduce(
-                          (sum, support) =>
-                            sum + support.count,
-                          0,
-                        ) || 0}
-                        <span className="ml-1 text-[9px] text-slate-400">
-                          / 18枚
-                        </span>
-                      </div>
+                  <div className="mt-2 flex items-center justify-between rounded-2xl bg-slate-50 px-3 py-2">
+                    <div className="text-[10px] font-black text-slate-600">
+                      サポートカード
                     </div>
-
-                    <div className="mt-1.5 max-h-20 overflow-y-auto rounded-xl bg-white p-2 ring-1 ring-slate-200">
-                      {currentPrepPreview?.supports.length ? (
-                        <div className="flex flex-wrap gap-1.5">
-                          {currentPrepPreview.supports.map(
-                            (support) => (
-                              <span
-                                key={support.name}
-                                className="rounded-lg border border-purple-100 bg-purple-50 px-2 py-1 text-[8px] font-black text-purple-900"
-                              >
-                                {support.name}
-                                {support.count > 1
-                                  ? ` ×${support.count}`
-                                  : ''}
-                              </span>
-                            ),
-                          )}
-                        </div>
-                      ) : (
-                        <div className="py-1 text-center text-[9px] font-bold text-slate-400">
-                          サポートカードなし
-                        </div>
-                      )}
+                    <div className="text-base font-black text-indigo-700">
+                      {activeDeckId
+                        ? loadDeckDefinition(activeDeckId)?.supportCardIds?.length || 0
+                        : 0}
+                      <span className="ml-1 text-[9px] text-slate-400">/ 18枚</span>
                     </div>
-                  </div>
-
-                  <div className="mt-2 min-h-0 rounded-2xl border border-indigo-100 bg-indigo-50/80 p-2.5 shadow-sm">
-                    <div className="flex items-center justify-between gap-2">
-                      <div>
-                        <div className="text-[8px] font-black tracking-[0.16em] text-indigo-500">
-                          TEAM ANALYSIS
-                        </div>
-
-                        <div className="mt-0.5 text-xs font-black text-indigo-950">
-                          チーム分析
-                        </div>
-                      </div>
-
-                      {currentPrepDeck && (
-                        <div className="truncate text-right text-[9px] font-black text-indigo-500">
-                          {currentPrepDeck.name}
-                        </div>
-                      )}
-                    </div>
-
-                    {currentPrepPreview ? (
-                      <div className="mt-2 grid grid-cols-2 gap-2">
-                        <div className="rounded-xl bg-white/90 p-2 ring-1 ring-indigo-100">
-                          <div className="text-[8px] font-black text-slate-400">
-                            キャラ基礎値合計
-                          </div>
-
-                          <div className="mt-1 grid grid-cols-4 gap-1 text-center">
-                            <div className="rounded-lg bg-slate-50 px-1 py-1">
-                              <div className="text-[7px] font-bold text-slate-400">
-                                情熱
-                              </div>
-                              <div className="text-[10px] font-black text-slate-900">
-                                {currentPrepPreview.totalStats.hp}
-                              </div>
-                            </div>
-
-                            <div className="rounded-lg bg-slate-50 px-1 py-1">
-                              <div className="text-[7px] font-bold text-slate-400">
-                                知性
-                              </div>
-                              <div className="text-[10px] font-black text-slate-900">
-                                {currentPrepPreview.totalStats.intellect}
-                              </div>
-                            </div>
-
-                            <div className="rounded-lg bg-slate-50 px-1 py-1">
-                              <div className="text-[7px] font-bold text-slate-400">
-                                技能
-                              </div>
-                              <div className="text-[10px] font-black text-slate-900">
-                                {currentPrepPreview.totalStats.dexterity}
-                              </div>
-                            </div>
-
-                            <div className="rounded-lg bg-slate-50 px-1 py-1">
-                              <div className="text-[7px] font-bold text-slate-400">
-                                愛嬌
-                              </div>
-                              <div className="text-[10px] font-black text-slate-900">
-                                {currentPrepPreview.totalStats.charm}
-                              </div>
-                            </div>
-                          </div>
-                        </div>
-
-                        <div className="rounded-xl bg-white/90 p-2 ring-1 ring-indigo-100">
-                          <div className="text-[8px] font-black text-slate-400">
-                            サポート効果構成
-                          </div>
-
-                          <div className="mt-1.5 flex max-h-16 flex-wrap gap-1 overflow-y-auto">
-                            {Object.entries(
-                              currentPrepPreview.supportCategories,
-                            ).map(
-                              ([category, count]) => (
-                                <span
-                                  key={category}
-                                  className="rounded-lg border border-purple-100 bg-purple-50 px-2 py-1 text-[8px] font-black text-purple-900"
-                                >
-                                  {category} {count}枚
-                                </span>
-                              ),
-                            )}
-
-                            {!Object.keys(
-                              currentPrepPreview.supportCategories,
-                            ).length && (
-                              <span className="text-[8px] font-bold text-slate-400">
-                                分析できるサポートカードがありません。
-                              </span>
-                            )}
-                          </div>
-                        </div>
-                      </div>
-                    ) : (
-                      <div className="mt-2 rounded-xl bg-white/80 p-3 text-center text-[9px] font-bold text-slate-400">
-                        チーム分析を表示できません。
-                      </div>
-                    )}
                   </div>
                 </div>
 
@@ -7142,21 +6938,14 @@ const field =
                     <div className="text-[9px] font-black tracking-wide text-indigo-500">
                       あなた
                     </div>
-
                     <div className="mt-1 text-sm font-black text-indigo-950">
-                      {deckConfirmed
-                        ? '準備完了'
-                        : myDeckReady
-                          ? '確認待ち'
-                          : 'チーム未選択'}
+                      {deckConfirmed ? '準備完了' : myDeckReady ? '確認待ち' : 'チーム未選択'}
                     </div>
                   </div>
-
                   <div className="rounded-2xl border border-slate-200 bg-white/90 p-3">
                     <div className="text-[9px] font-black tracking-wide text-slate-400">
                       相手
                     </div>
-
                     <div className="mt-1 text-sm font-black text-slate-800">
                       {isOnline
                         ? readyHost && readyGuest
@@ -7171,14 +6960,10 @@ const field =
                   <button
                     type="button"
                     onClick={() => {
-                      if (
-                        activeDeckId &&
-                        onEditDeck
-                      ) {
+                      if (activeDeckId && onEditDeck) {
                         onEditDeck(activeDeckId);
                         return;
                       }
-
                       setIsDeckSelectOpen(true);
                     }}
                     disabled={
@@ -7193,17 +6978,10 @@ const field =
                   >
                     チームを変更
                   </button>
-
                   <button
                     type="button"
-                    onClick={() =>
-                      void startBattleWithDeck()
-                    }
-                    disabled={
-                      !myDeckReady ||
-                      deckConfirmed ||
-                      currentYear !== 1
-                    }
+                    onClick={() => void startBattleWithDeck()}
+                    disabled={!myDeckReady || deckConfirmed || currentYear !== 1}
                     className="rounded-2xl bg-indigo-600 px-4 py-3 text-xs font-black text-white shadow-lg shadow-indigo-200 transition hover:bg-indigo-700 disabled:cursor-not-allowed disabled:opacity-35"
                   >
                     このチームではじめる
@@ -7216,11 +6994,9 @@ const field =
                   <div className="text-[10px] font-black tracking-[0.25em] text-slate-400">
                     COIN TOSS
                   </div>
-
                   <h2 className="mt-2 text-2xl font-black">
                     先手・後手を決めます
                   </h2>
-
                   <div className="mx-auto mt-6 flex h-24 w-24 items-center justify-center rounded-full border-4 border-amber-300 bg-white text-5xl text-slate-900 shadow-xl">
                     🪙
                   </div>
@@ -7230,15 +7006,11 @@ const field =
                       isHost ? (
                         <button
                           type="button"
-                          onClick={() =>
-                            void decideFirstPlayer()
-                          }
+                          onClick={() => void decideFirstPlayer()}
                           disabled={isCoinTossing}
                           className="mt-6 w-full rounded-2xl bg-amber-300 px-4 py-4 text-sm font-black text-slate-950 shadow-lg transition hover:bg-amber-200 disabled:cursor-not-allowed disabled:opacity-45"
                         >
-                          {isCoinTossing
-                            ? 'コイントス中…'
-                            : 'コイントスを行う'}
+                          {isCoinTossing ? 'コイントス中…' : 'コイントスを行う'}
                         </button>
                       ) : (
                         <div className="mt-6 rounded-2xl bg-white/10 px-4 py-4 text-sm font-black text-slate-200">
@@ -7248,22 +7020,16 @@ const field =
                     ) : (
                       <button
                         type="button"
-                        onClick={() =>
-                          void decideFirstPlayer()
-                        }
+                        onClick={() => void decideFirstPlayer()}
                         disabled={isCoinTossing}
                         className="mt-6 w-full rounded-2xl bg-amber-300 px-4 py-4 text-sm font-black text-slate-950 shadow-lg transition hover:bg-amber-200 disabled:cursor-not-allowed disabled:opacity-45"
                       >
-                        {isCoinTossing
-                          ? 'コイントス中…'
-                          : 'コイントスを行う'}
+                        {isCoinTossing ? 'コイントス中…' : 'コイントスを行う'}
                       </button>
                     )
                   ) : (
                     <div className="mt-6 rounded-2xl bg-white/10 px-4 py-4 text-xl font-black text-amber-300">
-                      {firstPlayer === playerRole
-                        ? 'あなたが先手！'
-                        : '相手が先手！'}
+                      {firstPlayer === playerRole ? 'あなたが先手！' : '相手が先手！'}
                     </div>
                   )}
 
@@ -7361,11 +7127,11 @@ const field =
                   あなた　{currentRoleDisplayName}
                 </div>
                 <div className="mt-1 flex items-end justify-center gap-2">
-                  <div className="flex min-w-0 flex-1 -translate-y-10 flex-col items-center justify-end">
-                    <div className="max-w-full -translate-y-3 truncate text-center text-xs font-black text-slate-950">
+                  <div className="flex min-w-0 flex-1 -translate-y-1 flex-col items-center justify-end">
+                    <div className="max-w-full truncate text-center text-xs font-black text-slate-950">
                       {myActiveAvatar.card.userName}
                     </div>
-                    <div className="mt-0.5 -translate-y-3 text-center text-[10px] font-black text-indigo-700">
+                    <div className="mt-0.5 text-center text-[10px] font-black text-indigo-700">
                       {currentMyClassScore} スコア
                     </div>
                     <button
@@ -7390,7 +7156,7 @@ const field =
                       </div>
                     </button>
                   </div>
-                  <div className="translate-y-6">
+                  <div className="translate-y-2">
                     <VerticalScoreGauge
                       label=""
                       score={currentMyClassScore}
@@ -7422,11 +7188,11 @@ const field =
                   相手　{currentRoleDisplayName}
                 </div>
                 <div className="mt-1 flex items-end justify-center gap-2">
-                  <div className="flex min-w-0 flex-1 -translate-y-10 flex-col items-center justify-end">
-                    <div className="max-w-full -translate-y-3 truncate text-center text-xs font-black text-slate-950">
+                  <div className="flex min-w-0 flex-1 -translate-y-1 flex-col items-center justify-end">
+                    <div className="max-w-full truncate text-center text-xs font-black text-slate-950">
                       {oppActiveAvatar.card.userName}
                     </div>
-                    <div className="mt-0.5 -translate-y-3 text-center text-[10px] font-black text-rose-700">
+                    <div className="mt-0.5 text-center text-[10px] font-black text-rose-700">
                       {currentOppClassScore} スコア
                     </div>
                     <button
@@ -7451,7 +7217,7 @@ const field =
                       </div>
                     </button>
                   </div>
-                  <div className="translate-y-6">
+                  <div className="translate-y-2">
                     <VerticalScoreGauge
                       label=""
                       score={currentOppClassScore}

@@ -14,6 +14,8 @@ import { COORDINATE_PRESETS } from '@/components/coordinatePresets';
 import { EMOTION_PRESETS } from '@/components/emotionPresets';
 import type { EmotionAxisKey, EmotionPreset } from '@/components/emotionPresets';
 import FriendMatchSetup from '@/components/FriendMatchSetup';
+import CreditsContact from '@/components/CreditsContact';
+import { playBgm, playSe, stopBgm } from '@/components/audio';
 
 type CurrentView =
   | 'menu'
@@ -397,7 +399,35 @@ export default function Home() {
     }
   }, [currentView]);
 
+  useEffect(() => {
+    if (showIntro) {
+      stopBgm();
+      return;
+    }
+
+    if (currentView !== 'gameBoard' && currentView !== 'friendGameBoard') {
+      playBgm('home');
+    }
+  }, [currentView, showIntro]);
+
+  useEffect(() => {
+    if (typeof document === 'undefined') return;
+
+    const handleMenuButtonSound = (event: MouseEvent) => {
+      if (currentView !== 'menu') return;
+      if (!(event.target instanceof Element)) return;
+      if (!event.target.closest('button')) return;
+      if (event.target.closest('[data-silent-se="true"]')) return;
+      playBgm('home');
+      playSe('decision');
+    };
+
+    document.addEventListener('click', handleMenuButtonSound, true);
+    return () => document.removeEventListener('click', handleMenuButtonSound, true);
+  }, [currentView]);
+
   const handleStartGame = () => {
+    playSe('decision');
     try {
       localStorage.setItem(INTRO_SEEN_KEY, '1');
     } catch {
@@ -411,22 +441,6 @@ export default function Home() {
     setEditingDeckId(null);
     setDeckBuilderReturnView('menu');
     setCurrentView('gameBoard');
-  };
-
-  const handleReturnFromDeckBuilder = () => {
-    if (deckBuilderReturnView === 'friendGameBoard' && activeRoomId) {
-      setCurrentView('friendGameBoard');
-      return;
-    }
-    if (deckBuilderReturnView === 'gameBoard') {
-      setCurrentView('gameBoard');
-      return;
-    }
-    if (deckBuilderReturnView === 'entryHub') {
-      setCurrentView('entryHub');
-      return;
-    }
-    handleReturnToMenu();
   };
 
   const handleEditDeck = (deckId: string) => {
@@ -501,7 +515,15 @@ export default function Home() {
       currentView === 'coordinateSelect' ||
       currentView === 'cardGen' ||
       currentView === 'emotionSelect' ||
-      currentView === 'supportGen');
+      currentView === 'supportGen' ||
+      currentView === 'friendMatchSetup' ||
+      currentView === 'gameBoard' ||
+      currentView === 'friendGameBoard');
+
+  const hideGlobalHeader =
+    currentView === 'friendMatchSetup' ||
+    currentView === 'gameBoard' ||
+    currentView === 'friendGameBoard';
 
   if (showIntro) {
     return (
@@ -558,16 +580,19 @@ export default function Home() {
             </button>
           </div>
         </div>
+        <CreditsContact />
       </main>
     );
   }
 
   return (
     <main className={`${isFixedView ? 'h-[100dvh] overflow-hidden' : 'min-h-screen'} bg-white text-gray-900 flex flex-col`}>
+      {!hideGlobalHeader && (
       <header className="shrink-0 border-b border-gray-200 bg-white px-4 py-3 shadow-sm sm:px-6">
         <div className="flex items-center justify-between gap-3">
           <button
             type="button"
+            data-silent-se="true"
             onClick={handleReturnToMenu}
             className="min-w-0 text-left"
             aria-label="ホームへ戻る"
@@ -587,8 +612,9 @@ export default function Home() {
           )}
         </div>
       </header>
+      )}
 
-      <div className={`${isFixedView ? 'min-h-0' : 'flex-1'} flex flex-col`}>
+      <div className={`${isFixedView ? 'min-h-0 flex-1 overflow-hidden' : 'flex-1'} flex flex-col`}>
         {currentView === 'menu' && (
           <div className="mx-auto flex min-h-0 w-full max-w-xl flex-1 flex-col px-4 py-5 sm:px-6 sm:py-7">
             <div className="text-center">
@@ -806,7 +832,7 @@ export default function Home() {
         {currentView === 'deckBuilder' && (
           <DeckBuilder
             initialDeckId={editingDeckId}
-            onGoToCpuBattle={editingDeckId ? handleReturnFromDeckBuilder : handleStartCpuBattle}
+            onGoToCpuBattle={editingDeckId ? handleReturnToMenu : handleStartCpuBattle}
             battleButtonLabel={editingDeckId ? '⚔️ 対戦へ戻る※自動保存されます' : '⚔️ CPU対戦で試す※自動保存されます'}
             onGoToEntryHub={() => setCurrentView('entryHub')}
           />
@@ -826,6 +852,8 @@ export default function Home() {
           />
         )}
       </div>
+
+      <CreditsContact />
     </main>
   );
 }
