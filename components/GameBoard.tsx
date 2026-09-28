@@ -7131,11 +7131,11 @@ const field =
                   あなた　{currentRoleDisplayName}
                 </div>
                 <div className="mt-1 flex items-end justify-center gap-2">
-                  <div className="flex min-w-0 flex-1 -translate-y-1 flex-col items-center justify-end">
-                    <div className="max-w-full truncate text-center text-xs font-black text-slate-950">
+                  <div className="flex min-w-0 flex-1 -translate-y-4 flex-col items-center justify-end">
+                    <div className="max-w-full -translate-y-3 truncate text-center text-xs font-black text-slate-950">
                       {myActiveAvatar.card.userName}
                     </div>
-                    <div className="mt-0.5 text-center text-[10px] font-black text-indigo-700">
+                    <div className="mt-0.5 text-center -translate-y-3 text-[10px] font-black text-indigo-700">
                       {currentMyClassScore} スコア
                     </div>
                     <button
@@ -7160,7 +7160,7 @@ const field =
                       </div>
                     </button>
                   </div>
-                  <div className="translate-y-2">
+                  <div className="translate-y-8">
                     <VerticalScoreGauge
                       label=""
                       score={currentMyClassScore}
@@ -7192,11 +7192,11 @@ const field =
                   相手　{currentRoleDisplayName}
                 </div>
                 <div className="mt-1 flex items-end justify-center gap-2">
-                  <div className="flex min-w-0 flex-1 -translate-y-1 flex-col items-center justify-end">
-                    <div className="max-w-full truncate text-center text-xs font-black text-slate-950">
+                  <div className="flex min-w-0 flex-1 -translate-y-4 flex-col items-center justify-end">
+                    <div className="max-w-full -translate-y-3 truncate text-center text-xs font-black text-slate-950">
                       {oppActiveAvatar.card.userName}
                     </div>
-                    <div className="mt-0.5 text-center text-[10px] font-black text-rose-700">
+                    <div className="mt-0.5 text-center -translate-y-3 text-[10px] font-black text-rose-700">
                       {currentOppClassScore} スコア
                     </div>
                     <button
@@ -7221,7 +7221,7 @@ const field =
                       </div>
                     </button>
                   </div>
-                  <div className="translate-y-2">
+                  <div className="translate-y-8">
                     <VerticalScoreGauge
                       label=""
                       score={currentOppClassScore}
