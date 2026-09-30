@@ -49,7 +49,7 @@ let bgmFadeTimer: number | null = null;
 let bgmTransitionId = 0;
 let fadingOutBgm: HTMLAudioElement | null = null;
 
-const BGM_VOLUME = 0.3;
+const BGM_VOLUME = 0.1;
 const BGM_FADE_MS = 450;
 
 function readAudioSettings(): AudioSettings {
@@ -293,6 +293,6 @@ export function playSe(key: SeKey) {
         : ['battle', 'skill', SE_FILES[key]];
   const audio = new Audio(getAudioPath('se', ...pathParts));
   audio.preload = 'auto';
-  audio.volume = 0.00;
+  audio.volume = 0.30;
   void audio.play().catch(() => undefined);
 }

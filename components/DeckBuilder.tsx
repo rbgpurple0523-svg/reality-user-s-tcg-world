@@ -1165,7 +1165,7 @@ export default function DeckBuilder({ onGoToCpuBattle, onGoToBattle, initialDeck
                       <div className="mt-2">
                         <div className="overflow-hidden rounded-xl border-2 bg-white" style={{ borderColor: card.colorHex || '#dbeafe' }}>
                           {card.imageDataUrl ? (
-                            <img src={card.imageDataUrl} alt="" className="h-28 w-full object-cover" />
+                            <img src={card.imageDataUrl} alt="" className="h-28 w-full object-contain" />
                           ) : (
                             <div className="flex h-28 items-center justify-center bg-gray-100 text-[9px] text-gray-400">画像なし</div>
                           )}
@@ -1309,7 +1309,7 @@ export default function DeckBuilder({ onGoToCpuBattle, onGoToBattle, initialDeck
                       <div key={card.id} className={`rounded-2xl border p-2 transition ${isAssigned ? 'border-gray-200 bg-gray-100 opacity-45' : 'border-gray-200 bg-white hover:border-indigo-300'}`}>
                         <button type="button" disabled={isAssigned} onClick={() => { assignCardToRole(card.id, selectedTargetRole); setSelectedCharacterDetail(null); }} className="w-full text-left disabled:cursor-not-allowed">
                           <div className="overflow-hidden rounded-xl border-2 bg-white" style={{ borderColor: card.colorHex || '#dbeafe' }}>
-                            {card.imageDataUrl ? <img src={card.imageDataUrl} alt="" className="h-32 w-full object-cover" /> : <div className="flex h-32 items-center justify-center bg-gray-100 text-[8px] text-gray-400">画像なし</div>}
+                            {card.imageDataUrl ? <img src={card.imageDataUrl} alt="" className="h-32 w-full object-contain" /> : <div className="flex h-32 items-center justify-center bg-gray-100 text-[8px] text-gray-400">画像なし</div>}
                           </div>
                           <div className="mt-1 truncate text-[10px] font-black">{card.userName}</div>
                           <div className="mt-0.5 text-[8px] font-bold text-gray-400">{isAssigned ? '編成済み' : 'このクラスに入れる'}</div>

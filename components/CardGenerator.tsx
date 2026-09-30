@@ -478,7 +478,7 @@ setErrorMessage('');
 };
 
 const handleProfileUrlChange = (value: string) => {
-setProfileUrl(normalizeProfileUrl(value));
+setProfileUrl(value);
 setErrorMessage('');
 };
 
@@ -1139,6 +1139,15 @@ return ( <div className="mx-auto flex h-full min-h-0 w-full max-w-5xl flex-col t
 
               <div>
                 <label className="mb-1 block font-bold">アバター画像 <span className="text-red-500">*</span></label>
+                {imageDataUrl && (
+                  <div className="mb-2 flex items-center gap-3 rounded-xl border border-emerald-200 bg-emerald-50 p-2">
+                    <img src={imageDataUrl} alt="選択したアバター画像" className="h-16 w-16 shrink-0 rounded-lg object-cover" />
+                    <div className="min-w-0">
+                      <div className="text-[10px] font-black text-emerald-700">✓ 画像選択済み</div>
+                      <div className="mt-0.5 text-[8px] font-bold leading-4 text-emerald-600">画像は保持されています。変更する場合は下から別の画像を選択してください。</div>
+                    </div>
+                  </div>
+                )}
                 <input type="file" accept="image/*" onChange={handleImageUpload} className="w-full text-xs file:mr-3 file:rounded-lg file:border-0 file:bg-rose-100 file:px-3 file:py-2 file:text-[10px] file:font-black file:text-rose-700 hover:file:bg-rose-200" />
               </div>
 
