@@ -11,8 +11,14 @@ import {
   type Transaction,
 } from 'firebase-admin/firestore';
 import { adminDb } from '@/lib/firebaseAdmin';
-import { COORDINATE_PRESETS, STAT_RANKS } from '@/components/coordinatePresets';
-import { EMOTION_PRESETS, type EmotionPreset } from '@/components/emotionPresets';
+import {
+  COORDINATE_PRESETS,
+  STAT_RANKS,
+} from '@/components/coordinatePresets';
+import {
+  EMOTION_PRESETS,
+  type EmotionPreset,
+} from '@/components/emotionPresets';
 
 export const runtime = 'nodejs';
 
@@ -73,6 +79,7 @@ type BattleAvatar = {
   card: {
     id: string;
     userName: string;
+    presetId: string;
   };
 
   roleName: string;
@@ -103,7 +110,12 @@ type SupportCardState = {
 
 type BattleAction = {
   actionId?: string;
-  type?: 'USE_SKILL' | 'PLAY_SUPPORT' | 'DRAW_TURN' | 'START_BATTLE' | 'REMATCH_RESET';
+  type?:
+    | 'USE_SKILL'
+    | 'PLAY_SUPPORT'
+    | 'DRAW_TURN'
+    | 'START_BATTLE'
+    | 'REMATCH_RESET';
 
   playerRole?: PlayerRole;
   uid?: string;
@@ -131,6 +143,34 @@ type LastSkillAction = {
   skillName: string;
   gainedScore: number;
   processedAt: number;
+};
+
+type BattleDeckSnapshot = {
+  version: 1;
+  deckId: string | null;
+  deckName: string;
+  characters: [
+    {
+      role: 'vanguard';
+      cardId: string;
+      presetId?: string;
+    },
+    {
+      role: 'center';
+      cardId: string;
+      presetId?: string;
+    },
+    {
+      role: 'general';
+      cardId: string;
+      presetId?: string;
+    },
+  ];
+  supportCards: Array<{
+    cardId: string;
+    presetId?: string;
+  }>;
+  createdAt: string;
 };
 
 type PlayerData = {
@@ -203,6 +243,16 @@ type PrivatePlayerData = {
   uid?: string;
   hand?: SupportCardState[];
   deck?: SupportCardState[];
+  battleDeckSnapshot?: BattleDeckSnapshot;
+};
+
+type FirestoreCardData = {
+  status?: unknown;
+  cardType?: unknown;
+  presetId?: unknown;
+  userName?: unknown;
+  customSkills?: unknown;
+  customEffectName?: unknown;
 };
 
 type BattleActionRequest = {
@@ -224,14 +274,32 @@ const STAT_KEYS: StatKey[] = [
   'charm',
 ];
 
+const CLASS_ROLE_NAMES = [
+  'フェザークラス',
+  'オーロラクラス',
+  'スタークラス',
+] as const;
+
+const ZERO_DEBUFF: Record<StatKey, number> = {
+  hp: 0,
+  intellect: 0,
+  dexterity: 0,
+  charm: 0,
+};
+
 const getBattleTurnOrdinal = (
   year: number,
   turnIndex: number,
 ) =>
-  Math.max(0, (year - 1) * 8 + turnIndex);
+  Math.max(
+    0,
+    (year - 1) * 8 + turnIndex,
+  );
 
 const isSupportEffectActive = (
-  effect: { expiresAtTurnOrdinal: number | null },
+  effect: {
+    expiresAtTurnOrdinal: number | null;
+  },
   turnOrdinal: number,
 ) =>
   effect.expiresAtTurnOrdinal === null ||
@@ -248,6 +316,7 @@ const getSupportEffectExpiration = (
 
   const currentYear =
     Math.floor(turnOrdinal / 8) + 1;
+
   const classEndTurnOrdinal =
     currentYear * 8;
 
@@ -267,18 +336,26 @@ const clearSupportEffectsFromAvatars = (
   }));
 
 const getAdditionalDrawFromEffects = (
-  effects: SupportControlEffectState[] | undefined,
+  effects:
+    | SupportControlEffectState[]
+    | undefined,
   turnOrdinal: number,
 ) =>
   (effects ?? [])
     .filter(
       (effect) =>
-        isSupportEffectActive(effect, turnOrdinal) &&
+        isSupportEffectActive(
+          effect,
+          turnOrdinal,
+        ) &&
         effect.kind === 'extra_draw',
     )
     .reduce(
       (sum, effect) =>
-        sum + Number(effect.extraDrawPerTurn ?? 0),
+        sum +
+        Number(
+          effect.extraDrawPerTurn ?? 0,
+        ),
       0,
     );
 
@@ -312,28 +389,21 @@ const getExpectedPlayer = (
 
 const getCoordinatePresetForAvatar = (
   avatar: BattleAvatar,
-) => {
-  const card = avatar.card as BattleAvatar['card'] & {
-    presetId?: string;
-    coordinateCode?: string;
-    code?: string;
-  };
-
-  const presetId = card.presetId;
-  const code = card.coordinateCode || card.code;
-
-  return COORDINATE_PRESETS.find(
+) =>
+  COORDINATE_PRESETS.find(
     (preset) =>
-      (presetId && preset.id === presetId) ||
-      (code && preset.code === code),
+      preset.id ===
+      avatar.card.presetId,
   );
-};
 
 const getCanonicalSkill = (
   avatar: BattleAvatar,
   skillId: string,
 ): Skill => {
-  const preset = getCoordinatePresetForAvatar(avatar);
+  const preset =
+    getCoordinatePresetForAvatar(
+      avatar,
+    );
 
   if (!preset) {
     throw new Error(
@@ -341,27 +411,43 @@ const getCanonicalSkill = (
     );
   }
 
-  const match = /^skill_([1-4])$/.exec(skillId);
+  const match =
+    /^skill_([1-4])$/.exec(
+      skillId,
+    );
+
   if (!match) {
-    throw new Error('Skill IDが不正です。');
+    throw new Error(
+      'Skill IDが不正です。',
+    );
   }
 
-  const index = Number(match[1]) - 1;
-  const rank = STAT_RANKS[preset.code];
+  const index =
+    Number(match[1]) - 1;
+
+  const rank =
+    STAT_RANKS[preset.code];
+
   if (!rank) {
-    throw new Error('公式コーデ順位が存在しません。');
+    throw new Error(
+      '公式コーデ順位が存在しません。',
+    );
   }
 
-  const displayedSkill = avatar.skills?.find(
-    (item) => item.id === skillId,
-  );
+  const displayedSkill =
+    avatar.skills?.find(
+      (item) =>
+        item.id === skillId,
+    );
+
   const name =
     displayedSkill?.name ||
     preset.defaultSkills[index];
+
   const description =
     preset.skillDescriptions[index];
 
-  if (preset.code === 'n1') {
+  if (preset.code === 'a1') {
     const rules: SkillRule[] = [
       'y_total_score',
       'y_response_score',
@@ -374,7 +460,11 @@ const getCanonicalSkill = (
       name,
       description,
       maxUsesPerClass:
-        index === 2 ? 2 : index === 3 ? 1 : 0,
+        index === 2
+          ? 2
+          : index === 3
+            ? 1
+            : 0,
       type:
         index === 3
           ? 'debuff_attack'
@@ -401,9 +491,19 @@ const getCanonicalSkill = (
         ? 'debuff_attack'
         : 'score',
     rule: rules[index],
-    primaryStat: index === 1 ? rank[1] : rank[0],
-    secondaryStat: index === 1 || index === 3 ? rank[2] : undefined,
-    tertiaryStat: index === 3 ? rank[3] : undefined,
+    primaryStat:
+      index === 1
+        ? rank[1]
+        : rank[0],
+    secondaryStat:
+      index === 1 ||
+      index === 3
+        ? rank[2]
+        : undefined,
+    tertiaryStat:
+      index === 3
+        ? rank[3]
+        : undefined,
   };
 };
 
@@ -411,23 +511,44 @@ const getEffectiveStats = (
   avatar: BattleAvatar,
   turnOrdinal: number,
 ): Record<StatKey, number> => {
-  const preset = getCoordinatePresetForAvatar(avatar);
+  const preset =
+    getCoordinatePresetForAvatar(
+      avatar,
+    );
+
   if (!preset) {
     throw new Error(
       'Avatarの公式コーデ性能を確認できません。',
     );
   }
 
-  const sourceBaseStats = avatar.baseStats ?? preset.stats;
-  const result: Record<StatKey, number> = {
-    hp: Number(sourceBaseStats.hp),
-    intellect: Number(sourceBaseStats.intellect),
-    dexterity: Number(sourceBaseStats.dexterity),
-    charm: Number(sourceBaseStats.charm),
+  const sourceBaseStats =
+    avatar.baseStats ??
+    preset.stats;
+
+  const result: Record<
+    StatKey,
+    number
+  > = {
+    hp: Number(
+      sourceBaseStats.hp,
+    ),
+    intellect: Number(
+      sourceBaseStats.intellect,
+    ),
+    dexterity: Number(
+      sourceBaseStats.dexterity,
+    ),
+    charm: Number(
+      sourceBaseStats.charm,
+    ),
   };
 
   const activeSupportEffects =
-    (avatar.supportEffects ?? []).filter(
+    (
+      avatar.supportEffects ??
+      []
+    ).filter(
       (effect) =>
         isSupportEffectActive(
           effect,
@@ -453,7 +574,11 @@ const getEffectiveStats = (
       for (const key of STAT_KEYS) {
         const override =
           effect.statOverride[key];
-        if (typeof override === 'number') {
+
+        if (
+          typeof override ===
+          'number'
+        ) {
           result[key] = Math.max(
             0,
             override,
@@ -464,16 +589,23 @@ const getEffectiveStats = (
   }
 
   for (const key of STAT_KEYS) {
-    const debuff = Number(
-      avatar.currentDebuff?.[key] ?? 0,
-    );
-    const boost = Number(
-      avatar.statBoost?.[key] ?? 1,
-    );
+    const debuff =
+      Number(
+        avatar.currentDebuff?.[
+          key
+        ] ?? 0,
+      );
+
+    const boost =
+      Number(
+        avatar.statBoost?.[key] ??
+          1,
+      );
 
     result[key] = Math.max(
       0,
-      result[key] * boost - debuff,
+      result[key] * boost -
+        debuff,
     );
   }
 
@@ -484,7 +616,11 @@ const sanitizeFreshBattleAvatars = (
   avatars: BattleAvatar[],
 ): BattleAvatar[] =>
   avatars.map((avatar) => {
-    const preset = getCoordinatePresetForAvatar(avatar);
+    const preset =
+      getCoordinatePresetForAvatar(
+        avatar,
+      );
+
     if (!preset) {
       throw new Error(
         'Avatarの公式コーデ性能を確認できません。',
@@ -493,8 +629,12 @@ const sanitizeFreshBattleAvatars = (
 
     return {
       ...avatar,
-      stats: { ...preset.stats },
-      baseStats: { ...preset.stats },
+      stats: {
+        ...preset.stats,
+      },
+      baseStats: {
+        ...preset.stats,
+      },
       currentDebuff: {
         hp: 0,
         intellect: 0,
@@ -532,38 +672,41 @@ const addDebuffs = (
 
   return {
     ...avatar,
-
     currentDebuff: {
       hp:
         Number(
-          avatar.currentDebuff?.hp ?? 0,
+          avatar.currentDebuff?.hp ??
+            0,
         ) +
         Number(
           debuffs.hp ?? 0,
         ),
-
       intellect:
         Number(
-          avatar.currentDebuff?.intellect ?? 0,
+          avatar.currentDebuff?.intellect ??
+            0,
         ) +
         Number(
-          debuffs.intellect ?? 0,
+          debuffs.intellect ??
+            0,
         ),
-
       dexterity:
         Number(
-          avatar.currentDebuff?.dexterity ?? 0,
+          avatar.currentDebuff?.dexterity ??
+            0,
         ) +
         Number(
-          debuffs.dexterity ?? 0,
+          debuffs.dexterity ??
+            0,
         ),
-
       charm:
         Number(
-          avatar.currentDebuff?.charm ?? 0,
+          avatar.currentDebuff?.charm ??
+            0,
         ) +
         Number(
-          debuffs.charm ?? 0,
+          debuffs.charm ??
+            0,
         ),
     },
   };
@@ -576,36 +719,90 @@ const calculateSkillResult = (
   turnOrdinal: number,
   selectedBoostStat?: StatKey,
 ) => {
-  const effective = getEffectiveStats(
-    actor,
-    turnOrdinal,
-  );
-  const targetEffective = getEffectiveStats(
-    target,
-    turnOrdinal,
-  );
+  const effective =
+    getEffectiveStats(
+      actor,
+      turnOrdinal,
+    );
+
+  const targetEffective =
+    getEffectiveStats(
+      target,
+      turnOrdinal,
+    );
 
   let gainedScore = 0;
-  const debuffs: Partial<Record<StatKey, number>> = {};
+
+  const debuffs: Partial<
+    Record<StatKey, number>
+  > = {};
+
   let nextActor = actor;
   let nextTarget = target;
 
-  const baseActorStats = actor.baseStats ?? getCoordinatePresetForAvatar(actor)?.stats ?? actor.stats;
-  const baseTargetStats = target.baseStats ?? getCoordinatePresetForAvatar(target)?.stats ?? target.stats;
-  const baseRank = STAT_KEYS.slice().sort((a, b) => Number(baseActorStats[b] ?? 0) - Number(baseActorStats[a] ?? 0));
+  const baseActorStats =
+    actor.baseStats ??
+    getCoordinatePresetForAvatar(
+      actor,
+    )?.stats ??
+    actor.stats;
 
-  if (skill.rule === 'primary_score') {
-    const stat = skill.primaryStat ?? baseRank[0] ?? 'hp';
-    gainedScore = effective[stat] * 20;
-  } else if (skill.rule === 'product_score') {
-    const first = skill.primaryStat ?? baseRank[1] ?? 'intellect';
-    const second = skill.secondaryStat ?? baseRank[2] ?? 'dexterity';
+  const baseTargetStats =
+    target.baseStats ??
+    getCoordinatePresetForAvatar(
+      target,
+    )?.stats ??
+    target.stats;
+
+  const baseRank =
+    STAT_KEYS.slice().sort(
+      (a, b) =>
+        Number(
+          baseActorStats[b] ?? 0,
+        ) -
+        Number(
+          baseActorStats[a] ?? 0,
+        ),
+    );
+
+  if (
+    skill.rule ===
+    'primary_score'
+  ) {
+    const stat =
+      skill.primaryStat ??
+      baseRank[0] ??
+      'hp';
+
+    gainedScore =
+      effective[stat] * 20;
+  } else if (
+    skill.rule ===
+    'product_score'
+  ) {
+    const first =
+      skill.primaryStat ??
+      baseRank[1] ??
+      'intellect';
+
+    const second =
+      skill.secondaryStat ??
+      baseRank[2] ??
+      'dexterity';
+
     gainedScore =
       (effective[first] +
         effective[second]) *
       15;
-  } else if (skill.rule === 'difference_score') {
-    const stat = skill.primaryStat ?? baseRank[0] ?? 'hp';
+  } else if (
+    skill.rule ===
+    'difference_score'
+  ) {
+    const stat =
+      skill.primaryStat ??
+      baseRank[0] ??
+      'hp';
+
     gainedScore =
       Math.max(
         0,
@@ -616,9 +813,20 @@ const calculateSkillResult = (
     skill.rule ===
     'combo_score_and_debuff'
   ) {
-    const first = skill.secondaryStat ?? baseRank[2] ?? 'dexterity';
-    const second = skill.tertiaryStat ?? baseRank[3] ?? 'charm';
-    const targetStat = skill.primaryStat ?? baseRank[0] ?? 'hp';
+    const first =
+      skill.secondaryStat ??
+      baseRank[2] ??
+      'dexterity';
+
+    const second =
+      skill.tertiaryStat ??
+      baseRank[3] ??
+      'charm';
+
+    const targetStat =
+      skill.primaryStat ??
+      baseRank[0] ??
+      'hp';
 
     gainedScore =
       (effective[first] +
@@ -627,20 +835,29 @@ const calculateSkillResult = (
 
     debuffs[targetStat] =
       Math.ceil(
-        targetEffective[targetStat] * 0.5,
+        targetEffective[
+          targetStat
+        ] * 0.5,
       );
 
-    nextTarget = addDebuffs(
-      target,
-      debuffs,
-    );
+    nextTarget =
+      addDebuffs(
+        target,
+        debuffs,
+      );
   } else if (
     skill.rule ===
     'y_total_score'
   ) {
     gainedScore =
-      Object.values(effective).reduce(
-        (sum, value) => sum + Number(value ?? 0),
+      Object.values(
+        effective,
+      ).reduce(
+        (sum, value) =>
+          sum +
+          Number(
+            value ?? 0,
+          ),
         0,
       ) * 10;
   } else if (
@@ -649,76 +866,126 @@ const calculateSkillResult = (
   ) {
     if (!selectedBoostStat) {
       throw new Error(
-        'N-1技②には対応ステータスが必要です。',
+        'A-1技②には対応ステータスが必要です。',
       );
     }
 
     gainedScore =
       Math.max(
         0,
-        effective[selectedBoostStat] -
-          targetEffective[selectedBoostStat],
+        effective[
+          selectedBoostStat
+        ] -
+          targetEffective[
+            selectedBoostStat
+          ],
       ) * 40;
   } else if (
     skill.rule === 'y_burst'
   ) {
     if (!selectedBoostStat) {
       throw new Error(
-        'N-1技③には強化ステータスが必要です。',
+        'A-1技③には強化ステータスが必要です。',
       );
     }
 
     gainedScore =
-      effective[selectedBoostStat] * 10;
+      effective[
+        selectedBoostStat
+      ] * 10;
 
     const nextBaseValue =
-      Number(baseActorStats[selectedBoostStat] ?? 0) * 2;
+      Number(
+        baseActorStats[
+          selectedBoostStat
+        ] ?? 0,
+      ) * 2;
 
     nextActor = {
       ...actor,
       stats: {
         ...actor.stats,
-        [selectedBoostStat]: nextBaseValue,
+        [selectedBoostStat]:
+          nextBaseValue,
       },
       baseStats: {
         ...baseActorStats,
-        [selectedBoostStat]: nextBaseValue,
+        [selectedBoostStat]:
+          nextBaseValue,
       },
     };
   } else if (
     skill.rule === 'y_crash'
   ) {
-    const baseRankOrder = new Map(
-      baseRank.map((stat, index) => [stat, index]),
-    );
-    const lowEffectiveRank = STAT_KEYS.slice().sort(
-      (a, b) => {
-        const valueDiff =
-          effective[a] - effective[b];
-        if (valueDiff !== 0) return valueDiff;
-        return (
-          (baseRankOrder.get(a) ?? STAT_KEYS.indexOf(a)) -
-          (baseRankOrder.get(b) ?? STAT_KEYS.indexOf(b))
-        );
-      },
-    );
-    const lowStat = lowEffectiveRank[0] ?? 'hp';
+    const baseRankOrder =
+      new Map(
+        baseRank.map(
+          (stat, index) => [
+            stat,
+            index,
+          ],
+        ),
+      );
+
+    const lowEffectiveRank =
+      STAT_KEYS.slice().sort(
+        (a, b) => {
+          const valueDiff =
+            effective[a] -
+            effective[b];
+
+          if (valueDiff !== 0) {
+            return valueDiff;
+          }
+
+          return (
+            (baseRankOrder.get(
+              a,
+            ) ??
+              STAT_KEYS.indexOf(
+                a,
+              )) -
+            (baseRankOrder.get(
+              b,
+            ) ??
+              STAT_KEYS.indexOf(
+                b,
+              ))
+          );
+        },
+      );
+
+    const lowStat =
+      lowEffectiveRank[0] ??
+      'hp';
+
     const secondLowStat =
-      lowEffectiveRank[1] ?? 'intellect';
+      lowEffectiveRank[1] ??
+      'intellect';
+
     gainedScore =
-      (effective[lowStat] + effective[secondLowStat]) * 10;
+      (effective[lowStat] +
+        effective[
+          secondLowStat
+        ]) *
+      10;
 
     for (const key of STAT_KEYS) {
       debuffs[key] =
         Math.ceil(
-          Number(baseTargetStats[key] ?? 0) * 0.25,
+          Number(
+            baseTargetStats[
+              key
+            ] ?? 0,
+          ) * 0.25,
         );
     }
 
-    nextTarget = addDebuffs(
-      target,
-      debuffs,
-    );
+    nextTarget =
+      addDebuffs(
+        target,
+        debuffs,
+      );
   } else {
     throw new Error(
       'Skill ruleが不正です。',
@@ -726,7 +993,10 @@ const calculateSkillResult = (
   }
 
   return {
-    gainedScore: Math.max(0, gainedScore),
+    gainedScore: Math.max(
+      0,
+      gainedScore,
+    ),
     nextActor,
     nextTarget,
   };
@@ -735,30 +1005,28 @@ const calculateSkillResult = (
 const getSupportPresetFromCard = (
   card: SupportCardState,
 ): EmotionPreset | undefined => {
-  const presetId =
-    card.presetId ||
-    card.id.match(/emo_\d{2}$/)?.[0];
-
-  if (presetId) {
-    const preset = EMOTION_PRESETS.find(
-      (item) => item.id === presetId,
-    );
-    if (preset) return preset;
+  if (!card.presetId) {
+    return undefined;
   }
 
   return EMOTION_PRESETS.find(
     (item) =>
-      item.name === card.name,
+      item.id ===
+      card.presetId,
   );
 };
 
 const parseEmotionAmount = (
   value?: string,
 ) => {
-  const match = value?.match(
-    /[-+]?\d+(?:\.\d+)?/,
-  );
-  return match ? Number(match[0]) : 0;
+  const match =
+    value?.match(
+      /[-+]?\d+(?:\.\d+)?/,
+    );
+
+  return match
+    ? Number(match[0])
+    : 0;
 };
 
 const appendSupportAvatarEffect = (
@@ -768,13 +1036,14 @@ const appendSupportAvatarEffect = (
 ): BattleAvatar => ({
   ...avatar,
   supportEffects: [
-    ...(avatar.supportEffects ?? []).filter(
-      (item) =>
-        isSupportEffectActive(
-          item,
-          turnOrdinal,
-        ),
-    ),
+    ...(avatar.supportEffects ?? [])
+      .filter(
+        (item) =>
+          isSupportEffectActive(
+            item,
+            turnOrdinal,
+          ),
+      ),
     effect,
   ],
 });
@@ -786,7 +1055,10 @@ const appendSupportControlEffect = (
 ): BattleAvatar => ({
   ...avatar,
   supportControlEffects: [
-    ...(avatar.supportControlEffects ?? []).filter(
+    ...(
+      avatar.supportControlEffects ??
+      []
+    ).filter(
       (item) =>
         isSupportEffectActive(
           item,
@@ -811,8 +1083,12 @@ const applySupportControlToAllAvatars = (
   );
 
 const cloneSupportDeltaEffects = (
-  effects: SupportAvatarEffectState[] | undefined,
-  predicate: (delta: number) => boolean,
+  effects:
+    | SupportAvatarEffectState[]
+    | undefined,
+  predicate: (
+    delta: number,
+  ) => boolean,
   turnOrdinal: number,
   actionId: string,
 ): SupportAvatarEffectState[] =>
@@ -823,30 +1099,56 @@ const cloneSupportDeltaEffects = (
         turnOrdinal,
       ),
     )
-    .map((effect, index): SupportAvatarEffectState | null => {
-      const filtered: Partial<Record<StatKey, number>> = {};
+    .map(
+      (
+        effect,
+        index,
+      ):
+        | SupportAvatarEffectState
+        | null => {
+        const filtered: Partial<
+          Record<
+            StatKey,
+            number
+          >
+        > = {};
 
-      for (const stat of STAT_KEYS) {
-        const value = Number(
-          effect.statDelta?.[stat] ?? 0,
-        );
-        if (value !== 0 && predicate(value)) {
-          filtered[stat] = value;
+        for (const stat of STAT_KEYS) {
+          const value =
+            Number(
+              effect.statDelta?.[
+                stat
+              ] ?? 0,
+            );
+
+          if (
+            value !== 0 &&
+            predicate(value)
+          ) {
+            filtered[stat] = value;
+          }
         }
-      }
 
-      if (!Object.keys(filtered).length) {
-        return null;
-      }
+        if (
+          !Object.keys(
+            filtered,
+          ).length
+        ) {
+          return null;
+        }
 
-      return {
-        ...effect,
-        id: `${actionId}_reflect_${index}_${effect.id}`,
-        statDelta: filtered,
-      };
-    })
+        return {
+          ...effect,
+          id: `${actionId}_reflect_${index}_${effect.id}`,
+          statDelta:
+            filtered,
+        };
+      },
+    )
     .filter(
-      (effect): effect is SupportAvatarEffectState =>
+      (
+        effect,
+      ): effect is SupportAvatarEffectState =>
         effect !== null,
     );
 
@@ -858,8 +1160,15 @@ const calculateSupportEffectResult = (
   turnOrdinal: number,
   actionId: string,
 ) => {
-  const actor = actorAvatars[activeIndex];
-  const target = targetAvatars[activeIndex];
+  const actor =
+    actorAvatars[
+      activeIndex
+    ];
+
+  const target =
+    targetAvatars[
+      activeIndex
+    ];
 
   if (!actor || !target) {
     throw new Error(
@@ -867,27 +1176,38 @@ const calculateSupportEffectResult = (
     );
   }
 
-  let nextActorAvatars: BattleAvatar[] = actorAvatars.map((avatar) => ({
+let nextActorAvatars: BattleAvatar[] =
+  actorAvatars.map((avatar) => ({
     ...avatar,
-    supportEffects: [...(avatar.supportEffects ?? [])],
-    supportControlEffects: [
-      ...(avatar.supportControlEffects ?? []),
+    supportEffects: [
+      ...(avatar.supportEffects ?? []),
     ],
-  }));
-  let nextTargetAvatars: BattleAvatar[] = targetAvatars.map((avatar) => ({
-    ...avatar,
-    supportEffects: [...(avatar.supportEffects ?? [])],
     supportControlEffects: [
       ...(avatar.supportControlEffects ?? []),
     ],
   }));
 
-  const amount = parseEmotionAmount(
-    preset.effectAmount,
-  );
+let nextTargetAvatars: BattleAvatar[] =
+  targetAvatars.map((avatar) => ({
+    ...avatar,
+    supportEffects: [
+      ...(avatar.supportEffects ?? []),
+    ],
+    supportControlEffects: [
+      ...(avatar.supportControlEffects ?? []),
+    ],
+  }));
+
+  const amount =
+    parseEmotionAmount(
+      preset.effectAmount,
+    );
 
   const statMap: Partial<
-    Record<EmotionPreset['effectCategory'], StatKey>
+    Record<
+      EmotionPreset['effectCategory'],
+      StatKey
+    >
   > = {
     '情熱': 'hp',
     '知性': 'intellect',
@@ -900,11 +1220,18 @@ const calculateSupportEffectResult = (
   let extraDraw = 0;
 
   const appendToActor = (
-    effect: Omit<SupportAvatarEffectState, 'id'>,
+    effect: Omit<
+      SupportAvatarEffectState,
+      'id'
+    >,
   ) => {
-    nextActorAvatars[activeIndex] =
+    nextActorAvatars[
+      activeIndex
+    ] =
       appendSupportAvatarEffect(
-        nextActorAvatars[activeIndex],
+        nextActorAvatars[
+          activeIndex
+        ],
         {
           ...effect,
           id: `${actionId}_actor`,
@@ -914,11 +1241,18 @@ const calculateSupportEffectResult = (
   };
 
   const appendToTarget = (
-    effect: Omit<SupportAvatarEffectState, 'id'>,
+    effect: Omit<
+      SupportAvatarEffectState,
+      'id'
+    >,
   ) => {
-    nextTargetAvatars[activeIndex] =
+    nextTargetAvatars[
+      activeIndex
+    ] =
       appendSupportAvatarEffect(
-        nextTargetAvatars[activeIndex],
+        nextTargetAvatars[
+          activeIndex
+        ],
         {
           ...effect,
           id: `${actionId}_target`,
@@ -927,7 +1261,10 @@ const calculateSupportEffectResult = (
       );
   };
 
-  if (preset.effectCategory === '全ステータス') {
+  if (
+    preset.effectCategory ===
+    '全ステータス'
+  ) {
     const delta = {
       hp: amount,
       intellect: amount,
@@ -935,9 +1272,13 @@ const calculateSupportEffectResult = (
       charm: amount,
     };
 
-    if (preset.target === '自分') {
+    if (
+      preset.target ===
+      '自分'
+    ) {
       appendToActor({
-        sourcePresetId: preset.id,
+        sourcePresetId:
+          preset.id,
         statDelta: delta,
         expiresAtTurnOrdinal:
           getSupportEffectExpiration(
@@ -948,9 +1289,13 @@ const calculateSupportEffectResult = (
       });
     }
 
-    if (preset.target === '相手') {
+    if (
+      preset.target ===
+      '相手'
+    ) {
       appendToTarget({
-        sourcePresetId: preset.id,
+        sourcePresetId:
+          preset.id,
         statDelta: delta,
         expiresAtTurnOrdinal:
           getSupportEffectExpiration(
@@ -961,16 +1306,25 @@ const calculateSupportEffectResult = (
       });
     }
   } else if (
-    statMap[preset.effectCategory]
-  ) {
-    const stat = statMap[
+    statMap[
       preset.effectCategory
-    ] as StatKey;
+    ]
+  ) {
+    const stat =
+      statMap[
+        preset.effectCategory
+      ] as StatKey;
 
-    if (preset.target === '自分') {
+    if (
+      preset.target ===
+      '自分'
+    ) {
       appendToActor({
-        sourcePresetId: preset.id,
-        statDelta: { [stat]: amount },
+        sourcePresetId:
+          preset.id,
+        statDelta: {
+          [stat]: amount,
+        },
         expiresAtTurnOrdinal:
           getSupportEffectExpiration(
             preset,
@@ -980,10 +1334,16 @@ const calculateSupportEffectResult = (
       });
     }
 
-    if (preset.target === '相手') {
+    if (
+      preset.target ===
+      '相手'
+    ) {
       appendToTarget({
-        sourcePresetId: preset.id,
-        statDelta: { [stat]: amount },
+        sourcePresetId:
+          preset.id,
+        statDelta: {
+          [stat]: amount,
+        },
         expiresAtTurnOrdinal:
           getSupportEffectExpiration(
             preset,
@@ -996,12 +1356,16 @@ const calculateSupportEffectResult = (
     preset.effectCategory ===
     'スコア'
   ) {
-    if (preset.id === 'emo_21') {
-      actorScoreDelta = Math.abs(amount);
+    if (
+      preset.id === 'emo_21'
+    ) {
+      actorScoreDelta =
+        Math.abs(amount);
     } else if (
       preset.id === 'emo_22'
     ) {
-      targetScoreDelta = -Math.abs(amount);
+      targetScoreDelta =
+        -Math.abs(amount);
     } else {
       throw new Error(
         '未定義のスコアサポートです。',
@@ -1016,22 +1380,28 @@ const calculateSupportEffectResult = (
         '制限されない',
       );
 
-    const baseEffect: SupportControlEffectState = {
-      id: actionId,
-      sourcePresetId: preset.id,
-      duration: preset.duration,
-      kind: isFreeSupportControl
-        ? 'free'
-        : 'limit',
-      expiresAtTurnOrdinal:
-        getSupportEffectExpiration(
-          preset,
-          turnOrdinal,
-          preset.target === '相手',
-        ),
-    };
+    const baseEffect: SupportControlEffectState =
+      {
+        id: actionId,
+        sourcePresetId:
+          preset.id,
+        duration:
+          preset.duration,
+        kind:
+          isFreeSupportControl
+            ? 'free'
+            : 'limit',
+        expiresAtTurnOrdinal:
+          getSupportEffectExpiration(
+            preset,
+            turnOrdinal,
+            preset.target ===
+              '相手',
+          ),
+      };
 
-    const effect: SupportControlEffectState =
+    const effect:
+      SupportControlEffectState =
       isFreeSupportControl
         ? baseEffect
         : {
@@ -1043,7 +1413,10 @@ const calculateSupportEffectResult = (
               ),
           };
 
-    if (preset.target === '自分') {
+    if (
+      preset.target ===
+      '自分'
+    ) {
       nextActorAvatars =
         applySupportControlToAllAvatars(
           nextActorAvatars,
@@ -1051,7 +1424,8 @@ const calculateSupportEffectResult = (
           turnOrdinal,
         );
     } else if (
-      preset.target === '相手'
+      preset.target ===
+      '相手'
     ) {
       nextTargetAvatars =
         applySupportControlToAllAvatars(
@@ -1061,22 +1435,32 @@ const calculateSupportEffectResult = (
         );
     }
   } else if (
-    preset.effectCategory === 'ドロー'
+    preset.effectCategory ===
+    'ドロー'
   ) {
     extraDraw = Math.max(
       0,
       amount || 1,
     );
 
-    if (preset.duration === '永続') {
-      const effect: SupportControlEffectState = {
-        id: actionId,
-        sourcePresetId: preset.id,
-        duration: preset.duration,
-        kind: 'extra_draw',
-        extraDrawPerTurn: extraDraw,
-        expiresAtTurnOrdinal: null,
-      };
+    if (
+      preset.duration ===
+      '永続'
+    ) {
+      const effect: SupportControlEffectState =
+        {
+          id: actionId,
+          sourcePresetId:
+            preset.id,
+          duration:
+            preset.duration,
+          kind:
+            'extra_draw',
+          extraDrawPerTurn:
+            extraDraw,
+          expiresAtTurnOrdinal:
+            null,
+        };
 
       nextActorAvatars =
         applySupportControlToAllAvatars(
@@ -1094,24 +1478,37 @@ const calculateSupportEffectResult = (
         actor,
         turnOrdinal,
       );
+
     const targetEffective =
       getEffectiveStats(
         target,
         turnOrdinal,
       );
 
-    if (preset.id === 'emo_29') {
-      const highest = Math.max(
-        ...Object.values(targetEffective),
-      );
-      const key = STAT_KEYS.find(
-        (item) =>
-          targetEffective[item] === highest,
-      ) || 'hp';
+    if (
+      preset.id === 'emo_29'
+    ) {
+      const highest =
+        Math.max(
+          ...Object.values(
+            targetEffective,
+          ),
+        );
+
+      const key =
+        STAT_KEYS.find(
+          (item) =>
+            targetEffective[
+              item
+            ] === highest,
+        ) || 'hp';
 
       appendToActor({
-        sourcePresetId: preset.id,
-        statOverride: { [key]: highest },
+        sourcePresetId:
+          preset.id,
+        statOverride: {
+          [key]: highest,
+        },
         expiresAtTurnOrdinal:
           getSupportEffectExpiration(
             preset,
@@ -1122,17 +1519,27 @@ const calculateSupportEffectResult = (
     } else if (
       preset.id === 'emo_30'
     ) {
-      const lowest = Math.min(
-        ...Object.values(actorEffective),
-      );
-      const key = STAT_KEYS.find(
-        (item) =>
-          actorEffective[item] === lowest,
-      ) || 'hp';
+      const lowest =
+        Math.min(
+          ...Object.values(
+            actorEffective,
+          ),
+        );
+
+      const key =
+        STAT_KEYS.find(
+          (item) =>
+            actorEffective[
+              item
+            ] === lowest,
+        ) || 'hp';
 
       appendToTarget({
-        sourcePresetId: preset.id,
-        statOverride: { [key]: lowest },
+        sourcePresetId:
+          preset.id,
+        statOverride: {
+          [key]: lowest,
+        },
         expiresAtTurnOrdinal:
           getSupportEffectExpiration(
             preset,
@@ -1141,13 +1548,20 @@ const calculateSupportEffectResult = (
           ),
       });
     } else {
-      const average = Math.round(
-        Object.values(actorEffective).reduce(
-          (sum, value) =>
-            sum + value,
-          0,
-        ) / 4,
-      );
+      const average =
+        Math.round(
+          Object.values(
+            actorEffective,
+          ).reduce(
+            (
+              sum,
+              value,
+            ) =>
+              sum + value,
+            0,
+          ) / 4,
+        );
+
       const override = {
         hp: average,
         intellect: average,
@@ -1155,10 +1569,14 @@ const calculateSupportEffectResult = (
         charm: average,
       };
 
-      if (preset.id === 'emo_31') {
+      if (
+        preset.id === 'emo_31'
+      ) {
         appendToActor({
-          sourcePresetId: preset.id,
-          statOverride: override,
+          sourcePresetId:
+            preset.id,
+          statOverride:
+            override,
           expiresAtTurnOrdinal:
             getSupportEffectExpiration(
               preset,
@@ -1170,8 +1588,10 @@ const calculateSupportEffectResult = (
         preset.id === 'emo_32'
       ) {
         appendToTarget({
-          sourcePresetId: preset.id,
-          statOverride: override,
+          sourcePresetId:
+            preset.id,
+          statOverride:
+            override,
           expiresAtTurnOrdinal:
             getSupportEffectExpiration(
               preset,
@@ -1185,32 +1605,57 @@ const calculateSupportEffectResult = (
     preset.effectCategory ===
     '効果反射'
   ) {
-    if (preset.id === 'emo_33') {
+    if (
+      preset.id === 'emo_33'
+    ) {
       const sourceEffects =
         cloneSupportDeltaEffects(
           actor.supportEffects,
-          (delta) => delta < 0,
+          (delta) =>
+            delta < 0,
           turnOrdinal,
           actionId,
         );
-      const sourceIds = new Set(
-        sourceEffects.map((effect) =>
-          effect.id.split('_reflect_')[0],
-        ),
-      );
-      nextActorAvatars[activeIndex] = {
-        ...nextActorAvatars[activeIndex],
+
+      const sourceIds =
+        new Set(
+          sourceEffects.map(
+            (effect) =>
+              effect.id.split(
+                '_reflect_',
+              )[0],
+          ),
+        );
+
+      nextActorAvatars[
+        activeIndex
+      ] = {
+        ...nextActorAvatars[
+          activeIndex
+        ],
         supportEffects: (
-          nextActorAvatars[activeIndex].supportEffects ?? []
+          nextActorAvatars[
+            activeIndex
+          ].supportEffects ??
+          []
         ).filter(
           (effect) =>
-            !sourceIds.has(effect.id),
+            !sourceIds.has(
+              effect.id,
+            ),
         ),
       };
-      for (const effect of sourceEffects) {
-        nextTargetAvatars[activeIndex] =
+
+      for (
+        const effect of sourceEffects
+      ) {
+        nextTargetAvatars[
+          activeIndex
+        ] =
           appendSupportAvatarEffect(
-            nextTargetAvatars[activeIndex],
+            nextTargetAvatars[
+              activeIndex
+            ],
             effect,
             turnOrdinal,
           );
@@ -1221,39 +1666,66 @@ const calculateSupportEffectResult = (
       const sourceEffects =
         cloneSupportDeltaEffects(
           target.supportEffects,
-          (delta) => delta > 0,
+          (delta) =>
+            delta > 0,
           turnOrdinal,
           actionId,
         );
-      const sourceIds = new Set(
-        sourceEffects.map((effect) =>
-          effect.id.split('_reflect_')[0],
-        ),
-      );
-      nextTargetAvatars[activeIndex] = {
-        ...nextTargetAvatars[activeIndex],
+
+      const sourceIds =
+        new Set(
+          sourceEffects.map(
+            (effect) =>
+              effect.id.split(
+                '_reflect_',
+              )[0],
+          ),
+        );
+
+      nextTargetAvatars[
+        activeIndex
+      ] = {
+        ...nextTargetAvatars[
+          activeIndex
+        ],
         supportEffects: (
-          nextTargetAvatars[activeIndex].supportEffects ?? []
+          nextTargetAvatars[
+            activeIndex
+          ].supportEffects ??
+          []
         ).filter(
           (effect) =>
-            !sourceIds.has(effect.id),
+            !sourceIds.has(
+              effect.id,
+            ),
         ),
       };
-      for (const effect of sourceEffects) {
-        nextActorAvatars[activeIndex] =
+
+      for (
+        const effect of sourceEffects
+      ) {
+        nextActorAvatars[
+          activeIndex
+        ] =
           appendSupportAvatarEffect(
-            nextActorAvatars[activeIndex],
+            nextActorAvatars[
+              activeIndex
+            ],
             effect,
             turnOrdinal,
           );
       }
     }
   } else if (
-    preset.effectCategory === '技封印'
+    preset.effectCategory ===
+    '技封印'
   ) {
-    if (preset.id === 'emo_35') {
+    if (
+      preset.id === 'emo_35'
+    ) {
       appendToTarget({
-        sourcePresetId: preset.id,
+        sourcePresetId:
+          preset.id,
         skillSealIndex: 3,
         expiresAtTurnOrdinal:
           getSupportEffectExpiration(
@@ -1270,8 +1742,10 @@ const calculateSupportEffectResult = (
   }
 
   return {
-    actorAvatars: nextActorAvatars,
-    targetAvatars: nextTargetAvatars,
+    actorAvatars:
+      nextActorAvatars,
+    targetAvatars:
+      nextTargetAvatars,
     actorScoreDelta,
     targetScoreDelta,
     extraDraw,
@@ -1279,39 +1753,51 @@ const calculateSupportEffectResult = (
 };
 
 const getSupportUsageLimitFromEffects = (
-  effects: SupportControlEffectState[] | undefined,
+  effects:
+    | SupportControlEffectState[]
+    | undefined,
   turnOrdinal: number,
 ) => {
-  const active = (effects ?? []).filter(
-    (effect) =>
-      isSupportEffectActive(
-        effect,
-        turnOrdinal,
-      ),
-  );
+  const active =
+    (effects ?? []).filter(
+      (effect) =>
+        isSupportEffectActive(
+          effect,
+          turnOrdinal,
+        ),
+    );
 
   if (
     active.some(
       (effect) =>
-        effect.duration === '一時' &&
-        effect.kind === 'free',
+        effect.duration ===
+          '一時' &&
+        effect.kind ===
+          'free',
     )
   ) {
     return Infinity;
   }
 
-  const temporaryLimits = active
-    .filter(
-      (effect) =>
-        effect.duration === '一時' &&
-        effect.kind === 'limit' &&
-        typeof effect.maxUsesPerTurn === 'number',
-    )
-    .map(
-      (effect) =>
-        effect.maxUsesPerTurn as number,
-    );
-  if (temporaryLimits.length) {
+  const temporaryLimits =
+    active
+      .filter(
+        (effect) =>
+          effect.duration ===
+            '一時' &&
+          effect.kind ===
+            'limit' &&
+          typeof effect.maxUsesPerTurn ===
+            'number',
+      )
+      .map(
+        (effect) =>
+          effect.maxUsesPerTurn as number,
+      );
+
+  if (
+    temporaryLimits.length
+  ) {
     return Math.min(
       ...temporaryLimits,
     );
@@ -1320,25 +1806,34 @@ const getSupportUsageLimitFromEffects = (
   if (
     active.some(
       (effect) =>
-        effect.duration === '永続' &&
-        effect.kind === 'free',
+        effect.duration ===
+          '永続' &&
+        effect.kind ===
+          'free',
     )
   ) {
     return Infinity;
   }
 
-  const permanentLimits = active
-    .filter(
-      (effect) =>
-        effect.duration === '永続' &&
-        effect.kind === 'limit' &&
-        typeof effect.maxUsesPerTurn === 'number',
-    )
-    .map(
-      (effect) =>
-        effect.maxUsesPerTurn as number,
-    );
-  if (permanentLimits.length) {
+  const permanentLimits =
+    active
+      .filter(
+        (effect) =>
+          effect.duration ===
+            '永続' &&
+          effect.kind ===
+            'limit' &&
+          typeof effect.maxUsesPerTurn ===
+            'number',
+      )
+      .map(
+        (effect) =>
+          effect.maxUsesPerTurn as number,
+      );
+
+  if (
+    permanentLimits.length
+  ) {
     return Math.min(
       ...permanentLimits,
     );
@@ -1348,40 +1843,70 @@ const getSupportUsageLimitFromEffects = (
 };
 
 const getSupportUseCountFromUsedSkills = (
-  usedSkills: Record<string, string[]> | undefined,
+  usedSkills:
+    | Record<string, string[]>
+    | undefined,
   year: number,
   turnIndex: number,
 ) => {
   const list =
-    usedSkills?.[String(year)] || [];
-  const marker = `__support_${turnIndex}:`;
-  const entry = list.find(
-    (value) =>
-      value.startsWith(marker),
-  );
-  if (!entry) return 0;
-  const count = Number(
-    entry.slice(marker.length),
-  );
-  return Number.isFinite(count)
+    usedSkills?.[String(year)] ||
+    [];
+
+  const marker =
+    `__support_${turnIndex}:`;
+
+  const entry =
+    list.find(
+      (value) =>
+        value.startsWith(
+          marker,
+        ),
+    );
+
+  if (!entry) {
+    return 0;
+  }
+
+  const count =
+    Number(
+      entry.slice(
+        marker.length,
+      ),
+    );
+
+  return Number.isFinite(
+    count,
+  )
     ? count
     : 0;
 };
 
 const setSupportUseCountInUsedSkills = (
-  usedSkills: Record<string, string[]>,
+  usedSkills: Record<
+    string,
+    string[]
+  >,
   year: number,
   turnIndex: number,
   count: number,
 ) => {
-  const key = String(year);
-  const marker = `__support_${turnIndex}:`;
+  const key =
+    String(year);
+
+  const marker =
+    `__support_${turnIndex}:`;
+
   const current =
     usedSkills[key] || [];
-  const filtered = current.filter(
-    (value) =>
-      !value.startsWith(marker),
-  );
+
+  const filtered =
+    current.filter(
+      (value) =>
+        !value.startsWith(
+          marker,
+        ),
+    );
 
   return {
     ...usedSkills,
@@ -1406,13 +1931,13 @@ const getNextTurnState = (
     };
   }
 
-  if (currentYear < 3) {
+  if (
+    currentYear < 3
+  ) {
     return {
       currentYear:
         currentYear + 1,
-
       turnIndex: 0,
-
       battlePhase:
         'setup' as const,
     };
@@ -1434,13 +1959,16 @@ const getAdminApp = (): App => {
   }
 
   const projectId =
-    process.env.FIREBASE_ADMIN_PROJECT_ID;
+    process.env
+      .FIREBASE_ADMIN_PROJECT_ID;
 
   const clientEmail =
-    process.env.FIREBASE_ADMIN_CLIENT_EMAIL;
+    process.env
+      .FIREBASE_ADMIN_CLIENT_EMAIL;
 
   const privateKey =
-    process.env.FIREBASE_ADMIN_PRIVATE_KEY
+    process.env
+      .FIREBASE_ADMIN_PRIVATE_KEY
       ?.replace(
         /\\n/g,
         '\n',
@@ -1464,6 +1992,573 @@ const getAdminApp = (): App => {
     }),
   });
 };
+
+const readStringValue = (
+  value: unknown,
+): string | undefined =>
+  typeof value === 'string'
+    ? value.trim()
+    : undefined;
+
+const readStringArrayValue = (
+  value: unknown,
+): string[] =>
+  Array.isArray(value)
+    ? value
+        .filter(
+          (
+            item,
+          ): item is string =>
+            typeof item ===
+            'string',
+        )
+        .map(
+          (item) =>
+            item.trim(),
+        )
+    : [];
+
+const isValidBattleDeckSnapshot = (
+  value: unknown,
+): value is BattleDeckSnapshot => {
+  if (
+    !value ||
+    typeof value !==
+      'object'
+  ) {
+    return false;
+  }
+
+  const snapshot =
+    value as Partial<BattleDeckSnapshot>;
+
+  if (
+    snapshot.version !==
+    1
+  ) {
+    return false;
+  }
+
+  if (
+    typeof snapshot.deckName !==
+      'string' ||
+    !snapshot.deckName.trim()
+  ) {
+    return false;
+  }
+
+  if (
+    !Array.isArray(
+      snapshot.characters,
+    ) ||
+    snapshot.characters.length !==
+      3
+  ) {
+    return false;
+  }
+
+  const expectedRoles = [
+    'vanguard',
+    'center',
+    'general',
+  ] as const;
+
+  for (
+    let index = 0;
+    index < 3;
+    index += 1
+  ) {
+    const character =
+      snapshot.characters[
+        index
+      ];
+
+    if (
+      !character ||
+      character.role !==
+        expectedRoles[index] ||
+      typeof character.cardId !==
+        'string' ||
+      !character.cardId
+    ) {
+      return false;
+    }
+
+    if (
+      character.presetId !==
+        undefined &&
+      typeof character.presetId !==
+        'string'
+    ) {
+      return false;
+    }
+  }
+
+  if (
+    new Set(
+      snapshot.characters.map(
+        (character) =>
+          character.cardId,
+      ),
+    ).size !== 3
+  ) {
+    return false;
+  }
+
+  if (
+    !Array.isArray(
+      snapshot.supportCards,
+    ) ||
+    snapshot.supportCards.length !==
+      18
+  ) {
+    return false;
+  }
+
+  const supportCounts =
+    new Map<
+      string,
+      number
+    >();
+
+  for (
+    const support of
+      snapshot.supportCards
+  ) {
+    if (
+      !support ||
+      typeof support.cardId !==
+        'string' ||
+      !support.cardId
+    ) {
+      return false;
+    }
+
+    if (
+      support.presetId !==
+        undefined &&
+      typeof support.presetId !==
+        'string'
+    ) {
+      return false;
+    }
+
+    const nextCount =
+      (
+        supportCounts.get(
+          support.cardId,
+        ) ?? 0
+      ) + 1;
+
+    if (
+      nextCount > 2
+    ) {
+      return false;
+    }
+
+    supportCounts.set(
+      support.cardId,
+      nextCount,
+    );
+  }
+
+  return true;
+};
+
+const resolveCoordinateCard = async (
+  transaction: Transaction,
+  cardId: string,
+  expectedPresetId?: string,
+) => {
+  const cardRef =
+    adminDb
+      .collection('cards')
+      .doc(cardId);
+
+  const snapshot =
+    await transaction.get(
+      cardRef,
+    );
+
+  if (!snapshot.exists) {
+    throw new Error(
+      '対戦に使用するキャラカードが存在しません。',
+    );
+  }
+
+  const card =
+    snapshot.data() as FirestoreCardData;
+
+  if (
+    card.status !== 'active' ||
+    card.cardType !==
+      'coordinate'
+  ) {
+    throw new Error(
+      '対戦に使用するキャラカードが有効ではありません。',
+    );
+  }
+
+  const presetId =
+    readStringValue(
+      card.presetId,
+    );
+
+  if (!presetId) {
+    throw new Error(
+      'キャラカードの公式コーデが設定されていません。',
+    );
+  }
+
+  if (
+    expectedPresetId &&
+    expectedPresetId !==
+      presetId
+  ) {
+    throw new Error(
+      'キャラカードの公式コーデが一致しません。',
+    );
+  }
+
+  const preset =
+    COORDINATE_PRESETS.find(
+      (item) =>
+        item.id ===
+        presetId,
+    );
+
+  if (!preset) {
+    throw new Error(
+      'キャラカードの公式コーデ性能を確認できません。',
+    );
+  }
+
+  return {
+    cardId,
+    card,
+    preset,
+  };
+};
+
+const buildCanonicalAvatar = (
+  cardId: string,
+  card: FirestoreCardData,
+  preset:
+    (typeof COORDINATE_PRESETS)[number],
+  roleName: string,
+): BattleAvatar => {
+  const customSkills =
+    readStringArrayValue(
+      card.customSkills,
+    );
+
+  const displayedSkills:
+    Skill[] = [0, 1, 2, 3].map(
+      (index) => ({
+        id: `skill_${
+          index + 1
+        }`,
+        name:
+          customSkills[index] ||
+          preset.defaultSkills[
+            index
+          ],
+        description:
+          preset.skillDescriptions[
+            index
+          ],
+        maxUsesPerClass: 0,
+      }),
+    );
+
+  const skeleton:
+    BattleAvatar = {
+    card: {
+      id: cardId,
+      userName:
+        readStringValue(
+          card.userName,
+        ) ??
+        'キャラクター',
+      presetId:
+        preset.id,
+    },
+    roleName,
+    stats: {
+      ...preset.stats,
+    },
+    baseStats: {
+      ...preset.stats,
+    },
+    currentDebuff: {
+      ...ZERO_DEBUFF,
+    },
+    debuffImmune: false,
+    statBoost: {},
+    supportEffects: [],
+    supportControlEffects: [],
+    skills:
+      displayedSkills,
+  };
+
+  return {
+    ...skeleton,
+    skills:
+      displayedSkills.map(
+        (skill) =>
+          getCanonicalSkill(
+            skeleton,
+            skill.id,
+          ),
+      ),
+  };
+};
+
+const resolveSupportCard = async (
+  transaction: Transaction,
+  cardId: string,
+  expectedPresetId?: string,
+): Promise<SupportCardState> => {
+  const virtualPrefix =
+    'emotion_sample_';
+
+  const virtualPresetId =
+    cardId.startsWith(
+      virtualPrefix,
+    )
+      ? cardId.slice(
+          virtualPrefix.length,
+        )
+      : undefined;
+
+  if (virtualPresetId) {
+    const preset =
+      EMOTION_PRESETS.find(
+        (item) =>
+          item.id ===
+          virtualPresetId,
+      );
+
+    if (
+      !preset ||
+      (
+        expectedPresetId &&
+        expectedPresetId !==
+          preset.id
+      )
+    ) {
+      throw new Error(
+        '公式仮サポートカードが不正です。',
+      );
+    }
+
+    return {
+      id: cardId,
+      name: preset.name,
+      description:
+        preset.description,
+      presetId: preset.id,
+    };
+  }
+
+  const cardRef =
+    adminDb
+      .collection('cards')
+      .doc(cardId);
+
+  const snapshot =
+    await transaction.get(
+      cardRef,
+    );
+
+  if (!snapshot.exists) {
+    throw new Error(
+      '対戦に使用するサポートカードが存在しません。',
+    );
+  }
+
+  const card =
+    snapshot.data() as FirestoreCardData;
+
+  if (
+    card.status !== 'active' ||
+    card.cardType !==
+      'emotion'
+  ) {
+    throw new Error(
+      '対戦に使用するサポートカードが有効ではありません。',
+    );
+  }
+
+  const presetId =
+    readStringValue(
+      card.presetId,
+    );
+
+  if (!presetId) {
+    throw new Error(
+      'サポートカードの公式エモーションが設定されていません。',
+    );
+  }
+
+  if (
+    expectedPresetId &&
+    expectedPresetId !==
+      presetId
+  ) {
+    throw new Error(
+      'サポートカードの公式エモーションが一致しません。',
+    );
+  }
+
+  const preset =
+    EMOTION_PRESETS.find(
+      (item) =>
+        item.id ===
+        presetId,
+    );
+
+  if (!preset) {
+    throw new Error(
+      '公式エモーションを特定できないサポートカードです。',
+    );
+  }
+
+  return {
+    id: cardId,
+    name:
+      readStringValue(
+        card.customEffectName,
+      ) ??
+      preset.name,
+    description:
+      preset.description,
+    presetId:
+      preset.id,
+  };
+};
+
+const shuffleCards = <T,>(
+  cards: T[],
+): T[] => {
+  const result = [...cards];
+
+  for (
+    let index =
+      result.length - 1;
+    index > 0;
+    index -= 1
+  ) {
+    const randomIndex =
+      Math.floor(
+        Math.random() *
+          (index + 1),
+      );
+
+    [
+      result[index],
+      result[randomIndex],
+    ] = [
+      result[randomIndex],
+      result[index],
+    ];
+  }
+
+  return result;
+};
+
+const buildCanonicalBattleStartState =
+  async (
+    transaction: Transaction,
+    snapshot: BattleDeckSnapshot,
+  ) => {
+    if (
+      !isValidBattleDeckSnapshot(
+        snapshot,
+      )
+    ) {
+      throw new Error(
+        '対戦用デッキスナップショットが不正です。',
+      );
+    }
+
+    const characters:
+      BattleAvatar[] = [];
+
+    for (
+      let index = 0;
+      index <
+        snapshot.characters.length;
+      index += 1
+    ) {
+      const character =
+        snapshot.characters[
+          index
+        ];
+
+      const resolved =
+        await resolveCoordinateCard(
+          transaction,
+          character.cardId,
+          character.presetId,
+        );
+
+      characters.push(
+        buildCanonicalAvatar(
+          character.cardId,
+          resolved.card,
+          resolved.preset,
+          CLASS_ROLE_NAMES[
+            index
+          ],
+        ),
+      );
+    }
+
+    const supportCards:
+      SupportCardState[] = [];
+
+    for (
+      const support of
+        snapshot.supportCards
+    ) {
+      supportCards.push(
+        await resolveSupportCard(
+          transaction,
+          support.cardId,
+          support.presetId,
+        ),
+      );
+    }
+
+    if (
+      supportCards.length !==
+      18
+    ) {
+      throw new Error(
+        '対戦用サポートカードが18枚ではありません。',
+      );
+    }
+
+    const shuffled =
+      shuffleCards(
+        supportCards,
+      );
+
+    return {
+      avatars:
+        characters,
+      hand:
+        shuffled.slice(
+          0,
+          4,
+        ),
+      deck:
+        shuffled.slice(
+          4,
+        ),
+    };
+  };
 
 export async function POST(
   request: Request,
@@ -1494,7 +2589,9 @@ export async function POST(
 
     const idToken =
       authorization
-        .slice('Bearer '.length)
+        .slice(
+          'Bearer '.length,
+        )
         .trim();
 
     if (!idToken) {
@@ -1561,88 +2658,142 @@ export async function POST(
     }
 
     if (
-      body.type !== 'USE_SKILL' &&
-      body.type !== 'PLAY_SUPPORT' &&
-      body.type !== 'DRAW_TURN' &&
-      body.type !== 'START_BATTLE' &&
-      body.type !== 'REMATCH_RESET'
+      body.type !==
+        'USE_SKILL' &&
+      body.type !==
+        'PLAY_SUPPORT' &&
+      body.type !==
+        'DRAW_TURN' &&
+      body.type !==
+        'START_BATTLE' &&
+      body.type !==
+        'REMATCH_RESET'
     ) {
       return NextResponse.json(
         {
           ok: false,
-          error: 'Action typeが不正です。',
+          error:
+            'Action typeが不正です。',
         },
-        { status: 400 },
+        {
+          status: 400,
+        },
       );
     }
 
     const isBattleAction =
-      body.type === 'USE_SKILL' ||
-      body.type === 'PLAY_SUPPORT' ||
-      body.type === 'DRAW_TURN';
-
-    if (isBattleAction && (
-      typeof body.year !== 'number' ||
-      !Number.isInteger(body.year)
-    )) {
-      return NextResponse.json(
-        {
-          ok: false,
-          error: 'yearが不正です。',
-        },
-        { status: 400 },
-      );
-    }
-
-    if (isBattleAction && (
-      typeof body.turnIndex !== 'number' ||
-      !Number.isInteger(body.turnIndex)
-    )) {
-      return NextResponse.json(
-        {
-          ok: false,
-          error: 'turnIndexが不正です。',
-        },
-        { status: 400 },
-      );
-    }
-
-    if (isBattleAction && (
-      typeof body.avatarIndex !== 'number' ||
-      !Number.isInteger(body.avatarIndex)
-    )) {
-      return NextResponse.json(
-        {
-          ok: false,
-          error: 'avatarIndexが不正です。',
-        },
-        { status: 400 },
-      );
-    }
+      body.type ===
+        'USE_SKILL' ||
+      body.type ===
+        'PLAY_SUPPORT' ||
+      body.type ===
+        'DRAW_TURN';
 
     if (
-      body.type === 'PLAY_SUPPORT' &&
-      (typeof body.supportCardId !== 'string' || !body.supportCardId)
+      isBattleAction &&
+      (
+        typeof body.year !==
+          'number' ||
+        !Number.isInteger(
+          body.year,
+        )
+      )
     ) {
       return NextResponse.json(
         {
           ok: false,
-          error: 'supportCardIdがありません。',
+          error:
+            'yearが不正です。',
         },
-        { status: 400 },
+        {
+          status: 400,
+        },
       );
     }
 
     if (
-      body.type === 'USE_SKILL' &&
-      (typeof body.skillId !== 'string' || !body.skillId)
+      isBattleAction &&
+      (
+        typeof body.turnIndex !==
+          'number' ||
+        !Number.isInteger(
+          body.turnIndex,
+        )
+      )
     ) {
       return NextResponse.json(
         {
           ok: false,
-          error: 'skillIdがありません。',
+          error:
+            'turnIndexが不正です。',
         },
-        { status: 400 },
+        {
+          status: 400,
+        },
+      );
+    }
+
+    if (
+      isBattleAction &&
+      (
+        typeof body.avatarIndex !==
+          'number' ||
+        !Number.isInteger(
+          body.avatarIndex,
+        )
+      )
+    ) {
+      return NextResponse.json(
+        {
+          ok: false,
+          error:
+            'avatarIndexが不正です。',
+        },
+        {
+          status: 400,
+        },
+      );
+    }
+
+    if (
+      body.type ===
+        'PLAY_SUPPORT' &&
+      (
+        typeof body.supportCardId !==
+          'string' ||
+        !body.supportCardId
+      )
+    ) {
+      return NextResponse.json(
+        {
+          ok: false,
+          error:
+            'supportCardIdがありません。',
+        },
+        {
+          status: 400,
+        },
+      );
+    }
+
+    if (
+      body.type ===
+        'USE_SKILL' &&
+      (
+        typeof body.skillId !==
+          'string' ||
+        !body.skillId
+      )
+    ) {
+      return NextResponse.json(
+        {
+          ok: false,
+          error:
+            'skillIdがありません。',
+        },
+        {
+          status: 400,
+        },
       );
     }
 
@@ -1678,8 +2829,11 @@ export async function POST(
       body.turnIndex;
 
     const requestedAvatarIndex =
-      typeof body.avatarIndex === 'number' &&
-      Number.isInteger(body.avatarIndex)
+      typeof body.avatarIndex ===
+        'number' &&
+      Number.isInteger(
+        body.avatarIndex,
+      )
         ? body.avatarIndex
         : -1;
 
@@ -1699,7 +2853,9 @@ export async function POST(
         ) => {
           const roomRef =
             adminDb
-              .collection('rooms')
+              .collection(
+                'rooms',
+              )
               .doc(roomId);
 
           const roomSnapshot =
@@ -1720,150 +2876,473 @@ export async function POST(
 
           const currentYear =
             Number(
-              roomData.currentYear ?? 1,
+              roomData.currentYear ??
+                1,
             );
 
           const turnIndex =
             Number(
-              roomData.turnIndex ?? 0,
+              roomData.turnIndex ??
+                0,
             );
 
-          // =====================================================
-          // Room進行状態を変更するライフサイクルAction
-          //
-          // currentYear / turnIndex / battlePhase / firstPlayer /
-          // startSeasonIdx は、通常のFirestore Client Writeでは変更させない。
-          // これらはここでのみAdmin SDKから確定する。
-          // =====================================================
-          if (body.type === 'START_BATTLE') {
-            if (roomData.hostUid !== authUid) {
+          if (
+            body.type ===
+            'START_BATTLE'
+          ) {
+            if (
+              roomData.hostUid !==
+              authUid
+            ) {
               throw new Error(
                 'コイントスを実行できるのはルーム作成者だけです。',
               );
             }
 
             if (
-              roomData.battlePhase === 'battle' &&
-              isPlayerRole(roomData.firstPlayer)
+              roomData.battlePhase ===
+                'battle' &&
+              isPlayerRole(
+                roomData.firstPlayer,
+              )
             ) {
               return {
                 actionId,
-                alreadyProcessed: true,
-                firstPlayer: roomData.firstPlayer,
+                alreadyProcessed:
+                  true,
+                firstPlayer:
+                  roomData.firstPlayer,
                 currentYear,
                 turnIndex,
-                battlePhase: 'battle' as const,
+                battlePhase:
+                  'battle' as const,
               };
             }
 
-            if (roomData.battlePhase !== 'setup') {
+            if (
+              roomData.battlePhase !==
+              'setup'
+            ) {
               throw new Error(
                 '現在はコイントスを開始できる準備状態ではありません。',
               );
             }
 
-            if (roomData.currentYear === undefined) {
-              throw new Error('currentYearが存在しません。');
-            }
-
-            if (roomData.firstPlayer !== null) {
-              throw new Error('先手はすでに決定されています。');
-            }
-
-            if (!roomData.guestUid) {
-              throw new Error('相手プレイヤーが参加していません。');
+            if (
+              roomData.currentYear ===
+              undefined
+            ) {
+              throw new Error(
+                'currentYearが存在しません。',
+              );
             }
 
             if (
-              roomData.readyHost !== true ||
-              roomData.readyGuest !== true ||
-              typeof roomData.hostDeckId !== 'string' ||
+              roomData.firstPlayer !==
+              null
+            ) {
+              throw new Error(
+                '先手はすでに決定されています。',
+              );
+            }
+
+            if (
+              !roomData.guestUid
+            ) {
+              throw new Error(
+                '相手プレイヤーが参加していません。',
+              );
+            }
+
+            if (
+              roomData.readyHost !==
+                true ||
+              roomData.readyGuest !==
+                true ||
+              typeof roomData.hostDeckId !==
+                'string' ||
               !roomData.hostDeckId ||
-              typeof roomData.guestDeckId !== 'string' ||
+              typeof roomData.guestDeckId !==
+                'string' ||
               !roomData.guestDeckId
             ) {
-              throw new Error('両者のチーム確定が完了していません。');
+              throw new Error(
+                '両者のチーム確定が完了していません。',
+              );
             }
 
             if (
-              Number(roomData.classReadyYearHost ?? 0) !== currentYear ||
-              Number(roomData.classReadyYearGuest ?? 0) !== currentYear
+              Number(
+                roomData.classReadyYearHost ??
+                  0,
+              ) !==
+                currentYear ||
+              Number(
+                roomData.classReadyYearGuest ??
+                  0,
+              ) !==
+                currentYear
             ) {
-              throw new Error('両者のクラス準備が完了していません。');
+              throw new Error(
+                '両者のクラス準備が完了していません。',
+              );
             }
 
-            const firstPlayer: PlayerRole =
-              Math.random() < 0.5 ? 'host' : 'guest';
+            const hostPlayerRef =
+              roomRef
+                .collection(
+                  'players',
+                )
+                .doc('host');
 
-            transaction.update(roomRef, {
-              firstPlayer,
-              startSeasonIdx: 0,
-              turnIndex: 0,
-              battlePhase: 'battle',
-            });
+            const guestPlayerRef =
+              roomRef
+                .collection(
+                  'players',
+                )
+                .doc('guest');
+
+            const hostPrivatePlayerRef =
+              roomRef
+                .collection(
+                  'privatePlayers',
+                )
+                .doc('host');
+
+            const guestPrivatePlayerRef =
+              roomRef
+                .collection(
+                  'privatePlayers',
+                )
+                .doc('guest');
+
+            const hostPlayerSnapshot =
+              await transaction.get(
+                hostPlayerRef,
+              );
+
+            const guestPlayerSnapshot =
+              await transaction.get(
+                guestPlayerRef,
+              );
+
+            const hostPrivateSnapshot =
+              await transaction.get(
+                hostPrivatePlayerRef,
+              );
+
+            const guestPrivateSnapshot =
+              await transaction.get(
+                guestPrivatePlayerRef,
+              );
+
+            if (
+              !hostPlayerSnapshot.exists ||
+              !guestPlayerSnapshot.exists
+            ) {
+              throw new Error(
+                '両者のPlayer情報が存在しません。',
+              );
+            }
+
+            if (
+              !hostPrivateSnapshot.exists ||
+              !guestPrivateSnapshot.exists
+            ) {
+              throw new Error(
+                '両者の対戦用デッキが存在しません。',
+              );
+            }
+
+            const hostPlayerData =
+              hostPlayerSnapshot.data() as PlayerData;
+
+            const guestPlayerData =
+              guestPlayerSnapshot.data() as PlayerData;
+
+            const hostPrivateData =
+              hostPrivateSnapshot.data() as PrivatePlayerData;
+
+            const guestPrivateData =
+              guestPrivateSnapshot.data() as PrivatePlayerData;
+
+            const hostSnapshot =
+              hostPrivateData.battleDeckSnapshot;
+
+            const guestSnapshot =
+              guestPrivateData.battleDeckSnapshot;
+
+            if (
+              !hostSnapshot ||
+              !guestSnapshot
+            ) {
+              throw new Error(
+                '両者の対戦用デッキスナップショットがありません。',
+              );
+            }
+
+            if (
+              !isValidBattleDeckSnapshot(
+                hostSnapshot,
+              ) ||
+              !isValidBattleDeckSnapshot(
+                guestSnapshot,
+              )
+            ) {
+              throw new Error(
+                '対戦用デッキスナップショットが不正です。',
+              );
+            }
+
+            if (
+              hostSnapshot.deckId !==
+              roomData.hostDeckId
+            ) {
+              throw new Error(
+                'Hostの確定デッキとスナップショットが一致しません。',
+              );
+            }
+
+            if (
+              guestSnapshot.deckId !==
+              roomData.guestDeckId
+            ) {
+              throw new Error(
+                'Guestの確定デッキとスナップショットが一致しません。',
+              );
+            }
+
+            const hostBattleState =
+              await buildCanonicalBattleStartState(
+                transaction,
+                hostSnapshot,
+              );
+
+            const guestBattleState =
+              await buildCanonicalBattleStartState(
+                transaction,
+                guestSnapshot,
+              );
+
+            const resetActionFields = {
+              pendingAction:
+                FieldValue.delete(),
+              lastSkillActionId:
+                FieldValue.delete(),
+              lastSkillAction:
+                FieldValue.delete(),
+              lastSupportActionId:
+                FieldValue.delete(),
+              lastSupportAction:
+                FieldValue.delete(),
+              lastDrawTurnOrdinal:
+                FieldValue.delete(),
+            };
+
+            transaction.set(
+              hostPrivatePlayerRef,
+              {
+                uid:
+                  roomData.hostUid,
+                hand:
+                  hostBattleState.hand,
+                deck:
+                  hostBattleState.deck,
+                battleDeckSnapshot:
+                  hostSnapshot,
+              },
+              {
+                merge: true,
+              },
+            );
+
+            transaction.set(
+              guestPrivatePlayerRef,
+              {
+                uid:
+                  roomData.guestUid,
+                hand:
+                  guestBattleState.hand,
+                deck:
+                  guestBattleState.deck,
+                battleDeckSnapshot:
+                  guestSnapshot,
+              },
+              {
+                merge: true,
+              },
+            );
+
+            transaction.update(
+              hostPlayerRef,
+              {
+                avatars:
+                  hostBattleState.avatars,
+                handCount:
+                  hostBattleState.hand.length,
+                deckCount:
+                  hostBattleState.deck.length,
+                battleStateVersion:
+                  Number(
+                    hostPlayerData.battleStateVersion ??
+                      0,
+                  ) + 1,
+                ...resetActionFields,
+              },
+            );
+
+            transaction.update(
+              guestPlayerRef,
+              {
+                avatars:
+                  guestBattleState.avatars,
+                handCount:
+                  guestBattleState.hand.length,
+                deckCount:
+                  guestBattleState.deck.length,
+                battleStateVersion:
+                  Number(
+                    guestPlayerData.battleStateVersion ??
+                      0,
+                  ) + 1,
+                ...resetActionFields,
+              },
+            );
+
+            const firstPlayer:
+              PlayerRole =
+                Math.random() <
+                0.5
+                  ? 'host'
+                  : 'guest';
+
+            transaction.update(
+              roomRef,
+              {
+                firstPlayer,
+                startSeasonIdx:
+                  0,
+                turnIndex: 0,
+                battlePhase:
+                  'battle',
+              },
+            );
 
             return {
               actionId,
-              alreadyProcessed: false,
+              alreadyProcessed:
+                false,
               firstPlayer,
               currentYear,
               turnIndex: 0,
-              battlePhase: 'battle' as const,
+              battlePhase:
+                'battle' as const,
+              hostHandCount:
+                hostBattleState.hand.length,
+              hostDeckCount:
+                hostBattleState.deck.length,
+              guestHandCount:
+                guestBattleState.hand.length,
+              guestDeckCount:
+                guestBattleState.deck.length,
             };
           }
 
-          if (body.type === 'REMATCH_RESET') {
-            if (roomData.hostUid !== authUid) {
+          if (
+            body.type ===
+            'REMATCH_RESET'
+          ) {
+            if (
+              roomData.hostUid !==
+              authUid
+            ) {
               throw new Error(
                 '再戦リセットを実行できるのはルーム作成者だけです。',
               );
             }
 
             if (
-              roomData.battlePhase !== 'finished' ||
-              Number(roomData.currentYear ?? 0) !== 3 ||
-              Number(roomData.turnIndex ?? -1) !== 7
+              roomData.battlePhase !==
+                'finished' ||
+              Number(
+                roomData.currentYear ??
+                  0,
+              ) !== 3 ||
+              Number(
+                roomData.turnIndex ??
+                  -1,
+              ) !== 7
             ) {
-              throw new Error('再戦リセットを実行できる試合状態ではありません。');
+              throw new Error(
+                '再戦リセットを実行できる試合状態ではありません。',
+              );
             }
 
             if (
-              roomData.rematchHost !== true ||
-              roomData.rematchGuest !== true ||
-              roomData.rematchPlayerResetHost !== true ||
-              roomData.rematchPlayerResetGuest !== true
+              roomData.rematchHost !==
+                true ||
+              roomData.rematchGuest !==
+                true ||
+              roomData.rematchPlayerResetHost !==
+                true ||
+              roomData.rematchPlayerResetGuest !==
+                true
             ) {
-              throw new Error('両者の再戦準備が完了していません。');
+              throw new Error(
+                '両者の再戦準備が完了していません。',
+              );
             }
 
-            transaction.update(roomRef, {
-              battlePhase: 'setup',
-              currentYear: 1,
-              turnIndex: 0,
-              firstPlayer: null,
-              startSeasonIdx: null,
-              hostTotalScore: 0,
-              guestTotalScore: 0,
-              hostClassScores: [0, 0, 0],
-              guestClassScores: [0, 0, 0],
-              rematchHost: false,
-              rematchGuest: false,
-              rematchPlayerResetHost: false,
-              rematchPlayerResetGuest: false,
-              exitHost: false,
-              exitGuest: false,
-              readyHost: false,
-              readyGuest: false,
-              classReadyYearHost: 0,
-              classReadyYearGuest: 0,
-            });
+            transaction.update(
+              roomRef,
+              {
+                battlePhase:
+                  'setup',
+                currentYear: 1,
+                turnIndex: 0,
+                firstPlayer:
+                  null,
+                startSeasonIdx:
+                  null,
+                hostTotalScore:
+                  0,
+                guestTotalScore:
+                  0,
+                hostClassScores:
+                  [0, 0, 0],
+                guestClassScores:
+                  [0, 0, 0],
+                rematchHost:
+                  false,
+                rematchGuest:
+                  false,
+                rematchPlayerResetHost:
+                  false,
+                rematchPlayerResetGuest:
+                  false,
+                exitHost:
+                  false,
+                exitGuest:
+                  false,
+                readyHost:
+                  false,
+                readyGuest:
+                  false,
+                classReadyYearHost:
+                  0,
+                classReadyYearGuest:
+                  0,
+              },
+            );
 
             return {
               actionId,
-              alreadyProcessed: false,
+              alreadyProcessed:
+                false,
               currentYear: 1,
               turnIndex: 0,
-              battlePhase: 'setup' as const,
+              battlePhase:
+                'setup' as const,
             };
           }
 
@@ -1916,12 +3395,14 @@ export async function POST(
             );
 
           const actorUid =
-            actorRole === 'host'
+            actorRole ===
+            'host'
               ? roomData.hostUid
               : roomData.guestUid;
 
           if (
-            actorUid !== authUid
+            actorUid !==
+            authUid
           ) {
             throw new Error(
               '現在の手番プレイヤーではありません。',
@@ -1930,13 +3411,21 @@ export async function POST(
 
           const actorPlayerRef =
             roomRef
-              .collection('players')
-              .doc(actorRole);
+              .collection(
+                'players',
+              )
+              .doc(
+                actorRole,
+              );
 
           const opponentPlayerRef =
             roomRef
-              .collection('players')
-              .doc(opponentRole);
+              .collection(
+                'players',
+              )
+              .doc(
+                opponentRole,
+              );
 
           const actorSnapshot =
             await transaction.get(
@@ -1972,7 +3461,8 @@ export async function POST(
 
           if (
             actorData.uid &&
-            actorData.uid !== authUid
+            actorData.uid !==
+              authUid
           ) {
             throw new Error(
               'Actor PlayerのUIDが一致しません。',
@@ -1981,17 +3471,23 @@ export async function POST(
 
           if (
             actorData.role &&
-            actorData.role !== actorRole
+            actorData.role !==
+              actorRole
           ) {
             throw new Error(
               'Actor Playerのroleが一致しません。',
             );
           }
 
-          if (body.type === 'DRAW_TURN') {
+          if (
+            body.type ===
+            'DRAW_TURN'
+          ) {
             if (
-              requestedAvatarIndex < 0 ||
-              requestedAvatarIndex > 2
+              requestedAvatarIndex <
+                0 ||
+              requestedAvatarIndex >
+                2
             ) {
               throw new Error(
                 'avatarIndexが不正です。',
@@ -2019,12 +3515,18 @@ export async function POST(
             ) {
               const privatePlayerRef =
                 roomRef
-                  .collection('privatePlayers')
-                  .doc(actorRole);
+                  .collection(
+                    'privatePlayers',
+                  )
+                  .doc(
+                    actorRole,
+                  );
+
               const privateSnapshot =
                 await transaction.get(
                   privatePlayerRef,
                 );
+
               const privateData =
                 privateSnapshot.exists
                   ? (privateSnapshot.data() as PrivatePlayerData)
@@ -2032,12 +3534,17 @@ export async function POST(
 
               return {
                 actionId,
-                alreadyProcessed: true,
+                alreadyProcessed:
+                  true,
                 drawCount: 0,
-                hand: Array.isArray(privateData.hand)
+                hand: Array.isArray(
+                  privateData.hand,
+                )
                   ? privateData.hand
                   : [],
-                deck: Array.isArray(privateData.deck)
+                deck: Array.isArray(
+                  privateData.deck,
+                )
                   ? privateData.deck
                   : [],
               };
@@ -2045,8 +3552,11 @@ export async function POST(
 
             let actorAvatars =
               actorData.avatars
-                ? [...actorData.avatars]
+                ? [
+                    ...actorData.avatars,
+                  ]
                 : [];
+
             const freshBattleStart =
               isFreshBattleStart(
                 roomData,
@@ -2054,7 +3564,9 @@ export async function POST(
                 opponentData,
               );
 
-            if (freshBattleStart) {
+            if (
+              freshBattleStart
+            ) {
               actorAvatars =
                 sanitizeFreshBattleAvatars(
                   actorAvatars,
@@ -2066,7 +3578,9 @@ export async function POST(
                 requestedAvatarIndex
               ];
 
-            if (!activeAvatar) {
+            if (
+              !activeAvatar
+            ) {
               throw new Error(
                 '対象Avatarが存在しません。',
               );
@@ -2074,14 +3588,21 @@ export async function POST(
 
             const privatePlayerRef =
               roomRef
-                .collection('privatePlayers')
-                .doc(actorRole);
+                .collection(
+                  'privatePlayers',
+                )
+                .doc(
+                  actorRole,
+                );
+
             const privateSnapshot =
               await transaction.get(
                 privatePlayerRef,
               );
 
-            if (!privateSnapshot.exists) {
+            if (
+              !privateSnapshot.exists
+            ) {
               throw new Error(
                 'Private Playerが存在しません。',
               );
@@ -2089,43 +3610,79 @@ export async function POST(
 
             const privateData =
               privateSnapshot.data() as PrivatePlayerData;
-            const hand = Array.isArray(privateData.hand)
-              ? [...privateData.hand]
-              : [];
-            const deck = Array.isArray(privateData.deck)
-              ? [...privateData.deck]
-              : [];
 
-            const drawCount = Math.min(
-              1 +
-                getAdditionalDrawFromEffects(
-                  activeAvatar.supportControlEffects,
-                  turnOrdinal,
+            if (
+              !privateData.battleDeckSnapshot ||
+              !isValidBattleDeckSnapshot(
+                privateData.battleDeckSnapshot,
+              )
+            ) {
+              throw new Error(
+                '対戦用デッキスナップショットがありません。',
+              );
+            }
+
+            const hand =
+              Array.isArray(
+                privateData.hand,
+              )
+                ? [
+                    ...privateData.hand,
+                  ]
+                : [];
+
+            const deck =
+              Array.isArray(
+                privateData.deck,
+              )
+                ? [
+                    ...privateData.deck,
+                  ]
+                : [];
+
+            const drawCount =
+              Math.min(
+                1 +
+                  getAdditionalDrawFromEffects(
+                    activeAvatar.supportControlEffects,
+                    turnOrdinal,
+                  ),
+                Math.max(
+                  0,
+                  7 -
+                    hand.length,
                 ),
-              Math.max(0, 7 - hand.length),
-              deck.length,
-            );
+                deck.length,
+              );
 
-            const drawnCards = deck.slice(
-              0,
-              drawCount,
-            );
+            const drawnCards =
+              deck.slice(
+                0,
+                drawCount,
+              );
+
             const nextHand = [
               ...hand,
               ...drawnCards,
             ];
-            const nextDeck = deck.slice(
-              drawCount,
-            );
+
+            const nextDeck =
+              deck.slice(
+                drawCount,
+              );
 
             transaction.set(
               privatePlayerRef,
               {
                 uid: authUid,
-                hand: nextHand,
-                deck: nextDeck,
+                hand:
+                  nextHand,
+                deck:
+                  nextDeck,
               },
-              { merge: true },
+              {
+                merge: true,
+              },
             );
 
             transaction.update(
@@ -2153,27 +3710,36 @@ export async function POST(
 
             return {
               actionId,
-              alreadyProcessed: false,
+              alreadyProcessed:
+                false,
               drawCount,
-              hand: nextHand,
-              deck: nextDeck,
+              hand:
+                nextHand,
+              deck:
+                nextDeck,
             };
           }
 
-          if (body.type === 'PLAY_SUPPORT') {
+          if (
+            body.type ===
+            'PLAY_SUPPORT'
+          ) {
             if (
               actorData.lastSupportActionId ===
               actionId
             ) {
               return {
                 actionId,
-                alreadyProcessed: true,
+                alreadyProcessed:
+                  true,
               };
             }
 
             if (
-              requestedAvatarIndex < 0 ||
-              requestedAvatarIndex > 2
+              requestedAvatarIndex <
+                0 ||
+              requestedAvatarIndex >
+                2
             ) {
               throw new Error(
                 'avatarIndexが不正です。',
@@ -2191,15 +3757,21 @@ export async function POST(
 
             const privatePlayerRef =
               roomRef
-                .collection('privatePlayers')
-                .doc(actorRole);
+                .collection(
+                  'privatePlayers',
+                )
+                .doc(
+                  actorRole,
+                );
 
             const privateSnapshot =
               await transaction.get(
                 privatePlayerRef,
               );
 
-            if (!privateSnapshot.exists) {
+            if (
+              !privateSnapshot.exists
+            ) {
               throw new Error(
                 'Private Playerが存在しません。',
               );
@@ -2208,28 +3780,45 @@ export async function POST(
             const privateData =
               privateSnapshot.data() as PrivatePlayerData;
 
-            const hand = Array.isArray(
-              privateData.hand,
-            )
-              ? [...privateData.hand]
-              : [];
+            if (
+              !privateData.battleDeckSnapshot ||
+              !isValidBattleDeckSnapshot(
+                privateData.battleDeckSnapshot,
+              )
+            ) {
+              throw new Error(
+                '対戦用デッキスナップショットがありません。',
+              );
+            }
+
+            const hand =
+              Array.isArray(
+                privateData.hand,
+              )
+                ? [
+                    ...privateData.hand,
+                  ]
+                : [];
 
             if (
               typeof requestedSupportCardId !==
-                'string'
+              'string'
             ) {
               throw new Error(
                 'supportCardIdが不正です。',
               );
             }
 
-            const supportIndex = hand.findIndex(
-              (card) =>
-                card?.id ===
-                requestedSupportCardId,
-            );
+            const supportIndex =
+              hand.findIndex(
+                (card) =>
+                  card?.id ===
+                  requestedSupportCardId,
+              );
 
-            if (supportIndex < 0) {
+            if (
+              supportIndex < 0
+            ) {
               throw new Error(
                 '指定されたサポートカードが手札に存在しません。',
               );
@@ -2238,7 +3827,9 @@ export async function POST(
             const supportCard =
               hand[supportIndex];
 
-            if (!supportCard) {
+            if (
+              !supportCard
+            ) {
               throw new Error(
                 'サポートカード情報を取得できません。',
               );
@@ -2249,7 +3840,9 @@ export async function POST(
                 supportCard,
               );
 
-            if (!preset) {
+            if (
+              !preset
+            ) {
               throw new Error(
                 '公式エモーションを特定できないサポートカードです。',
               );
@@ -2257,30 +3850,44 @@ export async function POST(
 
             let actorAvatars =
               actorData.avatars
-                ? [...actorData.avatars]
+                ? [
+                    ...actorData.avatars,
+                  ]
                 : [];
+
             let opponentAvatars =
               opponentData.avatars
-                ? [...opponentData.avatars]
+                ? [
+                    ...opponentData.avatars,
+                  ]
                 : [];
 
-            const freshBattleStart = isFreshBattleStart(
-              roomData,
-              actorData,
-              opponentData,
-            );
+            const freshBattleStart =
+              isFreshBattleStart(
+                roomData,
+                actorData,
+                opponentData,
+              );
 
-            if (freshBattleStart) {
+            if (
+              freshBattleStart
+            ) {
               actorAvatars =
-                sanitizeFreshBattleAvatars(actorAvatars);
+                sanitizeFreshBattleAvatars(
+                  actorAvatars,
+                );
+
               opponentAvatars =
-                sanitizeFreshBattleAvatars(opponentAvatars);
+                sanitizeFreshBattleAvatars(
+                  opponentAvatars,
+                );
             }
 
             const activeAvatar =
               actorAvatars[
                 requestedAvatarIndex
               ];
+
             const targetAvatar =
               opponentAvatars[
                 requestedAvatarIndex
@@ -2322,13 +3929,19 @@ export async function POST(
               );
 
             const isFreeSupportCard =
-              preset.effectCategory === 'サポートカード使用数' &&
-              preset.statEffect.includes('制限されない');
+              preset.effectCategory ===
+                'サポートカード使用数' &&
+              preset.statEffect.includes(
+                '制限されない',
+              );
 
             if (
               !isFreeSupportCard &&
-              Number.isFinite(supportLimit) &&
-              supportUseCount >= supportLimit
+              Number.isFinite(
+                supportLimit,
+              ) &&
+              supportUseCount >=
+                supportLimit
             ) {
               throw new Error(
                 'このターンはサポートカードをこれ以上使用できません。',
@@ -2345,30 +3958,42 @@ export async function POST(
                 actionId,
               );
 
-            const nextHand = hand.filter(
-              (_card, index) =>
-                index !== supportIndex,
-            );
+            const nextHand =
+              hand.filter(
+                (
+                  _card,
+                  index,
+                ) =>
+                  index !==
+                  supportIndex,
+              );
 
             const currentDeck =
-              Array.isArray(privateData.deck)
-                ? [...privateData.deck]
+              Array.isArray(
+                privateData.deck,
+              )
+                ? [
+                    ...privateData.deck,
+                  ]
                 : [];
 
-            const drawCount = Math.min(
-              calculated.extraDraw,
-              Math.max(
-                0,
-                7 - nextHand.length,
-              ),
-              currentDeck.length,
-            );
+            const drawCount =
+              Math.min(
+                calculated.extraDraw,
+                Math.max(
+                  0,
+                  7 -
+                    nextHand.length,
+                ),
+                currentDeck.length,
+              );
 
             const drawnCards =
               currentDeck.slice(
                 0,
                 drawCount,
               );
+
             const nextDeck =
               currentDeck.slice(
                 drawCount,
@@ -2381,47 +4006,64 @@ export async function POST(
             let actorClassScores =
               Array.isArray(
                 roomData[
-                  actorRole === 'host'
+                  actorRole ===
+                  'host'
                     ? 'hostClassScores'
                     : 'guestClassScores'
                 ],
               )
                 ? [
                     ...(roomData[
-                      actorRole === 'host'
+                      actorRole ===
+                      'host'
                         ? 'hostClassScores'
                         : 'guestClassScores'
-                    ] ?? [0, 0, 0]),
+                    ] ??
+                      [
+                        0,
+                        0,
+                        0,
+                      ]),
                   ]
                 : [0, 0, 0];
 
             let targetClassScores =
               Array.isArray(
                 roomData[
-                  opponentRole === 'host'
+                  opponentRole ===
+                  'host'
                     ? 'hostClassScores'
                     : 'guestClassScores'
                 ],
               )
                 ? [
                     ...(roomData[
-                      opponentRole === 'host'
+                      opponentRole ===
+                      'host'
                         ? 'hostClassScores'
                         : 'guestClassScores'
-                    ] ?? [0, 0, 0]),
+                    ] ??
+                      [
+                        0,
+                        0,
+                        0,
+                      ]),
                   ]
                 : [0, 0, 0];
 
-            const oldActorClassScore = Number(
-              actorClassScores[
-                requestedAvatarIndex
-              ] ?? 0,
-            );
-            const oldTargetClassScore = Number(
-              targetClassScores[
-                requestedAvatarIndex
-              ] ?? 0,
-            );
+            const oldActorClassScore =
+              Number(
+                actorClassScores[
+                  requestedAvatarIndex
+                ] ?? 0,
+              );
+
+            const oldTargetClassScore =
+              Number(
+                targetClassScores[
+                  requestedAvatarIndex
+                ] ?? 0,
+              );
 
             const newActorClassScore =
               Math.max(
@@ -2429,6 +4071,7 @@ export async function POST(
                 oldActorClassScore +
                   calculated.actorScoreDelta,
               );
+
             const newTargetClassScore =
               Math.max(
                 0,
@@ -2438,24 +4081,31 @@ export async function POST(
 
             actorClassScores[
               requestedAvatarIndex
-            ] = newActorClassScore;
+            ] =
+              newActorClassScore;
+
             targetClassScores[
               requestedAvatarIndex
-            ] = newTargetClassScore;
+            ] =
+              newTargetClassScore;
 
             const actualActorScoreDelta =
               newActorClassScore -
               oldActorClassScore;
+
             const actualTargetScoreDelta =
               newTargetClassScore -
               oldTargetClassScore;
 
             const actorTotalField =
-              actorRole === 'host'
+              actorRole ===
+              'host'
                 ? 'hostTotalScore'
                 : 'guestTotalScore';
+
             const targetTotalField =
-              opponentRole === 'host'
+              opponentRole ===
+              'host'
                 ? 'hostTotalScore'
                 : 'guestTotalScore';
 
@@ -2469,6 +4119,7 @@ export async function POST(
                 ) +
                   actualActorScoreDelta,
               );
+
             const targetTotal =
               Math.max(
                 0,
@@ -2493,6 +4144,7 @@ export async function POST(
                 actorData.battleStateVersion ??
                   0,
               ) + 1;
+
             const nextOpponentVersion =
               Number(
                 opponentData.battleStateVersion ??
@@ -2524,38 +4176,48 @@ export async function POST(
               processedAt,
             };
 
-            const nextPendingAction = {
-              actionId,
-              type: 'PLAY_SUPPORT' as const,
-              playerRole: actorRole,
-              uid: authUid,
-              year: currentYear,
-              turnIndex,
-              avatarIndex:
-                requestedAvatarIndex,
-              supportCardId:
-                requestedSupportCardId,
-              supportPresetId:
-                preset.id,
-              submittedAt:
-                processedAt,
-              supportCardConsumed: true,
-            };
+            const nextPendingAction =
+              {
+                actionId,
+                type:
+                  'PLAY_SUPPORT' as const,
+                playerRole:
+                  actorRole,
+                uid: authUid,
+                year:
+                  currentYear,
+                turnIndex,
+                avatarIndex:
+                  requestedAvatarIndex,
+                supportCardId:
+                  requestedSupportCardId,
+                supportPresetId:
+                  preset.id,
+                submittedAt:
+                  processedAt,
+                supportCardConsumed:
+                  true,
+              };
 
             transaction.set(
               privatePlayerRef,
               {
                 uid: authUid,
-                hand: nextHand,
-                deck: nextDeck,
+                hand:
+                  nextHand,
+                deck:
+                  nextDeck,
               },
-              { merge: true },
+              {
+                merge: true,
+              },
             );
 
             transaction.update(
               roomRef,
               {
-                ...(actorRole === 'host'
+                ...(actorRole ===
+                'host'
                   ? {
                       hostClassScores:
                         actorClassScores,
@@ -2612,7 +4274,8 @@ export async function POST(
 
             return {
               actionId,
-              alreadyProcessed: false,
+              alreadyProcessed:
+                false,
               supportPresetId:
                 preset.id,
               supportName:
@@ -2621,10 +4284,13 @@ export async function POST(
                 actualActorScoreDelta,
               targetScoreDelta:
                 actualTargetScoreDelta,
-              extraDraw: drawCount,
+              extraDraw:
+                drawCount,
               actorRole,
-              nextYear: currentYear,
-              nextTurnIndex: turnIndex,
+              nextYear:
+                currentYear,
+              nextTurnIndex:
+                turnIndex,
               nextBattlePhase:
                 roomData.battlePhase ??
                 'battle',
@@ -2637,12 +4303,14 @@ export async function POST(
 
           const actorBattleStateVersion =
             Number(
-              actorData.battleStateVersion ?? 0,
+              actorData.battleStateVersion ??
+                0,
             );
 
           const opponentBattleStateVersion =
             Number(
-              opponentData.battleStateVersion ?? 0,
+              opponentData.battleStateVersion ??
+                0,
             );
 
           if (
@@ -2651,7 +4319,8 @@ export async function POST(
           ) {
             return {
               actionId,
-              alreadyProcessed: true,
+              alreadyProcessed:
+                true,
               gainedScore:
                 Number(
                   actorData.lastSkillAction?.gainedScore ??
@@ -2699,27 +4368,37 @@ export async function POST(
 
           const actorAvatars =
             actorData.avatars
-              ? [...actorData.avatars]
+              ? [
+                  ...actorData.avatars,
+                ]
               : [];
 
           const opponentAvatars =
             opponentData.avatars
-              ? [...opponentData.avatars]
+              ? [
+                  ...opponentData.avatars,
+                ]
               : [];
 
-          const freshBattleStart = isFreshBattleStart(
-            roomData,
-            actorData,
-            opponentData,
-          );
+          const freshBattleStart =
+            isFreshBattleStart(
+              roomData,
+              actorData,
+              opponentData,
+            );
 
           const sanitizedActorAvatars =
             freshBattleStart
-              ? sanitizeFreshBattleAvatars(actorAvatars)
+              ? sanitizeFreshBattleAvatars(
+                  actorAvatars,
+                )
               : actorAvatars;
+
           const sanitizedOpponentAvatars =
             freshBattleStart
-              ? sanitizeFreshBattleAvatars(opponentAvatars)
+              ? sanitizeFreshBattleAvatars(
+                  opponentAvatars,
+                )
               : opponentAvatars;
 
           const actorAvatar =
@@ -2732,9 +4411,20 @@ export async function POST(
               avatarIndex
             ];
 
-          if (freshBattleStart) {
-            actorAvatars.splice(0, actorAvatars.length, ...sanitizedActorAvatars);
-            opponentAvatars.splice(0, opponentAvatars.length, ...sanitizedOpponentAvatars);
+          if (
+            freshBattleStart
+          ) {
+            actorAvatars.splice(
+              0,
+              actorAvatars.length,
+              ...sanitizedActorAvatars,
+            );
+
+            opponentAvatars.splice(
+              0,
+              opponentAvatars.length,
+              ...sanitizedOpponentAvatars,
+            );
           }
 
           if (
@@ -2746,26 +4436,37 @@ export async function POST(
             );
           }
 
-          if (typeof requestedSkillId !== 'string') {
-            throw new Error('skillIdが不正です。');
-          }
-
-          const skill = getCanonicalSkill(
-            actorAvatar,
-            requestedSkillId,
-          );
-
           if (
-            (skill.rule ===
-              'y_response_score' ||
-              skill.rule === 'y_burst') &&
-            (!requestedBoostStat ||
-              !isStatKey(
-                requestedBoostStat,
-              ))
+            typeof requestedSkillId !==
+            'string'
           ) {
             throw new Error(
-              'このN-1技にはselectedBoostStatが必要です。',
+              'skillIdが不正です。',
+            );
+          }
+
+          const skill =
+            getCanonicalSkill(
+              actorAvatar,
+              requestedSkillId,
+            );
+
+          if (
+            (
+              skill.rule ===
+                'y_response_score' ||
+              skill.rule ===
+                'y_burst'
+            ) &&
+            (
+              !requestedBoostStat ||
+              !isStatKey(
+                requestedBoostStat,
+              )
+            )
+          ) {
+            throw new Error(
+              'このA-1技にはselectedBoostStatが必要です。',
             );
           }
 
@@ -2793,7 +4494,13 @@ export async function POST(
           if (
             skill.maxUsesPerClass >
               0 &&
-            usedForClass.filter((usedSkillId) => usedSkillId === skill.id).length >=
+            usedForClass.filter(
+              (
+                usedSkillId,
+              ) =>
+                usedSkillId ===
+                skill.id,
+            ).length >=
               skill.maxUsesPerClass
           ) {
             throw new Error(
@@ -2826,16 +4533,17 @@ export async function POST(
           ] =
             calculated.nextTarget;
 
-          const nextUsedSkills: Record<
-            string,
-            string[]
-          > = {
+          const nextUsedSkills:
+            Record<
+              string,
+              string[]
+            > = {
             ...usedSkills,
           };
 
           if (
             skill.maxUsesPerClass >
-              0
+            0
           ) {
             nextUsedSkills[
               yearKey
@@ -2846,12 +4554,14 @@ export async function POST(
           }
 
           const scoreField =
-            actorRole === 'host'
+            actorRole ===
+            'host'
               ? 'hostClassScores'
               : 'guestClassScores';
 
           const totalField =
-            actorRole === 'host'
+            actorRole ===
+            'host'
               ? 'hostTotalScore'
               : 'guestTotalScore';
 
@@ -2893,18 +4603,26 @@ export async function POST(
             );
 
           const nextActorAvatars =
-            next.currentYear !== currentYear
-              ? clearSupportEffectsFromAvatars(actorAvatars)
+            next.currentYear !==
+            currentYear
+              ? clearSupportEffectsFromAvatars(
+                  actorAvatars,
+                )
               : actorAvatars;
+
           const nextOpponentAvatars =
-            next.currentYear !== currentYear
-              ? clearSupportEffectsFromAvatars(opponentAvatars)
+            next.currentYear !==
+            currentYear
+              ? clearSupportEffectsFromAvatars(
+                  opponentAvatars,
+                )
               : opponentAvatars;
 
           const processedAt =
             Date.now();
 
-          const lastSkillAction: LastSkillAction =
+          const lastSkillAction:
+            LastSkillAction =
             {
               actionId,
               player:
@@ -2965,14 +4683,16 @@ export async function POST(
                 nextUsedSkills,
 
               battleStateVersion:
-                actorBattleStateVersion + 1,
+                actorBattleStateVersion +
+                1,
 
               lastSkillActionId:
                 actionId,
 
               lastSkillAction,
 
-              pendingAction: FieldValue.delete(),
+              pendingAction:
+                FieldValue.delete(),
             },
           );
 
@@ -2983,13 +4703,15 @@ export async function POST(
                 nextOpponentAvatars,
 
               battleStateVersion:
-                opponentBattleStateVersion + 1,
+                opponentBattleStateVersion +
+                1,
             },
           );
 
           return {
             actionId,
-            alreadyProcessed: false,
+            alreadyProcessed:
+              false,
 
             gainedScore:
               calculated.gainedScore,

@@ -9,10 +9,16 @@ import {
   runTransaction,
   setDoc,
 } from 'firebase/firestore';
+import type { BattleDeckSnapshot } from './DeckBuilder';
 
 interface FriendMatchSetupProps {
-  onMatchStart: (roomId: string, isHost: boolean) => void;
+  onMatchStart: (
+    roomId: string,
+    isHost: boolean,
+    battleDeckSnapshot?: BattleDeckSnapshot,
+  ) => void;
   onBack: () => void;
+  battleDeckSnapshot?: BattleDeckSnapshot | null;
 }
 
 type PlayerRole = 'host' | 'guest';
@@ -26,9 +32,68 @@ type PresenceRecord = {
   lastSeenAt?: number;
 };
 
+function isValidBattleDeckSnapshot(
+  snapshot: BattleDeckSnapshot | null | undefined,
+): snapshot is BattleDeckSnapshot {
+  if (!snapshot) return false;
+
+  if (snapshot.version !== 1) return false;
+
+  if (
+    !snapshot.deckName ||
+    typeof snapshot.deckName !== 'string'
+  ) {
+    return false;
+  }
+
+  if (
+    !Array.isArray(snapshot.characters) ||
+    snapshot.characters.length !== 3
+  ) {
+    return false;
+  }
+
+  const expectedRoles: BattleDeckSnapshot['characters'][number]['role'][] =
+    ['vanguard', 'center', 'general'];
+
+  for (let index = 0; index < expectedRoles.length; index += 1) {
+    const character = snapshot.characters[index];
+
+    if (
+      !character ||
+      character.role !== expectedRoles[index] ||
+      typeof character.cardId !== 'string' ||
+      !character.cardId.trim()
+    ) {
+      return false;
+    }
+  }
+
+  if (
+    !Array.isArray(snapshot.supportCards) ||
+    snapshot.supportCards.length !== 18
+  ) {
+    return false;
+  }
+
+  if (
+    snapshot.supportCards.some(
+      support =>
+        !support ||
+        typeof support.cardId !== 'string' ||
+        !support.cardId.trim(),
+    )
+  ) {
+    return false;
+  }
+
+  return true;
+}
+
 export default function FriendMatchSetup({
   onMatchStart,
   onBack,
+  battleDeckSnapshot = null,
 }: FriendMatchSetupProps) {
   const [mode, setMode] =
     useState<'menu' | 'create' | 'join'>('menu');
@@ -42,34 +107,68 @@ export default function FriendMatchSetup({
   const [isWaitingForGuest, setIsWaitingForGuest] =
     useState<boolean>(false);
 
-// ===== 放置ステージの判定 =====
-const STALE_STAGE_MS = 60 * 1000;
+  const validateBattleDeckBeforeStart = () => {
+    if (
+      battleDeckSnapshot !== null &&
+      !isValidBattleDeckSnapshot(battleDeckSnapshot)
+    ) {
+      setStatusMessage(
+        '⚠️ 対戦用デッキ情報を確認できませんでした。デッキを確定し直してください。',
+      );
+      return false;
+    }
 
-const isStageStale = (
-  roomData: RoomRecord,
-  hostPresenceData: PresenceRecord | null,
-  guestPresenceData: PresenceRecord | null,
-) => {
-  const now = Date.now();
+    return true;
+  };
 
-  const hostSeen = Number(
-    hostPresenceData?.lastSeenAt ?? 0,
-  );
+  const saveBattleDeckSnapshot = async (
+    privatePlayerRef: ReturnType<typeof doc>,
+  ) => {
+    if (!battleDeckSnapshot) return;
 
-  const guestSeen = Number(
-    guestPresenceData?.lastSeenAt ?? 0,
-  );
+    if (!isValidBattleDeckSnapshot(battleDeckSnapshot)) {
+      throw new Error('INVALID_BATTLE_DECK_SNAPSHOT');
+    }
 
-  const hostStale =
-    !hostSeen ||
-    now - hostSeen > STALE_STAGE_MS;
+    await setDoc(
+      privatePlayerRef,
+      {
+        battleDeckSnapshot,
+      },
+      {
+        merge: true,
+      },
+    );
+  };
 
-  const guestStale =
-    !guestSeen ||
-    now - guestSeen > STALE_STAGE_MS;
+  // ===== 放置ステージの判定 =====
+  const STALE_STAGE_MS = 60 * 1000;
 
-  return hostStale && guestStale;
-};
+  const isStageStale = (
+    roomData: RoomRecord,
+    hostPresenceData: PresenceRecord | null,
+    guestPresenceData: PresenceRecord | null,
+  ) => {
+    const now = Date.now();
+
+    const hostSeen = Number(
+      hostPresenceData?.lastSeenAt ?? 0,
+    );
+
+    const guestSeen = Number(
+      guestPresenceData?.lastSeenAt ?? 0,
+    );
+
+    const hostStale =
+      !hostSeen ||
+      now - hostSeen > STALE_STAGE_MS;
+
+    const guestStale =
+      !guestSeen ||
+      now - guestSeen > STALE_STAGE_MS;
+
+    return hostStale && guestStale;
+  };
 
   const resetPlayerForNewStage = async (
     playerRef: ReturnType<typeof doc>,
@@ -129,6 +228,7 @@ const isStageStale = (
         uid,
         hand: [],
         deck: [],
+        battleDeckSnapshot: deleteField(),
       },
       {
         merge: true,
@@ -287,6 +387,10 @@ const isStageStale = (
       setStatusMessage(
         '⚠️ 合言葉を入力してください。',
       );
+      return;
+    }
+
+    if (!validateBattleDeckBeforeStart()) {
       return;
     }
 
@@ -478,7 +582,9 @@ const isStageStale = (
 
           transaction.update(
             roomRef,
-            { roomClosed: true },
+            {
+              roomClosed: true,
+            },
           );
 
           return {
@@ -540,6 +646,10 @@ const isStageStale = (
         );
       }
 
+      await saveBattleDeckSnapshot(
+        hostPrivatePlayerRef,
+      );
+
       setIsLoading(false);
       setIsWaitingForGuest(true);
 
@@ -573,7 +683,11 @@ const isStageStale = (
           ) {
             unsubscribe();
             setIsWaitingForGuest(false);
-            onMatchStart(roomId, true);
+            onMatchStart(
+              roomId,
+              true,
+              battleDeckSnapshot ?? undefined,
+            );
           }
         },
       );
@@ -584,7 +698,11 @@ const isStageStale = (
       ) {
         unsubscribe();
         setIsWaitingForGuest(false);
-        onMatchStart(roomId, true);
+        onMatchStart(
+          roomId,
+          true,
+          battleDeckSnapshot ?? undefined,
+        );
       }
     } catch (err) {
       console.error('Create Room Error:', err);
@@ -592,6 +710,12 @@ const isStageStale = (
 
       if (err instanceof Error) {
         switch (err.message) {
+          case 'INVALID_BATTLE_DECK_SNAPSHOT':
+            setStatusMessage(
+              '❌ 対戦用デッキ情報を保存できませんでした。デッキを確定し直してください。',
+            );
+            return;
+
           case 'ROOM_ALREADY_IN_USE':
             setStatusMessage(
               '❌ その合言葉のステージはすでに使用されています。別の合言葉を設定してください。',
@@ -631,6 +755,10 @@ const isStageStale = (
       return;
     }
 
+    if (!validateBattleDeckBeforeStart()) {
+      return;
+    }
+
     setShowConfirmModal(true);
   };
 
@@ -660,13 +788,13 @@ const isStageStale = (
         'guest',
       );
 
-const guestPresenceRef = doc(
-  db,
-  'rooms',
-  roomId,
-  'presence',
-  'guest',
-);
+    const guestPresenceRef = doc(
+      db,
+      'rooms',
+      roomId,
+      'presence',
+      'guest',
+    );
 
     const guestPrivatePlayerRef =
       doc(
@@ -704,11 +832,6 @@ const guestPresenceRef = doc(
             const roomData =
               roomSnap.data() as RoomRecord;
 
-            // -------------------------------------------------
-            // 明示的に閉じられたRoom
-            // → 元ユーザーでも再入室不可
-            // -------------------------------------------------
-
             if (
               roomData.roomClosed ===
               true
@@ -717,10 +840,6 @@ const guestPresenceRef = doc(
                 'ROOM_CLOSED',
               );
             }
-
-            // -------------------------------------------------
-            // Host本人がGuestとして入ろうとしている
-            // -------------------------------------------------
 
             if (
               roomData.hostUid &&
@@ -731,11 +850,6 @@ const guestPresenceRef = doc(
                 'SELF_JOIN',
               );
             }
-
-            // -------------------------------------------------
-            // 同じGuest本人の一時離脱
-            // → 対戦状態を維持して再入室
-            // -------------------------------------------------
 
             if (
               roomData.guestUid ===
@@ -755,24 +869,23 @@ const guestPresenceRef = doc(
                 },
               );
 
+              transaction.set(
+                guestPresenceRef,
+                {
+                  uid:
+                    currentUser.uid,
 
-transaction.set(
-  guestPresenceRef,
-  {
-    uid:
-      currentUser.uid,
+                  role:
+                    'guest',
 
-    role:
-      'guest',
-
-    lastSeenAt:
-      now,
-  },
-  {
-    merge:
-      true,
-  },
-);
+                  lastSeenAt:
+                    now,
+                },
+                {
+                  merge:
+                    true,
+                },
+              );
 
               return {
                 mode:
@@ -780,17 +893,11 @@ transaction.set(
               };
             }
 
-            // -------------------------------------------------
-            // 同じGuest以外はstale Roomへ参加不可
-            // stale Roomは新しいHostによる引き継ぎを行わず、作成側で物理削除する。
-            // -------------------------------------------------
-
             if (
               roomData.guestJoined ===
                 false ||
               !roomData.guestUid
             ) {
-
               const hostPlayerRef =
                 doc(
                   db,
@@ -809,64 +916,60 @@ transaction.set(
                   'guest',
                 );
 
-const hostPresenceRef =
-  doc(
-    db,
-    'rooms',
-    roomId,
-    'presence',
-    'host',
-  );
+              const hostPresenceRef =
+                doc(
+                  db,
+                  'rooms',
+                  roomId,
+                  'presence',
+                  'host',
+                );
 
-const guestPresenceRef =
-  doc(
-    db,
-    'rooms',
-    roomId,
-    'presence',
-    'guest',
-  );
+              const guestPresenceRef =
+                doc(
+                  db,
+                  'rooms',
+                  roomId,
+                  'presence',
+                  'guest',
+                );
 
-const hostPresenceSnap =
-  await transaction.get(
-    hostPresenceRef,
-  );
+              const hostPresenceSnap =
+                await transaction.get(
+                  hostPresenceRef,
+                );
 
-const guestPresenceSnap =
-  await transaction.get(
-    guestPresenceRef,
-  );
+              const guestPresenceSnap =
+                await transaction.get(
+                  guestPresenceRef,
+                );
 
-const hostPresenceData =
-  hostPresenceSnap.exists()
-    ? (
-        hostPresenceSnap.data() as PresenceRecord
-      )
-    : null;
+              const hostPresenceData =
+                hostPresenceSnap.exists()
+                  ? (
+                      hostPresenceSnap.data() as PresenceRecord
+                    )
+                  : null;
 
-const guestPresenceData =
-  guestPresenceSnap.exists()
-    ? (
-        guestPresenceSnap.data() as PresenceRecord
-      )
-    : null;
+              const guestPresenceData =
+                guestPresenceSnap.exists()
+                  ? (
+                      guestPresenceSnap.data() as PresenceRecord
+                    )
+                  : null;
 
-if (
-  isStageStale(
-    roomData,
-    hostPresenceData,
-    guestPresenceData,
-  )
-) {
-  throw new Error(
-    'ROOM_STALE',
-  );
-}
+              if (
+                isStageStale(
+                  roomData,
+                  hostPresenceData,
+                  guestPresenceData,
+                )
+              ) {
+                throw new Error(
+                  'ROOM_STALE',
+                );
+              }
             }
-
-            // -------------------------------------------------
-            // すでにGuestがいる
-            // -------------------------------------------------
 
             if (
               roomData.guestJoined ===
@@ -878,52 +981,43 @@ if (
               );
             }
 
-            // -------------------------------------------------
-            // 新しいGuestとして参加
-            // -------------------------------------------------
+            transaction.update(
+              roomRef,
+              {
+                guestUid:
+                  currentUser.uid,
 
-transaction.update(
-  roomRef,
-  {
-    guestUid:
-      currentUser.uid,
+                guestJoined:
+                  true,
 
-    guestJoined:
-      true,
+                guestRejoinedAt:
+                  now,
 
-    guestRejoinedAt:
-      now,
+                guestLastSeenAt:
+                  now,
+              },
+            );
 
-    guestLastSeenAt:
-      now,
-  },
-);
+            transaction.set(
+              guestPresenceRef,
+              {
+                uid:
+                  currentUser.uid,
 
-transaction.set(
-  guestPresenceRef,
-  {
-    uid:
-      currentUser.uid,
+                role:
+                  'guest',
 
-    role:
-      'guest',
+                lastSeenAt:
+                  now,
+              },
+            );
 
-    lastSeenAt:
-      now,
-  },
-);
-
-return {
-  mode:
-    'joined' as const,
-};
+            return {
+              mode:
+                'joined' as const,
+            };
           },
         );
-
-      // -------------------------------------------------------
-      // 新規Guest時だけPlayerを初期化。
-      // 再入室時は既存状態を維持する。
-      // -------------------------------------------------------
 
       if (
         result.mode ===
@@ -942,11 +1036,16 @@ return {
         );
       }
 
+      await saveBattleDeckSnapshot(
+        guestPrivatePlayerRef,
+      );
+
       setIsLoading(false);
 
       onMatchStart(
         roomId,
         false,
+        battleDeckSnapshot ?? undefined,
       );
     } catch (err) {
       console.error(
@@ -962,6 +1061,12 @@ return {
         switch (
           err.message
         ) {
+          case 'INVALID_BATTLE_DECK_SNAPSHOT':
+            setStatusMessage(
+              '❌ 対戦用デッキ情報を保存できませんでした。デッキを確定し直してください。',
+            );
+            return;
+
           case 'ROOM_NOT_FOUND':
             setStatusMessage(
               '❌ 一致するステージが見つかりません。合言葉を確認してください。',
@@ -1222,5 +1327,4 @@ return {
       </div>
     </div>
   );
-
 }
