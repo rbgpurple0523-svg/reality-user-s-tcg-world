@@ -1,6 +1,7 @@
 'use client';
 
-import React, { useState, useEffect, ChangeEvent, FormEvent } from 'react';
+import React, { useEffect, useMemo, useState, ChangeEvent, FormEvent } from 'react';
+import { ensureAnonymousAuth } from '@/lib/firebase';
 import {
   EMOTION_PRESETS,
   getEmotionFlavorText,
@@ -36,6 +37,30 @@ type EmotionPickerMode = 'feeling' | 'performance';
 type RegistrationStep = 2 | 3;
 type EditorKey = 'basic' | 'effect' | 'color' | 'flavor' | null;
 type ModalKey = 'emotion' | 'saved' | null;
+type PublicCardResponse = Omit<EntryRecord, 'passwordHash'>;
+
+type CardApiCardResponse = {
+  ok: true;
+  card: PublicCardResponse;
+};
+
+type CardApiDeleteResponse = {
+  ok: true;
+  result: {
+    cardId: string;
+    status: 'deleted';
+  };
+};
+
+type CardApiErrorResponse = {
+  ok: false;
+  error?: string;
+};
+
+type CardApiResponse =
+  | CardApiCardResponse
+  | CardApiDeleteResponse
+  | CardApiErrorResponse;
 
 const EMOTION_AXIS_CONFIG: Record<
   EmotionAxisKey,
@@ -57,6 +82,10 @@ const EMOTION_AXIS_ORDER: EmotionAxisKey[] = [
 ];
 
 const EMOTION_AXIS_RING_VALUES = [20, 40, 60, 80, 100];
+
+const IMAGE_MAX_SIZE = 800;
+const IMAGE_JPEG_QUALITY = 0.82;
+const IMAGE_DATA_URL_MAX_LENGTH = 480_000;
 
 function getEmotionMapPosition(emotion: EmotionPreset): { x: number; y: number } {
   const axes = emotion.emotionAxes;
@@ -175,6 +204,199 @@ async function moderateCardTexts(texts: string[]): Promise<ModerationResult> {
   }
 }
 
+function normalizeProfileUrl(value: string): string {
+  return value
+    .trim()
+    .replace(/#REALITY$/i, '')
+    .replace(/\/$/, '');
+}
+
+function sanitizeStoredEntry(entry: EntryRecord): EntryRecord {
+  const sanitized = { ...entry } as EntryRecord & { ownerToken?: string };
+  sanitized.passwordHash = '';
+  delete sanitized.ownerToken;
+  return sanitized;
+}
+
+function getStoredEntries(): EntryRecord[] {
+  try {
+    const saved = localStorage.getItem(ENTRIES_KEY);
+    if (!saved) return [];
+
+    const parsed = JSON.parse(saved) as unknown;
+    if (!Array.isArray(parsed)) return [];
+
+    const cleanEntries = (parsed as EntryRecord[]).map(sanitizeStoredEntry);
+    localStorage.setItem(ENTRIES_KEY, JSON.stringify(cleanEntries));
+    return cleanEntries;
+  } catch {
+    return [];
+  }
+}
+
+function saveCachedEntries(entries: EntryRecord[]): EntryRecord[] {
+  const cleanEntries = entries.map(sanitizeStoredEntry);
+  localStorage.setItem(ENTRIES_KEY, JSON.stringify(cleanEntries));
+  return cleanEntries;
+}
+
+async function requestCardApi(
+  path: string,
+  body: Record<string, unknown>,
+): Promise<CardApiResponse> {
+  const user = await ensureAnonymousAuth();
+  const idToken = await user.getIdToken();
+
+  const response = await fetch(path, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      Authorization: `Bearer ${idToken}`,
+    },
+    body: JSON.stringify(body),
+  });
+
+  const raw = (await response.json()) as unknown;
+
+  if (!raw || typeof raw !== 'object' || Array.isArray(raw)) {
+    throw new Error('CARD_API_INVALID_RESPONSE');
+  }
+
+  const data = raw as Record<string, unknown>;
+
+  if (data.ok === true && path.endsWith('/delete')) {
+    return data as unknown as CardApiDeleteResponse;
+  }
+
+  if (data.ok === true && data.card && typeof data.card === 'object') {
+    return data as unknown as CardApiCardResponse;
+  }
+
+  return {
+    ok: false,
+    error:
+      typeof data.error === 'string'
+        ? data.error
+        : response.ok
+          ? 'CARD_API_INVALID_RESPONSE'
+          : 'CARD_API_REQUEST_FAILED',
+  };
+}
+
+function getCardApiErrorMessage(
+  code: string,
+  action: 'register' | 'update' | 'delete',
+): string {
+  switch (code) {
+    case 'AUTH_REQUIRED':
+      return '認証の準備に失敗しました。ページを再読み込みして、もう一度お試しください。';
+    case 'PROFILE_ALREADY_REGISTERED':
+      return 'このREALITYプロフURLでは、すでにカードが登録されています。';
+    case 'CARD_LIMIT_REACHED':
+      return 'この「想い」は現在エントリー上限に達しています。別の「想い」を選択してください。';
+    case 'CARD_NOT_FOUND':
+      return '対象のカードが見つかりません。一覧を開き直してください。';
+    case 'PERMISSION_DENIED':
+      return action === 'delete'
+        ? 'このカードを操作する権限を確認できませんでした。登録時の合言葉を入力してもう一度お試しください。'
+        : 'このカードを更新する権限を確認できませんでした。登録時の合言葉を入力してもう一度お試しください。';
+    case 'CARD_DELETED':
+      return 'このカードはすでに削除されています。';
+    case 'CARD_TYPE_OR_PRESET_IMMUTABLE':
+      return 'カード種別と「想い」は変更できません。';
+    case 'INVALID_CARD_ID':
+      return 'カード情報を確認できませんでした。もう一度一覧から開いてください。';
+    case 'CARD_API_INVALID_RESPONSE':
+      return 'サーバーから正しい応答を受け取れませんでした。もう一度お試しください。';
+    case 'CARD_API_REQUEST_FAILED':
+      return 'カード処理に失敗しました。もう一度お試しください。';
+    default:
+      return action === 'delete'
+        ? 'カードを削除できませんでした。'
+        : action === 'update'
+          ? 'カードを更新できませんでした。'
+          : 'カードを登録できませんでした。';
+  }
+}
+
+function toCachedEntry(card: PublicCardResponse): EntryRecord {
+  return sanitizeStoredEntry({ ...card, passwordHash: '' });
+}
+
+async function loadImageFromSource(source: string): Promise<HTMLImageElement> {
+  return new Promise((resolve, reject) => {
+    const image = new Image();
+    image.onload = () => resolve(image);
+    image.onerror = () => reject(new Error('画像を読み込めませんでした。'));
+    image.src = source;
+  });
+}
+
+async function compressImageFile(file: File): Promise<string> {
+  const objectUrl = URL.createObjectURL(file);
+
+  try {
+    const image = await loadImageFromSource(objectUrl);
+    const maxDimension = Math.max(image.naturalWidth, image.naturalHeight);
+    const scale = Math.min(1, IMAGE_MAX_SIZE / Math.max(1, maxDimension));
+    const width = Math.max(1, Math.round(image.naturalWidth * scale));
+    const height = Math.max(1, Math.round(image.naturalHeight * scale));
+    const canvas = document.createElement('canvas');
+    canvas.width = width;
+    canvas.height = height;
+
+    const context = canvas.getContext('2d');
+    if (!context) throw new Error('画像処理を開始できませんでした。');
+
+    context.fillStyle = '#ffffff';
+    context.fillRect(0, 0, width, height);
+    context.imageSmoothingEnabled = true;
+    context.imageSmoothingQuality = 'high';
+    context.drawImage(image, 0, 0, width, height);
+
+    const result = canvas.toDataURL('image/jpeg', IMAGE_JPEG_QUALITY);
+    if (!result || result === 'data:,') {
+      throw new Error('画像の圧縮に失敗しました。');
+    }
+
+    return result;
+  } finally {
+    URL.revokeObjectURL(objectUrl);
+  }
+}
+
+async function compressImageDataUrlIfNeeded(dataUrl: string): Promise<string> {
+  if (!dataUrl) return dataUrl;
+
+  const isJpeg = /^data:image\/(?:jpeg|jpg);/i.test(dataUrl);
+  if (isJpeg && dataUrl.length <= IMAGE_DATA_URL_MAX_LENGTH) return dataUrl;
+
+  const image = await loadImageFromSource(dataUrl);
+  const maxDimension = Math.max(image.naturalWidth, image.naturalHeight);
+  const scale = Math.min(1, IMAGE_MAX_SIZE / Math.max(1, maxDimension));
+  const width = Math.max(1, Math.round(image.naturalWidth * scale));
+  const height = Math.max(1, Math.round(image.naturalHeight * scale));
+  const canvas = document.createElement('canvas');
+  canvas.width = width;
+  canvas.height = height;
+
+  const context = canvas.getContext('2d');
+  if (!context) throw new Error('画像処理を開始できませんでした。');
+
+  context.fillStyle = '#ffffff';
+  context.fillRect(0, 0, width, height);
+  context.imageSmoothingEnabled = true;
+  context.imageSmoothingQuality = 'high';
+  context.drawImage(image, 0, 0, width, height);
+
+  const result = canvas.toDataURL('image/jpeg', IMAGE_JPEG_QUALITY);
+  if (!result || result === 'data:,') {
+    throw new Error('画像の圧縮に失敗しました。');
+  }
+
+  return result;
+}
+
 function EmotionMiniMap({
   selectedEmotionId,
   onSelect,
@@ -182,7 +404,7 @@ function EmotionMiniMap({
   selectedEmotionId: string;
   onSelect: (emotion: EmotionPreset) => void;
 }) {
-  const emotionMapPositions = getSeparatedEmotionMapPositions();
+  const emotionMapPositions = useMemo(() => getSeparatedEmotionMapPositions(), []);
 
   return (
     <div className="w-full rounded-2xl border border-purple-100 bg-white p-2.5 shadow-sm">
@@ -270,7 +492,6 @@ function EmotionMiniMap({
             />
           );
         })}
-
       </div>
 
       <p className="mt-2 text-[9px] font-bold leading-relaxed text-gray-500">
@@ -312,35 +533,40 @@ export default function SupportCardGenerator({
   const [showProfileUrlGuide, setShowProfileUrlGuide] = useState(false);
 
   const [entries, setEntries] = useState<EntryRecord[]>([]);
-  const [myTokens, setMyTokens] = useState<string[]>([]);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [registrationStep, setRegistrationStep] = useState<RegistrationStep>(2);
   const [activeEditor, setActiveEditor] = useState<EditorKey>(null);
   const [activeModal, setActiveModal] = useState<ModalKey>(null);
-useEffect(() => {
-  if (openSaved) {
-    setActiveModal('saved');
-  }
-}, [openSaved]);
   const [draftAvailable, setDraftAvailable] = useState(false);
   const [isColorTouched, setIsColorTouched] = useState(false);
 
   const [errorMessage, setErrorMessage] = useState('');
   const [successMessage, setSuccessMessage] = useState('');
   const [isModerating, setIsModerating] = useState(false);
+  const [isProcessingCard, setIsProcessingCard] = useState(false);
 
   const selectedColorType = getColorTypeFromHex(selectedColorHex);
 
   useEffect(() => {
+    void ensureAnonymousAuth().catch(() => {});
+  }, []);
+
+  useEffect(() => {
+    if (openSaved) {
+      setActiveModal('saved');
+    }
+  }, [openSaved]);
+
+  useEffect(() => {
+    const loadedEntries = getStoredEntries();
+    setEntries(loadedEntries);
+
     try {
-      const savedEntries = localStorage.getItem(ENTRIES_KEY);
-      if (savedEntries) setEntries(JSON.parse(savedEntries) as EntryRecord[]);
+      localStorage.removeItem(MY_TOKENS_KEY);
+    } catch {}
 
-      const savedTokens = localStorage.getItem(MY_TOKENS_KEY);
-      if (savedTokens) setMyTokens(JSON.parse(savedTokens) as string[]);
-
-      const hasSavedDraft = Boolean(localStorage.getItem(DRAFT_KEY));
-      setDraftAvailable(hasSavedDraft);
+    try {
+      setDraftAvailable(Boolean(localStorage.getItem(DRAFT_KEY)));
     } catch {
       setDraftAvailable(false);
     }
@@ -357,7 +583,7 @@ useEffect(() => {
     if (editingId) return;
 
     const draftData = {
-      profileUrl,
+      profileUrl: normalizeProfileUrl(profileUrl),
       userName,
       imageDataUrl,
       selectedEmotionId,
@@ -384,9 +610,7 @@ useEffect(() => {
 
       localStorage.setItem(DRAFT_KEY, JSON.stringify(draftData));
       setDraftAvailable(true);
-    } catch {
-      // Continue editing even when local storage is unavailable.
-    }
+    } catch {}
   }, [
     profileUrl,
     showProfileUrl,
@@ -420,6 +644,7 @@ useEffect(() => {
       setShowProfileUrl(draft.showProfileUrl !== false);
       setUserName(draft.userName || '');
       setImageDataUrl(draft.imageDataUrl || '');
+      setPassword('');
       if (draft.selectedEmotionId) setSelectedEmotionId(draft.selectedEmotionId);
       if (draft.effectName) setEffectName(draft.effectName);
       setFlavorText(draft.flavorText || '');
@@ -441,9 +666,7 @@ useEffect(() => {
   const discardDraft = () => {
     try {
       localStorage.removeItem(DRAFT_KEY);
-    } catch {
-      // Ignore storage cleanup errors.
-    }
+    } catch {}
     setDraftAvailable(false);
   };
 
@@ -471,22 +694,22 @@ useEffect(() => {
     setActiveModal(null);
   };
 
-const handleProfileUrlChange = (value: string) => {
-  setProfileUrl(normalizeProfileUrl(value));
-  setErrorMessage('');
-};
+  const handleProfileUrlChange = (value: string) => {
+    setProfileUrl(normalizeProfileUrl(value));
+    setErrorMessage('');
+  };
 
-  const handleImageUpload = (e: ChangeEvent<HTMLInputElement>) => {
+  const handleImageUpload = async (e: ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
 
-    const reader = new FileReader();
-    reader.onload = () => {
-      if (typeof reader.result === 'string') {
-        setImageDataUrl(reader.result);
-      }
-    };
-    reader.readAsDataURL(file);
+    try {
+      const compressed = await compressImageFile(file);
+      setImageDataUrl(compressed);
+      setErrorMessage('');
+    } catch {
+      setErrorMessage('画像を読み込めませんでした。別の画像をお試しください。');
+    }
   };
 
   const handleColorChange = (hex: string) => {
@@ -497,34 +720,18 @@ const handleProfileUrlChange = (value: string) => {
     setErrorMessage('');
   };
 
-  const getStoredEntries = (): EntryRecord[] => {
-    try {
-      const saved = localStorage.getItem(ENTRIES_KEY);
-      return saved ? (JSON.parse(saved) as EntryRecord[]) : entries;
-    } catch {
-      return entries;
-    }
-  };
-
-  const makeOwnerToken = () =>
-    `token_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`;
-
-  const normalizeProfileUrl = (value: string) =>
-   value
-     .trim()
-     .replace(/#REALITY$/i, '')
-     .replace(/\/$/, '');
-
   const validateBeforeConfirm = () => {
-    if (!profileUrl.trim() || !profileUrl.startsWith('https://reality.app/profile/')) {
+    if (!profileUrl.trim() || !normalizeProfileUrl(profileUrl).startsWith('https://reality.app/profile/')) {
       setErrorMessage('REALITYプロフURLを入力してください。');
       setActiveEditor('basic');
       return false;
     }
 
-    if (!userName.trim() || !imageDataUrl || !password.trim() || !effectName.trim()) {
+    const requiresPasswordForRegistration = !editingId && !password.trim();
+
+    if (!userName.trim() || !imageDataUrl || requiresPasswordForRegistration || !effectName.trim()) {
       setErrorMessage('カード画像・REALITYプロフURL・登録ユーザー名・合言葉・効果名をすべて入力してください。');
-      if (!userName.trim() || !imageDataUrl || !profileUrl.trim() || !password.trim()) {
+      if (!userName.trim() || !imageDataUrl || !profileUrl.trim() || requiresPasswordForRegistration) {
         setActiveEditor('basic');
       } else {
         setActiveEditor('effect');
@@ -537,6 +744,7 @@ const handleProfileUrlChange = (value: string) => {
 
   const handleSubmit = async (e: FormEvent) => {
     e.preventDefault();
+    if (isModerating || isProcessingCard) return;
     setErrorMessage('');
 
     if (!activeEmotion) {
@@ -584,104 +792,121 @@ const handleProfileUrlChange = (value: string) => {
       setIsModerating(false);
     }
 
-    const currentEntries = getStoredEntries();
-    const editingEntry = editingId
-      ? currentEntries.find((entry) => entry.id === editingId)
-      : undefined;
-
     const normalizedProfileUrl = normalizeProfileUrl(profileUrl);
-    const duplicateSupportEntry = currentEntries.find((entry) =>
-      entry.cardType === 'emotion' &&
-      entry.id !== editingId &&
-      normalizeProfileUrl(entry.profileUrl || '') === normalizedProfileUrl,
-    );
 
-    if (duplicateSupportEntry) {
-      setErrorMessage('このREALITYプロフURLでは、すでにサポートカードが登録されています。1ユーザーにつき登録できるサポートカードは1枚です。');
-      setActiveEditor('basic');
+    let normalizedImageDataUrl = imageDataUrl;
+    try {
+      normalizedImageDataUrl = await compressImageDataUrlIfNeeded(imageDataUrl);
+      if (normalizedImageDataUrl !== imageDataUrl) {
+        setImageDataUrl(normalizedImageDataUrl);
+      }
+    } catch {
+      setErrorMessage('画像の圧縮に失敗したため、保存できませんでした。別の画像をお試しください。');
       return;
     }
 
-    const ownerToken = editingEntry?.ownerToken || makeOwnerToken();
-    const now = new Date().toISOString();
-
-    const newEntry: EntryRecord = {
-      id: editingId || `entry_${Date.now()}`,
+    const requestBody: Record<string, unknown> = {
       presetId: activeEmotion.id,
       cardType: 'emotion',
-      profileUrl: profileUrl.trim(),
+      profileUrl: normalizedProfileUrl,
       userName: userName.trim(),
-      imageDataUrl,
-      passwordHash: password,
+      imageDataUrl: normalizedImageDataUrl,
       customEffectName: effectName.trim(),
       flavorText: flavorText.trim(),
       colorHex: selectedColorHex,
-      colorType: selectedColorType,
-      ownerToken,
       showProfileUrl,
-      firstUser: editingEntry?.firstUser || '自分',
-      createdAt: editingEntry?.createdAt || now,
-      updatedAt: now,
     };
 
-    const updatedEntries = editingId
-      ? currentEntries.map((entry) => (entry.id === editingId ? newEntry : entry))
-      : [newEntry, ...currentEntries];
+    const isUpdating = Boolean(editingId);
+    if (editingId) {
+      requestBody.cardId = editingId;
+      if (password.trim()) {
+        requestBody.password = password.trim();
+      }
+    } else {
+      requestBody.password = password.trim();
+    }
 
-    const nextTokens = newEntry.ownerToken && !myTokens.includes(newEntry.ownerToken)
-      ? [...myTokens, newEntry.ownerToken]
-      : myTokens;
+    setIsProcessingCard(true);
 
     try {
-      localStorage.setItem(ENTRIES_KEY, JSON.stringify(updatedEntries));
-      localStorage.setItem(MY_TOKENS_KEY, JSON.stringify(nextTokens));
-      localStorage.removeItem(DRAFT_KEY);
-    } catch {
-      setErrorMessage('保存に失敗しました。ブラウザの保存領域を確認してください。');
-      return;
-    }
+      let result = await requestCardApi(
+        isUpdating ? '/api/cards/update' : '/api/cards/register',
+        requestBody,
+      );
 
-    setEntries(updatedEntries);
-    setMyTokens(nextTokens);
-    setEditingId(null);
-    setDraftAvailable(false);
-    setActiveEditor(null);
-    setSuccessMessage(editingEntry ? '✨ サポートカードを更新しました！' : '✨ サポートカードを登録しました！');
-  };
-
-  const authorizeEntry = (entry: EntryRecord): boolean => {
-    if (entry.ownerToken && myTokens.includes(entry.ownerToken)) return true;
-
-    const inputPass = window.prompt('このカードの所持者ですか？\n作成時に設定した合言葉を入力してください。');
-    if (inputPass === entry.passwordHash) {
-      if (!entry.ownerToken) {
-        alert('このカードには作成者トークンがありません。作成した端末で操作してください。');
-        return false;
+      if (!result.ok && result.error === 'PERMISSION_DENIED' && isUpdating && !password.trim()) {
+        const inputPass = window.prompt('このカードの所有者認証が必要です。\n登録時に設定した合言葉を入力してください。');
+        if (inputPass) {
+          requestBody.password = inputPass;
+          setPassword(inputPass);
+          result = await requestCardApi('/api/cards/update', requestBody);
+        }
       }
 
-      const updatedTokens = [...myTokens, entry.ownerToken];
-      setMyTokens(updatedTokens);
+      if (!result.ok) {
+        setErrorMessage(getCardApiErrorMessage(result.error ?? 'CARD_API_REQUEST_FAILED', isUpdating ? 'update' : 'register'));
+        if (result.error === 'PROFILE_ALREADY_REGISTERED' || result.error === 'CARD_LIMIT_REACHED') {
+          setRegistrationStep(2);
+        }
+        if (result.error === 'PERMISSION_DENIED') {
+          setActiveEditor('basic');
+          setPassword('');
+        }
+        return;
+      }
+
+      if (!('card' in result)) {
+        setErrorMessage('カード情報を受け取れませんでした。もう一度お試しください。');
+        return;
+      }
+
+      const cachedEntry = toCachedEntry(result.card);
+      const currentEntries = getStoredEntries();
+      const nextEntries = isUpdating
+        ? currentEntries.some((entry) => entry.id === cachedEntry.id)
+          ? currentEntries.map((entry) => (entry.id === cachedEntry.id ? cachedEntry : entry))
+          : [cachedEntry, ...currentEntries]
+        : [cachedEntry, ...currentEntries.filter((entry) => entry.id !== cachedEntry.id)];
+
       try {
-        localStorage.setItem(MY_TOKENS_KEY, JSON.stringify(updatedTokens));
+        const savedEntries = saveCachedEntries(nextEntries);
+        setEntries(savedEntries);
       } catch {
-        // Continue editing even if token persistence fails.
+        setErrorMessage('カードはサーバーに保存されましたが、一覧のキャッシュ更新に失敗しました。');
+        setEditingId(cachedEntry.id);
+        setPassword('');
+        setRegistrationStep(3);
+        setActiveEditor(null);
+        setIsProcessingCard(false);
+        return;
       }
-      alert('認証されました。「編集」「削除」ができます。');
-      return true;
-    }
 
-    alert('合言葉が一致しません。');
-    return false;
+      setEditingId(cachedEntry.id);
+      setDraftAvailable(false);
+      setActiveEditor(null);
+      setActiveModal(null);
+      setSuccessMessage(isUpdating ? '✨ サポートカードを更新しました！' : '✨ サポートカードを登録しました！');
+      setPassword('');
+      setRegistrationStep(3);
+
+      try {
+        localStorage.removeItem(DRAFT_KEY);
+      } catch {}
+    } catch (error) {
+      const code = error instanceof Error ? error.message : 'CARD_API_REQUEST_FAILED';
+      setErrorMessage(getCardApiErrorMessage(code, isUpdating ? 'update' : 'register'));
+    } finally {
+      setIsProcessingCard(false);
+    }
   };
 
   const handleEdit = (entry: EntryRecord) => {
-    if (!authorizeEntry(entry)) return;
-
     setProfileUrl(normalizeProfileUrl(entry.profileUrl || ''));
     setShowProfileUrl(entry.showProfileUrl !== false);
     setUserName(entry.userName || '');
     setImageDataUrl(entry.imageDataUrl || '');
-    setPassword(entry.passwordHash || '');
+    setPassword('');
     setEffectName(entry.customEffectName || '');
     setFlavorText(entry.flavorText || '');
     setSelectedColorHex(
@@ -703,64 +928,77 @@ const handleProfileUrlChange = (value: string) => {
     setSuccessMessage('');
   };
 
-useEffect(() => {
-  if (!openEntryId || editingId) return;
+  useEffect(() => {
+    if (!openEntryId || editingId) return;
 
-  const entry = entries.find((item) => item.id === openEntryId);
-  if (!entry) return;
+    const entry = entries.find((item) => item.id === openEntryId);
+    if (!entry) return;
 
-  if (!authorizeEntry(entry)) return;
+    handleEdit(entry);
+  }, [openEntryId, entries, editingId]);
 
-  setProfileUrl(normalizeProfileUrl(entry.profileUrl || ''));
-  setShowProfileUrl(entry.showProfileUrl !== false);
-  setUserName(entry.userName || '');
-  setImageDataUrl(entry.imageDataUrl || '');
-  setPassword(entry.passwordHash || '');
-  setEffectName(entry.customEffectName || '');
-  setFlavorText(entry.flavorText || '');
-  setSelectedColorHex(
-    entry.colorHex && /^#[0-9a-fA-F]{6}$/.test(entry.colorHex)
-      ? entry.colorHex.toUpperCase()
-      : getLegacyColorHex(entry.color),
-  );
-  setIsColorTouched(true);
-
-  if (entry.presetId) {
-    setSelectedEmotionId(entry.presetId);
-  }
-
-  setEditingId(entry.id);
-  setRegistrationStep(2);
-  setActiveModal(null);
-  setErrorMessage('');
-  setSuccessMessage('');
-  setActiveEditor('basic');
-}, [openEntryId, entries, editingId]);
-
-  const handleDelete = (entry: EntryRecord) => {
-    if (!authorizeEntry(entry)) return;
-if (
-  !window.confirm(
-    `「${entry.customEffectName || entry.userName}」のサポートカードを削除しますか？\nこの操作は元に戻せません。`,
-  )
-) {
-  return;
-}
-    const updatedEntries = entries.filter((item) => item.id !== entry.id);
-    setEntries(updatedEntries);
-
-    try {
-      localStorage.setItem(ENTRIES_KEY, JSON.stringify(updatedEntries));
-    } catch {
-      // Keep current in-memory state even if persistence fails.
+  const handleDelete = async (entry: EntryRecord) => {
+    if (
+      !window.confirm(
+        `「${entry.customEffectName || entry.userName}」のサポートカードを削除しますか？\nこの操作は元に戻せません。`,
+      )
+    ) {
+      return;
     }
 
-if (editingId === entry.id) {
-  setEditingId(null);
-  setActiveEditor(null);
-  setSuccessMessage('✨ サポートカードを削除しました。');
-}
+    setIsProcessingCard(true);
+    setErrorMessage('');
 
+    try {
+      const body: Record<string, unknown> = {
+        cardId: entry.id,
+      };
+
+      let result = await requestCardApi('/api/cards/delete', body);
+
+      if (!result.ok && result.error === 'PERMISSION_DENIED') {
+        const inputPass = window.prompt('このカードの所有者認証が必要です。\n登録時に設定した合言葉を入力してください。');
+        if (inputPass) {
+          body.password = inputPass;
+          result = await requestCardApi('/api/cards/delete', body);
+        }
+      }
+
+      if (!result.ok) {
+        setErrorMessage(getCardApiErrorMessage(result.error ?? 'CARD_API_REQUEST_FAILED', 'delete'));
+        return;
+      }
+
+      if (!('result' in result)) {
+        setErrorMessage('削除結果を受け取れませんでした。もう一度お試しください。');
+        return;
+      }
+
+      const currentEntries = getStoredEntries();
+      const nextEntries = currentEntries.filter((item) => item.id !== entry.id);
+
+      try {
+        setEntries(saveCachedEntries(nextEntries));
+      } catch {
+        setEntries(nextEntries);
+      }
+
+      setPassword('');
+      if (editingId === entry.id) {
+        setEditingId(null);
+        setActiveEditor(null);
+        setActiveModal(null);
+        setRegistrationStep(2);
+        setSuccessMessage('✨ サポートカードを削除しました。');
+      } else {
+        setSuccessMessage('✨ サポートカードを削除しました。');
+      }
+    } catch (error) {
+      const code = error instanceof Error ? error.message : 'CARD_API_REQUEST_FAILED';
+      setErrorMessage(getCardApiErrorMessage(code, 'delete'));
+    } finally {
+      setIsProcessingCard(false);
+    }
   };
 
   const pickerEmotions = EMOTION_PRESETS.filter((emotion) => {
@@ -792,7 +1030,12 @@ if (editingId === entry.id) {
     setErrorMessage('');
   };
 
-  const basicInfoComplete = Boolean(profileUrl.trim() && userName.trim() && imageDataUrl && password.trim());
+  const basicInfoComplete = Boolean(
+    profileUrl.trim() &&
+      userName.trim() &&
+      imageDataUrl &&
+      (editingId || password.trim()),
+  );
   const effectComplete = Boolean(effectName.trim());
   const flavorComplete = Boolean(flavorText.trim());
 
@@ -1006,14 +1249,12 @@ if (editingId === entry.id) {
                     <div className="rounded-2xl border border-gray-200 bg-gray-50 p-3">
                       <div className="text-[9px] font-black tracking-[0.12em] text-gray-500">REGISTERED USER</div>
                       <div className="mt-1 text-sm font-black text-gray-950">{userName || '未設定'}</div>
-{showProfileUrl && (
-  <>
-    <div className="mt-3 text-[8px] font-black text-gray-400">REALITYプロフィールURL</div>
-    <div className="mt-0.5 break-all text-[10px] font-bold text-gray-700">
-      {normalizeProfileUrl(profileUrl) || '未設定'}
-    </div>
-  </>
-)}
+                      {showProfileUrl && (
+                        <>
+                          <div className="mt-3 text-[8px] font-black text-gray-400">REALITYプロフィールURL</div>
+                          <div className="mt-0.5 break-all text-[10px] font-bold text-gray-700">{normalizeProfileUrl(profileUrl) || '未設定'}</div>
+                        </>
+                      )}
                     </div>
                   </div>
 
@@ -1027,20 +1268,27 @@ if (editingId === entry.id) {
                     </div>
                   </div>
                 </div>
-
               </div>
+
+              <button type="button" onClick={() => { setRegistrationStep(2); setErrorMessage(''); setSuccessMessage(''); }} className="shrink-0 rounded-xl border border-gray-200 bg-white py-2.5 text-xs font-black text-gray-700">② 編集に戻る</button>
             </div>
           )}
         </div>
 
         <div className="shrink-0 border-t border-gray-200 bg-white px-3 py-3 sm:px-5">
-          <button
-            type="submit"
-            disabled={isModerating}
-            className="w-full rounded-2xl bg-purple-600 px-4 py-3 text-sm font-black text-white shadow disabled:cursor-wait disabled:bg-purple-300"
-          >
-            {isModerating ? '安全確認中…' : registrationStep === 2 ? '③ 登録内容を確認' : editingId ? 'このカードを更新する' : 'このカードで参加する'}
-          </button>
+          {registrationStep === 3 && isProcessingCard ? (
+            <button type="button" disabled className="w-full rounded-2xl bg-purple-300 px-4 py-3 text-sm font-black text-white">
+              保存中…
+            </button>
+          ) : (
+            <button
+              type="submit"
+              disabled={isModerating || isProcessingCard}
+              className="w-full rounded-2xl bg-purple-600 px-4 py-3 text-sm font-black text-white shadow disabled:cursor-wait disabled:bg-purple-300"
+            >
+              {isModerating ? '安全確認中…' : registrationStep === 2 ? '③ 登録内容を確認' : editingId ? 'このカードを更新する' : 'このカードで参加する'}
+            </button>
+          )}
         </div>
       </form>
 
@@ -1071,40 +1319,27 @@ if (editingId === entry.id) {
                   </div>
 
                   <div>
-<div className="mb-1 flex items-center justify-between gap-2">
-  <label className="block font-bold">
-    REALITY プロフURL <span className="text-red-500">*</span>
-  </label>
-  <button
-    type="button"
-    onClick={() => setShowProfileUrlGuide(true)}
-    className="rounded-lg border border-indigo-200 bg-indigo-50 px-2.5 py-1.5 text-[9px] font-black text-indigo-700"
-  >
-    手順
-  </button>
-</div>
+                    <div className="mb-1 flex items-center justify-between gap-2">
+                      <label className="block font-bold">REALITY プロフURL <span className="text-red-500">*</span></label>
+                      <button type="button" onClick={() => setShowProfileUrlGuide(true)} className="rounded-lg border border-indigo-200 bg-indigo-50 px-2.5 py-1.5 text-[9px] font-black text-indigo-700">手順</button>
+                    </div>
 
-<input
-  type="text"
-  value={profileUrl}
-  onChange={(e) => handleProfileUrlChange(e.target.value)}
-  placeholder="https://reality.app/profile/xxxxxx"
-  className="w-full rounded-xl border px-3 py-2.5"
-/>
+                    <input
+                      type="text"
+                      value={profileUrl}
+                      onChange={(e) => handleProfileUrlChange(e.target.value)}
+                      placeholder="https://reality.app/profile/xxxxxx"
+                      className="w-full rounded-xl border px-3 py-2.5"
+                    />
 
-<label className="mt-2 flex cursor-pointer items-center justify-between gap-3 rounded-xl border border-gray-200 bg-gray-50 px-3 py-2.5">
-  <span className="text-[10px] font-bold text-gray-700">プロフURLをカードに表示する</span>
-  <span className={`relative inline-flex h-6 w-11 shrink-0 items-center rounded-full transition ${showProfileUrl ? 'bg-purple-600' : 'bg-gray-300'}`}>
-    <input
-      type="checkbox"
-      checked={showProfileUrl}
-      onChange={(e) => setShowProfileUrl(e.target.checked)}
-      className="peer sr-only"
-    />
-    <span className={`pointer-events-none h-4 w-4 rounded-full bg-white shadow transition ${showProfileUrl ? 'translate-x-6' : 'translate-x-1'}`} />
-  </span>
-</label>
-                    <p className="mt-1 text-[9px] leading-4 text-gray-500">同じREALITYユーザーがサポートカードを複数登録することを防ぐために使用します。1ユーザーにつき1枚まで登録できます。</p>
+                    <label className="mt-2 flex cursor-pointer items-center justify-between gap-3 rounded-xl border border-gray-200 bg-gray-50 px-3 py-2.5">
+                      <span className="text-[10px] font-bold text-gray-700">プロフURLをカードに表示する</span>
+                      <span className={`relative inline-flex h-6 w-11 shrink-0 items-center rounded-full transition ${showProfileUrl ? 'bg-purple-600' : 'bg-gray-300'}`}>
+                        <input type="checkbox" checked={showProfileUrl} onChange={(e) => setShowProfileUrl(e.target.checked)} className="peer sr-only" />
+                        <span className={`pointer-events-none h-4 w-4 rounded-full bg-white shadow transition ${showProfileUrl ? 'translate-x-6' : 'translate-x-1'}`} />
+                      </span>
+                    </label>
+                    <p className="mt-1 text-[9px] leading-4 text-gray-500">同じREALITYユーザーがカードを複数登録することを防ぐために使用します。</p>
                   </div>
 
                   <div>
@@ -1114,9 +1349,19 @@ if (editingId === entry.id) {
                   </div>
 
                   <div>
-                    <label className="mb-1 block font-bold">編集・削除用の合言葉 <span className="text-red-500">*</span></label>
-                    <input type="password" value={password} onChange={(e) => setPassword(e.target.value)} placeholder="後からの編集・削除に使用します" className="w-full rounded-xl border px-3 py-2.5" />
-                    <p className="mt-1 text-[9px] text-gray-500">下書きには保存されません。</p>
+                    <label className="mb-1 block font-bold">編集・削除用の合言葉 {!editingId && <span className="text-red-500">*</span>}</label>
+                    <input
+                      type="password"
+                      value={password}
+                      onChange={(e) => setPassword(e.target.value)}
+                      placeholder={editingId ? '別端末から編集・削除するときに入力' : '後からの編集・削除に使用します'}
+                      className="w-full rounded-xl border px-3 py-2.5"
+                    />
+                    <p className="mt-1 text-[9px] text-gray-500">
+                      {editingId
+                        ? '同じ端末ではFirebase UIDによる所有者認証を使用します。認証できない場合は登録時の合言葉を確認します。'
+                        : '新規登録時に必須です。合言葉そのものはブラウザには保存されません。'}
+                    </p>
                   </div>
                 </div>
               )}
@@ -1140,14 +1385,7 @@ if (editingId === entry.id) {
                 <div className="space-y-4">
                   <div className="flex flex-wrap gap-2">
                     {COLOR_PALETTE.map((color) => (
-                      <button
-                        key={color}
-                        type="button"
-                        onClick={() => handleColorChange(color)}
-                        aria-label={`カラー ${color}`}
-                        className={`h-10 w-10 rounded-full border-2 ${selectedColorHex.toUpperCase() === color.toUpperCase() ? 'border-gray-900 ring-2 ring-offset-1 ring-gray-300' : 'border-white shadow-sm'}`}
-                        style={{ backgroundColor: color }}
-                      />
+                      <button key={color} type="button" onClick={() => handleColorChange(color)} aria-label={`カラー ${color}`} className={`h-10 w-10 rounded-full border-2 ${selectedColorHex.toUpperCase() === color.toUpperCase() ? 'border-gray-900 ring-2 ring-offset-1 ring-gray-300' : 'border-white shadow-sm'}`} style={{ backgroundColor: color }} />
                     ))}
                   </div>
                   <div className="rounded-2xl border border-gray-200 bg-gray-50 p-3">
@@ -1171,11 +1409,12 @@ if (editingId === entry.id) {
               {editingId && (
                 <button
                   type="button"
+                  disabled={isProcessingCard}
                   onClick={() => {
                     const entry = entries.find((item) => item.id === editingId);
-                    if (entry) handleDelete(entry);
+                    if (entry) void handleDelete(entry);
                   }}
-                  className="w-full rounded-xl border border-red-200 bg-red-50 py-2.5 text-xs font-black text-red-700 hover:bg-red-100"
+                  className="w-full rounded-xl border border-red-200 bg-red-50 py-2.5 text-xs font-black text-red-700 hover:bg-red-100 disabled:cursor-wait disabled:opacity-60"
                 >
                   このカードを削除する
                 </button>
@@ -1206,34 +1445,14 @@ if (editingId === entry.id) {
 
             <div className="min-h-0 overflow-y-auto p-3 sm:p-4">
               <div className="inline-flex rounded-full border border-purple-200 bg-purple-50 p-1 shadow-sm" role="group" aria-label="エモーション選択モード">
-                <button
-                  type="button"
-                  onClick={() => setPickerMode('feeling')}
-                  className={`rounded-full px-4 py-2 text-[10px] font-black transition ${pickerMode === 'feeling' ? 'bg-purple-700 text-white shadow' : 'text-gray-500 hover:text-purple-700'}`}
-                >
-                  想いから選択
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setPickerMode('performance')}
-                  className={`rounded-full px-4 py-2 text-[10px] font-black transition ${pickerMode === 'performance' ? 'bg-purple-700 text-white shadow' : 'text-gray-500 hover:text-purple-700'}`}
-                >
-                  性能から選択
-                </button>
+                <button type="button" onClick={() => setPickerMode('feeling')} className={`rounded-full px-4 py-2 text-[10px] font-black transition ${pickerMode === 'feeling' ? 'bg-purple-700 text-white shadow' : 'text-gray-500 hover:text-purple-700'}`}>想いから選択</button>
+                <button type="button" onClick={() => setPickerMode('performance')} className={`rounded-full px-4 py-2 text-[10px] font-black transition ${pickerMode === 'performance' ? 'bg-purple-700 text-white shadow' : 'text-gray-500 hover:text-purple-700'}`}>性能から選択</button>
               </div>
 
               <div className="mt-3 rounded-2xl border border-gray-200 bg-white p-3">
                 <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
-                  <div className="text-[9px] font-black text-gray-500">
-                    {pickerMode === 'feeling' ? '想いのマップから探す' : '効果条件から探す'}
-                  </div>
-                  <input
-                    type="text"
-                    value={pickerSearch}
-                    onChange={(e) => setPickerSearch(e.target.value)}
-                    placeholder={pickerMode === 'feeling' ? '想いの言葉を検索（任意）' : 'エモーション名・想い・効果を検索'}
-                    className="w-full rounded-xl border border-gray-200 bg-white px-3 py-2 text-xs sm:max-w-xs"
-                  />
+                  <div className="text-[9px] font-black text-gray-500">{pickerMode === 'feeling' ? '想いのマップから探す' : '効果条件から探す'}</div>
+                  <input type="text" value={pickerSearch} onChange={(e) => setPickerSearch(e.target.value)} placeholder={pickerMode === 'feeling' ? '想いの言葉を検索（任意）' : 'エモーション名・想い・効果を検索'} className="w-full rounded-xl border border-gray-200 bg-white px-3 py-2 text-xs sm:max-w-xs" />
                 </div>
 
                 {pickerMode === 'performance' && (
@@ -1270,12 +1489,7 @@ if (editingId === entry.id) {
                       pickerEmotions.map((emotion) => {
                         const selected = emotion.id === activeEmotion.id;
                         return (
-                          <button
-                            key={emotion.id}
-                            type="button"
-                            onClick={() => handlePerformanceEmotionSelect(emotion)}
-                            className={`w-full rounded-2xl border p-3 text-left transition ${selected ? 'border-purple-500 bg-purple-50 ring-2 ring-purple-200' : 'border-gray-200 bg-white hover:border-purple-300'}`}
-                          >
+                          <button key={emotion.id} type="button" onClick={() => handlePerformanceEmotionSelect(emotion)} className={`w-full rounded-2xl border p-3 text-left transition ${selected ? 'border-purple-500 bg-purple-50 ring-2 ring-purple-200' : 'border-gray-200 bg-white hover:border-purple-300'}`}>
                             <div className="flex items-start justify-between gap-3">
                               <div className="min-w-0">
                                 <div className="font-serif text-sm font-black leading-relaxed text-purple-950">{selected ? '✓ ' : ''}{emotion.emotionPhrase}</div>
@@ -1298,13 +1512,7 @@ if (editingId === entry.id) {
 
             <div className="shrink-0 border-t border-gray-200 bg-white p-3">
               {pickerMode === 'performance' ? (
-                <button
-                  type="button"
-                  onClick={() => setActiveModal(null)}
-                  className="w-full rounded-xl bg-purple-700 py-3 text-xs font-black text-white shadow-sm"
-                >
-                  このエモーションで登録に進む
-                </button>
+                <button type="button" onClick={() => setActiveModal(null)} className="w-full rounded-xl bg-purple-700 py-3 text-xs font-black text-white shadow-sm">このエモーションで登録に進む</button>
               ) : (
                 <button type="button" onClick={() => setActiveModal(null)} className="w-full rounded-xl bg-gray-900 py-2.5 text-xs font-black text-white">閉じる</button>
               )}
@@ -1313,54 +1521,27 @@ if (editingId === entry.id) {
         </div>
       )}
 
+      {showProfileUrlGuide && (
+        <div className="fixed inset-0 z-[100] flex items-center justify-center bg-slate-950/70 p-3 backdrop-blur-sm">
+          <div className="w-full max-w-sm overflow-hidden rounded-3xl bg-white shadow-2xl">
+            <div className="flex items-center justify-between gap-3 border-b border-gray-200 px-4 py-3">
+              <div className="text-sm font-black">REALITYプロフィールURLの取得手順</div>
+              <button type="button" onClick={() => setShowProfileUrlGuide(false)} className="rounded-lg bg-gray-100 px-2.5 py-1.5 text-xs font-black">✕</button>
+            </div>
 
-{showProfileUrlGuide && (
-  <div className="fixed inset-0 z-[100] flex items-center justify-center bg-slate-950/70 p-3 backdrop-blur-sm">
-    <div className="w-full max-w-sm overflow-hidden rounded-3xl bg-white shadow-2xl">
-      <div className="flex items-center justify-between gap-3 border-b border-gray-200 px-4 py-3">
-        <div className="text-sm font-black">REALITYプロフィールURLの取得手順</div>
-        <button
-          type="button"
-          onClick={() => setShowProfileUrlGuide(false)}
-          className="rounded-lg bg-gray-100 px-2.5 py-1.5 text-xs font-black"
-        >
-          ✕
-        </button>
-      </div>
+            <div className="min-h-0 max-h-[78dvh] overflow-y-auto p-4 text-[10px] leading-5 text-gray-700">
+              <div className="font-black text-indigo-800">① 自分のREALITYプロフィールを開き、共有ボタンをタップ</div>
+              <img src="/tcg_card/REALITY_USERURL_copy_1.jpg" alt="REALITYプロフィール画面で共有ボタンをタップする手順" className="mt-2 w-full rounded-2xl border border-gray-200 bg-gray-50 object-contain" />
+              <div className="mt-5 font-black text-indigo-800">② プロフィールURLをコピーする</div>
+              <img src="/tcg_card/REALITY_USERURL_copy_2.jpg" alt="REALITYプロフィールURLをコピーする手順" className="mt-2 w-full rounded-2xl border border-gray-200 bg-gray-50 object-contain" />
+            </div>
 
-      <div className="min-h-0 max-h-[78dvh] overflow-y-auto p-4 text-[10px] leading-5 text-gray-700">
-        <div className="font-black text-indigo-800">
-          ① 自分のREALITYプロフィールを開き、共有ボタンをタップ
+            <div className="border-t border-gray-200 p-3">
+              <button type="button" onClick={() => setShowProfileUrlGuide(false)} className="w-full rounded-xl bg-gray-900 py-2.5 text-xs font-black text-white">閉じる</button>
+            </div>
+          </div>
         </div>
-        <img
-          src="/tcg_card/REALITY_USERURL_copy_1.jpg"
-          alt="REALITYプロフィール画面で共有ボタンをタップする手順"
-          className="mt-2 w-full rounded-2xl border border-gray-200 bg-gray-50 object-contain"
-        />
-
-        <div className="mt-5 font-black text-indigo-800">
-          ② プロフィールURLをコピーする
-        </div>
-        <img
-          src="/tcg_card/REALITY_USERURL_copy_2.jpg"
-          alt="REALITYプロフィールURLをコピーする手順"
-          className="mt-2 w-full rounded-2xl border border-gray-200 bg-gray-50 object-contain"
-        />
-      </div>
-
-      <div className="border-t border-gray-200 p-3">
-        <button
-          type="button"
-          onClick={() => setShowProfileUrlGuide(false)}
-          className="w-full rounded-xl bg-gray-900 py-2.5 text-xs font-black text-white"
-        >
-          閉じる
-        </button>
-      </div>
-    </div>
-  </div>
-)}
-
+      )}
 
       {activeModal === 'saved' && (
         <div className="fixed inset-0 z-[90] flex items-end justify-center bg-slate-950/70 p-0 sm:items-center sm:p-4">
@@ -1377,7 +1558,6 @@ if (editingId === entry.id) {
                 <div className="space-y-3">
                   {savedSupportEntries.map((entry) => {
                     const emotion = EMOTION_PRESETS.find((preset) => preset.id === entry.presetId);
-                    const canEdit = Boolean(entry.ownerToken && myTokens.includes(entry.ownerToken));
                     const cardColor = entry.colorHex && /^#[0-9a-fA-F]{6}$/.test(entry.colorHex)
                       ? entry.colorHex
                       : getLegacyColorHex(entry.color);
@@ -1396,19 +1576,15 @@ if (editingId === entry.id) {
                           <div className="mt-2 rounded-xl bg-white p-2 text-[10px] leading-4 text-gray-700">💬 {entry.flavorText}</div>
                         )}
 
-<div className="mt-2">
-  <button
-    type="button"
-    onClick={() => handleEdit(entry)}
-    className={`w-full rounded-xl px-3 py-2 text-[10px] font-black ${
-      canEdit
-        ? 'bg-purple-600 text-white hover:bg-purple-700'
-        : 'bg-gray-200 text-gray-700'
-    }`}
-  >
-    {canEdit ? '編集・削除' : '所有者認証 → 編集・削除'}
-  </button>
-</div>
+                        <div className="mt-2">
+                          <button
+                            type="button"
+                            onClick={() => handleEdit(entry)}
+                            className="w-full rounded-xl bg-purple-600 px-3 py-2 text-[10px] font-black text-white hover:bg-purple-700"
+                          >
+                            編集・削除
+                          </button>
+                        </div>
                       </div>
                     );
                   })}
