@@ -1,6 +1,8 @@
 'use client';
 
 import React, { useState, useEffect, ChangeEvent, useMemo } from 'react';
+import { ensureAnonymousAuth, db } from '@/lib/firebase';
+import { collection, getDocs, query, where } from 'firebase/firestore';
 import { CHARACTER_SAMPLE_CARDS } from './characterSampleCards';
 import { COORDINATE_PRESETS } from './EntryHub';
 import { EMOTION_PRESETS } from './emotionPresets';
@@ -25,6 +27,10 @@ export interface EntryRecord {
   archetype?: string;
   hp?: number;
   ap?: number;
+  intellect?: number;
+  dexterity?: number;
+  charm?: number;
+  favoredSeason?: string;
   type?: string;
   cost?: number;
   rarity?: string;
@@ -37,6 +43,84 @@ export interface EntryRecord {
   createdAt?: string;
   customSkills?: string[];
   skillDescriptions?: string[];
+}
+
+type PublicCardRecord = {
+  id: string;
+  cardType: 'coordinate' | 'emotion';
+  presetId?: string;
+  userName?: string;
+  imageDataUrl?: string;
+  imageUrl?: string;
+  colorHex?: string;
+  color?: string;
+  customSkills?: string[];
+  skillDescriptions?: string[];
+  customEffectName?: string;
+  description?: string;
+  effect?: string;
+  firstUser?: string;
+  createdAt?: string;
+};
+
+function readString(value: unknown): string | undefined {
+  return typeof value === 'string' ? value : undefined;
+}
+
+function readStringArray(value: unknown): string[] | undefined {
+  if (!Array.isArray(value)) return undefined;
+
+  const result = value.filter(
+    (item): item is string => typeof item === 'string',
+  );
+
+  return result.length === value.length ? result : undefined;
+}
+
+function parsePublicCard(
+  id: string,
+  data: Record<string, unknown>,
+): PublicCardRecord | null {
+  const cardType = data.cardType;
+
+  if (cardType !== 'coordinate' && cardType !== 'emotion') {
+    return null;
+  }
+
+  return {
+    id,
+    cardType,
+    presetId: readString(data.presetId),
+    userName: readString(data.userName),
+    imageDataUrl: readString(data.imageDataUrl),
+    imageUrl: readString(data.imageUrl),
+    colorHex: readString(data.colorHex),
+    color: readString(data.color),
+    customSkills: readStringArray(data.customSkills),
+    skillDescriptions: readStringArray(data.skillDescriptions),
+    customEffectName: readString(data.customEffectName),
+    description: readString(data.description),
+    effect: readString(data.effect),
+    firstUser: readString(data.firstUser),
+    createdAt: readString(data.createdAt),
+  };
+}
+
+function getCachedEntries(): EntryRecord[] {
+  try {
+    const raw = localStorage.getItem(STORAGE_ENTRIES_KEY);
+    if (!raw) return [];
+
+    const parsed = JSON.parse(raw) as unknown;
+    if (!Array.isArray(parsed)) return [];
+
+    return parsed.filter((entry): entry is EntryRecord => {
+      if (!entry || typeof entry !== 'object') return false;
+      return 'id' in entry && 'cardType' in entry;
+    });
+  } catch {
+    return [];
+  }
 }
 
 // --- DeckBuilder 内で扱う型定義 ---
@@ -91,25 +175,31 @@ interface DeckBuilderProps {
   onGoToEntryHub?: () => void;
 }
 
-export default function DeckBuilder({ onGoToCpuBattle, onGoToBattle, initialDeckId = null, battleButtonLabel = '⚔️ CPU対戦で試す', onGoToEntryHub }: DeckBuilderProps) {
+export default function DeckBuilder({
+  onGoToCpuBattle,
+  onGoToBattle,
+  initialDeckId = null,
+  battleButtonLabel = '⚔️ CPU対戦で試す',
+  onGoToEntryHub,
+}: DeckBuilderProps) {
   // 既存の呼び出し側が onGoToCpuBattle / onGoToBattle のどちらでも動くよう互換性を維持します。
   const goToCpuBattle = onGoToCpuBattle ?? onGoToBattle;
   const [cards, setCards] = useState<AvatarCard[]>([]);
   const [supportPool, setSupportPool] = useState<SupportCard[]>([]);
-  
+
   const [decks, setDecks] = useState<Deck[]>([]);
   const [selectedDeckId, setSelectedDeckId] = useState<string | null>(null);
   const [deckName, setDeckName] = useState<string>('新しいチーム');
-  
+
   const [vanguardId, setVanguardId] = useState<string | null>(null);
   const [centerId, setCenterId] = useState<string | null>(null);
   const [generalId, setGeneralId] = useState<string | null>(null);
   const [supportIds, setSupportIds] = useState<string[]>([]);
-  
+
   // 選択モード用ステート
   const [selectedTargetRole, setSelectedTargetRole] = useState<PositionRole | null>(null);
   const [selectedCardId, setSelectedCardId] = useState<string | null>(null);
-  
+
   const [message, setMessage] = useState<string>('');
 
   // 「名前を付けて保存」用
@@ -183,139 +273,225 @@ export default function DeckBuilder({ onGoToCpuBattle, onGoToBattle, initialDeck
   };
 
   useEffect(() => {
-    // エントリー前からデッキに組み込める公式コーデ仮キャラだけを使用。
-    const defaultAvatars: AvatarCard[] = CHARACTER_SAMPLE_CARDS.map(a => ({
-      id: a.id,
-      userName: a.userName,
-      color: a.color,
-      archetype: a.archetype,
-      imageDataUrl: a.imageDataUrl,
-      hp: a.stats.hp,
-      ap: a.stats.intellect,
-      intellect: a.stats.intellect,
-      dexterity: a.stats.dexterity,
-      charm: a.stats.charm,
-      favoredSeason: a.favoredSeason,
-      presetId: a.presetId,
-      customSkills: a.customSkills,
-      skillDescriptions: (() => {
-        const preset = COORDINATE_PRESETS.find(p => p.id === a.presetId);
-        return preset ? [...preset.skillDescriptions] : undefined;
-      })(),
-    }));
+    let cancelled = false;
 
-    // 1. LocalStorage から reality_world_entries を取得
-    const rawEntries = localStorage.getItem(STORAGE_ENTRIES_KEY);
-    if (rawEntries) {
+    const initialize = async () => {
+      const defaultAvatars: AvatarCard[] = CHARACTER_SAMPLE_CARDS.map((a) => ({
+        id: a.id,
+        userName: a.userName,
+        color: a.color,
+        archetype: a.archetype,
+        imageDataUrl: a.imageDataUrl,
+        hp: a.stats.hp,
+        ap: a.stats.intellect,
+        intellect: a.stats.intellect,
+        dexterity: a.stats.dexterity,
+        charm: a.stats.charm,
+        favoredSeason: a.favoredSeason,
+        presetId: a.presetId,
+        customSkills: a.customSkills,
+        skillDescriptions: (() => {
+          const preset = COORDINATE_PRESETS.find((p) => p.id === a.presetId);
+          return preset ? [...preset.skillDescriptions] : undefined;
+        })(),
+      }));
+
+      const cachedEntries = getCachedEntries();
+      let sharedEntries: EntryRecord[] = [];
+
       try {
-        const entries: EntryRecord[] = JSON.parse(rawEntries);
+        await ensureAnonymousAuth();
 
-        // キャラカード (coordinate) の抽出
-        const loadedAvatars: AvatarCard[] = entries
-          .filter(e => e.cardType === 'coordinate')
-          .map(e => ({
-            id: e.id,
-            userName: e.userName || e.title || '無題のキャラ',
-            color: e.color || e.type || 'ノーマル',
-            archetype: e.archetype || e.rarity || '一般',
-            imageDataUrl: e.imageDataUrl || e.imageUrl || '',
-            colorHex: e.colorHex,
-            hp: e.hp,
-            ap: e.ap,
-            intellect: e.ap,
-            dexterity: 20,
-            charm: 20,
+        const cardsQuery = query(
+          collection(db, 'cards'),
+          where('status', '==', 'active'),
+        );
+
+        const snapshot = await getDocs(cardsQuery);
+
+        sharedEntries = snapshot.docs
+          .map((doc) => parsePublicCard(doc.id, doc.data() as Record<string, unknown>))
+          .filter((card): card is PublicCardRecord => Boolean(card))
+          .map((card) => ({
+            id: card.id,
+            cardType: card.cardType,
+            presetId: card.presetId,
+            userName: card.userName,
+            imageDataUrl: card.imageDataUrl,
+            imageUrl: card.imageUrl,
+            colorHex: card.colorHex,
+            color: card.color,
+            customSkills: card.customSkills,
+            skillDescriptions: card.skillDescriptions,
+            customEffectName: card.customEffectName,
+            description: card.description,
+            effect: card.effect,
+            firstUser: card.firstUser,
+            createdAt: card.createdAt,
+          }));
+      } catch (error) {
+        console.error('Failed to load shared cards', error);
+
+        if (!cancelled && cachedEntries.length === 0) {
+          setMessage('カードライブラリを読み込めませんでした。公式カードを表示しています。');
+        }
+      }
+
+      if (cancelled) return;
+
+      const mergedEntries = new Map<string, EntryRecord>();
+
+      cachedEntries.forEach((entry) => {
+        mergedEntries.set(entry.id, entry);
+      });
+
+      sharedEntries.forEach((entry) => {
+        mergedEntries.set(entry.id, entry);
+      });
+
+      const allEntries = Array.from(mergedEntries.values());
+
+      const loadedAvatars: AvatarCard[] = allEntries
+        .filter((entry) => entry.cardType === 'coordinate')
+        .map((entry) => {
+          const preset = entry.presetId
+            ? COORDINATE_PRESETS.find((p) => p.id === entry.presetId)
+            : undefined;
+
+          const savedSkills =
+            entry.customSkills && entry.customSkills.length === 4
+              ? [...entry.customSkills]
+              : preset?.defaultSkills;
+
+          const presetStats = preset?.stats;
+
+          return {
+            id: entry.id,
+            userName: entry.userName || entry.title || '無題のキャラ',
+            color: entry.color || entry.type || 'ノーマル',
+            archetype: entry.archetype || entry.rarity || 'バランス型',
+            imageDataUrl: entry.imageDataUrl || entry.imageUrl || '',
+            colorHex: entry.colorHex,
+            hp: presetStats?.hp ?? entry.hp,
+            ap: presetStats?.intellect ?? entry.ap,
+            intellect: presetStats?.intellect ?? entry.ap,
+            dexterity: presetStats?.dexterity ?? entry.dexterity,
+            charm: presetStats?.charm ?? entry.charm,
             favoredSeason:
-              e.archetype === 'マッスル型' ? '春' :
-              e.archetype === '頭脳型' ? '秋' :
-              e.archetype === '職人型' ? '冬' : '夏',
-            presetId: e.presetId,
-            customSkills: e.customSkills,
-            skillDescriptions: e.skillDescriptions,
+              entry.favoredSeason ||
+              (entry.archetype === 'マッスル型'
+                ? '春'
+                : entry.archetype === '頭脳型'
+                  ? '秋'
+                  : entry.archetype === '職人型'
+                    ? '冬'
+                    : '夏'),
+            presetId: entry.presetId,
+            customSkills: savedSkills,
+            skillDescriptions: preset
+              ? [...preset.skillDescriptions]
+              : entry.skillDescriptions,
+          };
+        });
+
+      const combinedAvatars = [...defaultAvatars];
+
+      loadedAvatars.forEach((avatar) => {
+        if (!combinedAvatars.some((item) => item.id === avatar.id)) {
+          combinedAvatars.push(avatar);
+        }
+      });
+
+      setCards(combinedAvatars);
+
+      const emotionEntries = allEntries.filter(
+        (entry) => entry.cardType === 'emotion',
+      );
+
+      const realSupportCards: SupportCard[] = emotionEntries.map((entry) => {
+        const preset = entry.presetId
+          ? EMOTION_PRESETS.find((emotion) => emotion.id === entry.presetId)
+          : undefined;
+
+        return {
+          id: entry.id,
+          name:
+            entry.customEffectName ||
+            entry.title ||
+            preset?.name ||
+            '無題のサポート',
+          description:
+            preset?.description ||
+            entry.effect ||
+            entry.description ||
+            '',
+          cost: 1,
+          category:
+            preset?.effectCategory ||
+            entry.category ||
+            'サポート',
+          imageDataUrl: entry.imageDataUrl || entry.imageUrl || '',
+          colorHex: entry.colorHex,
+          presetId: entry.presetId,
+          isVirtual: false,
+        };
+      });
+
+      const enteredPresetIds = new Set(
+        realSupportCards
+          .map((support) => support.presetId)
+          .filter((id): id is string => Boolean(id)),
+      );
+
+      const virtualEmotionSupports = createVirtualSupportCards(
+        enteredPresetIds,
+      );
+
+      const combinedSupports: SupportCard[] = [...virtualEmotionSupports];
+
+      realSupportCards.forEach((support) => {
+        if (!combinedSupports.some((item) => item.id === support.id)) {
+          combinedSupports.push(support);
+        }
+      });
+
+      setSupportPool(combinedSupports);
+
+      const rawDecks = localStorage.getItem(STORAGE_DECKS_KEY);
+
+      if (rawDecks) {
+        try {
+          const parsedDecks: Deck[] = JSON.parse(rawDecks);
+
+          const resolvedDecks = parsedDecks.map((deck) => ({
+            ...deck,
+            supportCardIds: resolveSupportIds(
+              deck.supportCardIds || [],
+              emotionEntries,
+            ),
           }));
 
-        // サポートカード (emotion) の抽出
-        const loadedSupports: SupportCard[] = entries
-          .filter(e => e.cardType === 'emotion')
-          .map(e => {
-            const preset = EMOTION_PRESETS.find(em => em.id === e.presetId);
-            return {
-              id: e.id,
-              name: e.customEffectName || e.title || preset?.name || '無題のサポート',
-              description: e.effect || e.description || preset?.description || '',
-              cost: e.cost || 1,
-              category: e.category || preset?.effectCategory || 'サポート',
-              imageDataUrl: e.imageDataUrl || e.imageUrl || '',
-              presetId: e.presetId,
-              isVirtual: false,
-            };
-          });
+          setDecks(resolvedDecks);
 
-        // サンプルキャラとユーザー作成キャラの統合 (重複除外)
-        const combinedAvatars = [...defaultAvatars];
-        loadedAvatars.forEach(ca => {
-          if (!combinedAvatars.some(a => a.id === ca.id)) {
-            combinedAvatars.push(ca);
+          if (resolvedDecks.length > 0) {
+            const initialDeck = initialDeckId
+              ? resolvedDecks.find((deck) => deck.id === initialDeckId) ||
+                resolvedDecks[0]
+              : resolvedDecks[0];
+
+            loadDeckToEditor(initialDeck);
           }
-        });
-        setCards(combinedAvatars);
-
-        // 固定サンプル + エントリー前の公式エモーション仮カード + 実エントリーを統合。
-        // 実エントリー済みのエモーションには仮カードを出さず、実カードを使用します。
-        const enteredPresetIds = new Set(
-          loadedSupports.map(s => s.presetId).filter((id): id is string => Boolean(id))
-        );
-        const virtualEmotionSupports: SupportCard[] = createVirtualSupportCards(enteredPresetIds);
-        const combinedSupports = [...virtualEmotionSupports];
-        loadedSupports.forEach(cs => {
-          if (!combinedSupports.some(s => s.id === cs.id)) {
-            combinedSupports.push(cs);
-          }
-        });
-        setSupportPool(combinedSupports);
-      } catch (e) {
-        console.error('Failed to parse reality_world_entries', e);
-        setCards(defaultAvatars);
-        setSupportPool(createVirtualSupportCards());
-      }
-    } else {
-      // LocalStorage に何もない場合はサンプルの全データを使用
-      setCards(defaultAvatars);
-      setSupportPool(createVirtualSupportCards());
-    }
-
-    // 2. デッキデータの取得
-    const rawDecks = localStorage.getItem(STORAGE_DECKS_KEY);
-    if (rawDecks) {
-      try {
-        const parsedDecks: Deck[] = JSON.parse(rawDecks);
-        // 以前に仮カードを入れて保存したデッキは、実エントリーが存在すれば自動的に差し替えます。
-        const rawEntriesForDecks = localStorage.getItem(STORAGE_ENTRIES_KEY);
-        const emotionEntriesForDecks: EntryRecord[] = rawEntriesForDecks
-          ? (() => {
-              try {
-                const allEntries: EntryRecord[] = JSON.parse(rawEntriesForDecks);
-                return allEntries.filter(e => e.cardType === 'emotion');
-              } catch {
-                return [];
-              }
-            })()
-          : [];
-        const resolvedDecks = parsedDecks.map(deck => ({
-          ...deck,
-          supportCardIds: resolveSupportIds(deck.supportCardIds || [], emotionEntriesForDecks),
-        }));
-        setDecks(resolvedDecks);
-        if (resolvedDecks.length > 0) {
-          const initialDeck = initialDeckId
-            ? resolvedDecks.find(deck => deck.id === initialDeckId) || resolvedDecks[0]
-            : resolvedDecks[0];
-          loadDeckToEditor(initialDeck);
+        } catch (error) {
+          console.error('Failed to parse decks', error);
         }
-      } catch (e) {
-        console.error('Failed to parse decks', e);
       }
-    }
+    };
+
+    void initialize();
+
+    return () => {
+      cancelled = true;
+    };
   }, []);
 
   // 重複サポートカードの集約計算
@@ -1363,16 +1539,16 @@ export default function DeckBuilder({ onGoToCpuBattle, onGoToBattle, initialDeck
                 <label className="block text-[9px] font-black text-gray-500" htmlFor="support-card-search">カード名・効果から探す</label>
                 <input id="support-card-search" type="text" value={supSearchQuery} onChange={(e) => setSupSearchQuery(e.target.value)} placeholder="カード名・効果を入力して検索" className="w-full rounded-xl border border-gray-200 px-4 py-3 text-sm outline-none focus:border-purple-400 focus:ring-2 focus:ring-purple-100" />
                 <div className="flex flex-wrap gap-2">
-                {availableSupportCategories.length > 0 && availableSupportCategories.map(category => (
-                  <button
-                    key={category}
-                    type="button"
-                    onClick={() => toggleSupportCategoryFilter(category)}
-                    className={`rounded-xl border px-2.5 py-2 text-[9px] font-black ${selectedSupportCategories.includes(category) ? 'border-purple-600 bg-purple-600 text-white' : 'border-gray-200 bg-white text-gray-600'}`}
-                  >
-                    {category}
-                  </button>
-                ))}
+                  {availableSupportCategories.length > 0 && availableSupportCategories.map(category => (
+                    <button
+                      key={category}
+                      type="button"
+                      onClick={() => toggleSupportCategoryFilter(category)}
+                      className={`rounded-xl border px-2.5 py-2 text-[9px] font-black ${selectedSupportCategories.includes(category) ? 'border-purple-600 bg-purple-600 text-white' : 'border-gray-200 bg-white text-gray-600'}`}
+                    >
+                      {category}
+                    </button>
+                  ))}
                 </div>
               </div>
               <div className="mt-2 flex items-center justify-between text-[9px] font-bold text-gray-400">
@@ -1578,3 +1754,4 @@ export default function DeckBuilder({ onGoToCpuBattle, onGoToBattle, initialDeck
     </div>
   );
 }
+
