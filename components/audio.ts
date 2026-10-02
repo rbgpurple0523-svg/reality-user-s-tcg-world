@@ -49,7 +49,7 @@ let bgmFadeTimer: number | null = null;
 let bgmTransitionId = 0;
 let fadingOutBgm: HTMLAudioElement | null = null;
 
-const BGM_VOLUME = 0.001;
+const BGM_VOLUME = 0.005;
 const BGM_FADE_MS = 450;
 
 function readAudioSettings(): AudioSettings {

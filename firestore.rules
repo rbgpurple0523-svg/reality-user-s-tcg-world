@@ -156,7 +156,7 @@ function isValidBattleStateTransition() {
       ])
 
       &&
-      request.resource.data.currentYear == 1
+      request.resource.data.currentYear == resource.data.currentYear
       &&
       request.resource.data.turnIndex == 0
       &&
@@ -296,8 +296,7 @@ function isValidBattleStateTransition() {
       request.resource.data.battlePhase == 'setup'
 
       &&
-      request.resource.data.currentYear
-        == resource.data.currentYear
+      request.resource.data.currentYear == resource.data.currentYear
 
       &&
       request.resource.data.turnIndex == 0
@@ -319,7 +318,7 @@ allow create: if request.auth != null
   && request.resource.data.exitHost == false
   && request.resource.data.exitGuest == false
   && request.resource.data.battlePhase == 'setup'
-  && request.resource.data.currentYear == 1
+  && request.resource.data.currentYear == resource.data.currentYear
   && request.resource.data.turnIndex == 0
   && request.resource.data.firstPlayer == null
   && request.resource.data.startSeasonIdx == null
@@ -1361,6 +1360,20 @@ allow delete: if
     isStaleClosedRoomCleanup()
   );
 }
+
+match /cards/{cardId} {
+  allow read: if request.auth != null;
+  allow create, update, delete: if false;
+}
+
+match /cardOwners/{cardId} {
+  allow read, create, update, delete: if false;
+}
+
+match /characterProfileIndex/{profileHash} {
+  allow read, create, update, delete: if false;
+}
+
     }
   }
 }
