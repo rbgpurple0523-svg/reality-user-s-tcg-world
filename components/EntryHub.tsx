@@ -316,7 +316,7 @@ function parseSharedEntry(
   };
 }
 
-async function loadSharedEntries(): Promise<EntryRecord[]> {
+async function loadSharedEntries(): Promise<EntryRecord[] | null> {
   try {
     await ensureAnonymousAuth();
 
@@ -345,7 +345,7 @@ async function loadSharedEntries(): Promise<EntryRecord[]> {
       error,
     );
 
-    return [];
+    return null;
   }
 }
 
@@ -540,7 +540,9 @@ function EmotionMap({
         {EMOTION_AXIS_ORDER.map(
           (axis) => {
             const vertex =
-              EMOTION_AXIS_CONFIG[axis];
+              EMOTION_AXIS_CONFIG[
+                axis
+              ];
 
             return (
               <line
@@ -774,19 +776,8 @@ export default function EntryHub({
       loadOwnedCardIds(),
     ]);
 
-    const merged =
-      new Map<string, EntryRecord>();
-
-    cachedEntries.forEach((entry) => {
-      merged.set(entry.id, entry);
-    });
-
-    sharedEntries.forEach((entry) => {
-      merged.set(entry.id, entry);
-    });
-
     const nextEntries =
-      Array.from(merged.values());
+      sharedEntries ?? cachedEntries;
 
     if (
       typeof window !== 'undefined'
@@ -827,31 +818,8 @@ export default function EntryHub({
 
         if (cancelled) return;
 
-        const merged =
-          new Map<string, EntryRecord>();
-
-        cachedEntries.forEach(
-          (entry) => {
-            merged.set(
-              entry.id,
-              entry,
-            );
-          },
-        );
-
-        sharedEntries.forEach(
-          (entry) => {
-            merged.set(
-              entry.id,
-              entry,
-            );
-          },
-        );
-
         const nextEntries =
-          Array.from(
-            merged.values(),
-          );
+          sharedEntries ?? cachedEntries;
 
         localStorage.setItem(
           ENTRIES_KEY,
@@ -1306,21 +1274,43 @@ export default function EntryHub({
         </div>
 
         <div className="flex flex-wrap items-center justify-between gap-3 border-t border-gray-200 bg-gray-50 px-4 py-3">
-          <div className="text-xs font-black text-gray-700">
-            登録状況：
-            <span className="text-indigo-700">
-              キャラ {characterEntries.length} / 1
-            </span>
 
-            <span className="mx-1 text-gray-400">
-              ・
-            </span>
+<div className="text-xs font-black text-gray-700">
+  登録状況：
+  <span className="text-indigo-700">
+    キャラ{' '}
+    {characterEntries.length} /{' '}
+    {COORDINATE_PRESETS.length}{' '}
+    (
+    {COORDINATE_PRESETS.length > 0
+      ? Math.round(
+          (characterEntries.length /
+            COORDINATE_PRESETS.length) *
+            100,
+        )
+      : 0}
+    %)
+  </span>
 
-            <span className="text-purple-700">
-              サポート {supportEntries.length} / 1
-            </span>
-          </div>
+  <span className="mx-1 text-gray-400">
+    ・
+  </span>
 
+  <span className="text-purple-700">
+    サポート{' '}
+    {supportEntries.length} /{' '}
+    {EMOTION_PRESETS.length}{' '}
+    (
+    {EMOTION_PRESETS.length > 0
+      ? Math.round(
+          (supportEntries.length /
+            EMOTION_PRESETS.length) *
+            100,
+        )
+      : 0}
+    %)
+  </span>
+</div>
           <button
             type="button"
             onClick={() =>

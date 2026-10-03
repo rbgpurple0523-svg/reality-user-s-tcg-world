@@ -1,8 +1,19 @@
 'use client';
 
-import React, { ChangeEvent, FormEvent, useEffect, useMemo, useState } from 'react';
+import React, {
+  ChangeEvent,
+  FormEvent,
+  useEffect,
+  useMemo,
+  useState,
+} from 'react';
 import { ensureAnonymousAuth } from '@/lib/firebase';
-import { CoordinatePreset, COORDINATE_PRESETS, EntryRecord } from './EntryHub';
+import {
+  CoordinatePreset,
+  COORDINATE_PRESETS,
+  EntryRecord,
+} from './EntryHub';
+import CardDetailView from './CardDetailView';
 import {
   COLOR_PALETTE,
   getColorTypeFromHex,
@@ -61,8 +72,19 @@ type CardApiResponse =
   | CardApiDeleteResponse
   | CardApiErrorResponse;
 
-const emptySkills: [string, string, string, string] = ['', '', '', ''];
-const emptySkillVoices: [string, string, string, string] = ['', '', '', ''];
+const emptySkills: [string, string, string, string] = [
+  '',
+  '',
+  '',
+  '',
+];
+
+const emptySkillVoices: [string, string, string, string] = [
+  '',
+  '',
+  '',
+  '',
+];
 
 function getDefaultSkillVoice(skillName: string): string {
   const normalized = skillName.trim();
@@ -84,42 +106,75 @@ const IMAGE_MAX_SIZE = 800;
 const IMAGE_JPEG_QUALITY = 0.82;
 const IMAGE_DATA_URL_MAX_LENGTH = 480_000;
 
-function loadImageFromSource(source: string): Promise<HTMLImageElement> {
+function loadImageFromSource(
+  source: string,
+): Promise<HTMLImageElement> {
   return new Promise((resolve, reject) => {
     const image = new Image();
     image.onload = () => resolve(image);
-    image.onerror = () => reject(new Error('画像を読み込めませんでした。'));
+    image.onerror = () =>
+      reject(
+        new Error('画像を読み込めませんでした。'),
+      );
     image.src = source;
   });
 }
 
-async function compressImageFile(file: File): Promise<string> {
+async function compressImageFile(
+  file: File,
+): Promise<string> {
   const objectUrl = URL.createObjectURL(file);
 
   try {
     const image = await loadImageFromSource(objectUrl);
     const scale = Math.min(
       1,
-      IMAGE_MAX_SIZE / Math.max(image.naturalWidth, image.naturalHeight),
+      IMAGE_MAX_SIZE /
+        Math.max(
+          image.naturalWidth,
+          image.naturalHeight,
+        ),
     );
-    const width = Math.max(1, Math.round(image.naturalWidth * scale));
-    const height = Math.max(1, Math.round(image.naturalHeight * scale));
+    const width = Math.max(
+      1,
+      Math.round(image.naturalWidth * scale),
+    );
+    const height = Math.max(
+      1,
+      Math.round(image.naturalHeight * scale),
+    );
     const canvas = document.createElement('canvas');
     canvas.width = width;
     canvas.height = height;
 
     const context = canvas.getContext('2d');
-    if (!context) throw new Error('画像処理を開始できませんでした。');
+    if (!context) {
+      throw new Error(
+        '画像処理を開始できませんでした。',
+      );
+    }
 
     context.fillStyle = '#ffffff';
     context.fillRect(0, 0, width, height);
     context.imageSmoothingEnabled = true;
     context.imageSmoothingQuality = 'high';
-    context.drawImage(image, 0, 0, width, height);
+    context.drawImage(
+      image,
+      0,
+      0,
+      width,
+      height,
+    );
 
-    const result = canvas.toDataURL('image/jpeg', IMAGE_JPEG_QUALITY);
+    const result = canvas.toDataURL(
+      'image/jpeg',
+      IMAGE_JPEG_QUALITY,
+    );
+
     if (!result || result === 'data:,') {
-      throw new Error('画像の圧縮に失敗しました。');
+      throw new Error(
+        '画像の圧縮に失敗しました。',
+      );
     }
 
     return result;
@@ -128,41 +183,95 @@ async function compressImageFile(file: File): Promise<string> {
   }
 }
 
-async function compressImageDataUrlIfNeeded(dataUrl: string): Promise<string> {
+async function compressImageDataUrlIfNeeded(
+  dataUrl: string,
+): Promise<string> {
   if (!dataUrl) return dataUrl;
 
-  const isJpeg = /^data:image\/(?:jpeg|jpg);/i.test(dataUrl);
-  if (isJpeg && dataUrl.length <= IMAGE_DATA_URL_MAX_LENGTH) return dataUrl;
+  const isJpeg =
+    /^data:image\/(?:jpeg|jpg);/i.test(
+      dataUrl,
+    );
 
-  const image = await loadImageFromSource(dataUrl);
+  if (
+    isJpeg &&
+    dataUrl.length <= IMAGE_DATA_URL_MAX_LENGTH
+  ) {
+    return dataUrl;
+  }
+
+  const image =
+    await loadImageFromSource(dataUrl);
+
   const scale = Math.min(
     1,
-    IMAGE_MAX_SIZE / Math.max(image.naturalWidth, image.naturalHeight),
+    IMAGE_MAX_SIZE /
+      Math.max(
+        image.naturalWidth,
+        image.naturalHeight,
+      ),
   );
-  const width = Math.max(1, Math.round(image.naturalWidth * scale));
-  const height = Math.max(1, Math.round(image.naturalHeight * scale));
-  const canvas = document.createElement('canvas');
+
+  const width = Math.max(
+    1,
+    Math.round(image.naturalWidth * scale),
+  );
+
+  const height = Math.max(
+    1,
+    Math.round(image.naturalHeight * scale),
+  );
+
+  const canvas =
+    document.createElement('canvas');
+
   canvas.width = width;
   canvas.height = height;
 
   const context = canvas.getContext('2d');
-  if (!context) throw new Error('画像処理を開始できませんでした。');
+
+  if (!context) {
+    throw new Error(
+      '画像処理を開始できませんでした。',
+    );
+  }
 
   context.fillStyle = '#ffffff';
-  context.fillRect(0, 0, width, height);
+  context.fillRect(
+    0,
+    0,
+    width,
+    height,
+  );
+
   context.imageSmoothingEnabled = true;
   context.imageSmoothingQuality = 'high';
-  context.drawImage(image, 0, 0, width, height);
 
-  const result = canvas.toDataURL('image/jpeg', IMAGE_JPEG_QUALITY);
+  context.drawImage(
+    image,
+    0,
+    0,
+    width,
+    height,
+  );
+
+  const result = canvas.toDataURL(
+    'image/jpeg',
+    IMAGE_JPEG_QUALITY,
+  );
+
   if (!result || result === 'data:,') {
-    throw new Error('画像の圧縮に失敗しました。');
+    throw new Error(
+      '画像の圧縮に失敗しました。',
+    );
   }
 
   return result;
 }
 
-function sanitizeStoredEntry(entry: EntryRecord): EntryRecord {
+function sanitizeStoredEntry(
+  entry: EntryRecord,
+): EntryRecord {
   const stored = entry as EntryRecord & {
     passwordHash?: unknown;
     ownerToken?: unknown;
@@ -179,24 +288,48 @@ function sanitizeStoredEntry(entry: EntryRecord): EntryRecord {
 
 function getStoredEntries(): EntryRecord[] {
   try {
-    const saved = localStorage.getItem(ENTRIES_KEY);
+    const saved =
+      localStorage.getItem(ENTRIES_KEY);
+
     if (!saved) return [];
 
-    const parsed = JSON.parse(saved) as unknown;
-    if (!Array.isArray(parsed)) return [];
+    const parsed =
+      JSON.parse(saved) as unknown;
 
-    const sanitized = parsed as EntryRecord[];
-    const cleanEntries = sanitized.map(sanitizeStoredEntry);
-    localStorage.setItem(ENTRIES_KEY, JSON.stringify(cleanEntries));
+    if (!Array.isArray(parsed)) {
+      return [];
+    }
+
+    const sanitized =
+      parsed as EntryRecord[];
+
+    const cleanEntries =
+      sanitized.map(
+        sanitizeStoredEntry,
+      );
+
+    localStorage.setItem(
+      ENTRIES_KEY,
+      JSON.stringify(cleanEntries),
+    );
+
     return cleanEntries;
   } catch {
     return [];
   }
 }
 
-function saveCachedEntries(entries: EntryRecord[]): EntryRecord[] {
-  const cleanEntries = entries.map(sanitizeStoredEntry);
-  localStorage.setItem(ENTRIES_KEY, JSON.stringify(cleanEntries));
+function saveCachedEntries(
+  entries: EntryRecord[],
+): EntryRecord[] {
+  const cleanEntries =
+    entries.map(sanitizeStoredEntry);
+
+  localStorage.setItem(
+    ENTRIES_KEY,
+    JSON.stringify(cleanEntries),
+  );
+
   return cleanEntries;
 }
 
@@ -205,24 +338,32 @@ type ModerationResult = {
   code: string;
 };
 
-async function moderateCardTexts(texts: string[]): Promise<ModerationResult> {
-  const response = await fetch('/api/moderate-text', {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
+async function moderateCardTexts(
+  texts: string[],
+): Promise<ModerationResult> {
+  const response = await fetch(
+    '/api/moderate-text',
+    {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({ texts }),
     },
-    body: JSON.stringify({ texts }),
-  });
+  );
 
   try {
-    const result = (await response.json()) as {
-      allowed?: boolean;
-      code?: string;
-    };
+    const result =
+      (await response.json()) as {
+        allowed?: boolean;
+        code?: string;
+      };
 
     return {
       allowed: result.allowed === true,
-      code: result.code ?? 'MODERATION_INVALID_RESPONSE',
+      code:
+        result.code ??
+        'MODERATION_INVALID_RESPONSE',
     };
   } catch {
     return {
@@ -234,7 +375,9 @@ async function moderateCardTexts(texts: string[]): Promise<ModerationResult> {
   }
 }
 
-function normalizeProfileUrl(value: string): string {
+function normalizeProfileUrl(
+  value: string,
+): string {
   return value
     .trim()
     .replace(/#REALITY$/i, '')
@@ -245,31 +388,54 @@ async function requestCardApi(
   path: string,
   body: Record<string, unknown>,
 ): Promise<CardApiResponse> {
-  const user = await ensureAnonymousAuth();
-  const idToken = await user.getIdToken();
+  const user =
+    await ensureAnonymousAuth();
 
-  const response = await fetch(path, {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      Authorization: `Bearer ${idToken}`,
+  const idToken =
+    await user.getIdToken();
+
+  const response = await fetch(
+    path,
+    {
+      method: 'POST',
+      headers: {
+        'Content-Type':
+          'application/json',
+        Authorization:
+          `Bearer ${idToken}`,
+      },
+      body: JSON.stringify(body),
     },
-    body: JSON.stringify(body),
-  });
+  );
 
-  const raw = (await response.json()) as unknown;
+  const raw =
+    (await response.json()) as unknown;
 
-  if (!raw || typeof raw !== 'object' || Array.isArray(raw)) {
-    throw new Error('CARD_API_INVALID_RESPONSE');
+  if (
+    !raw ||
+    typeof raw !== 'object' ||
+    Array.isArray(raw)
+  ) {
+    throw new Error(
+      'CARD_API_INVALID_RESPONSE',
+    );
   }
 
-  const data = raw as Record<string, unknown>;
+  const data =
+    raw as Record<string, unknown>;
 
-  if (data.ok === true && path.endsWith('/delete')) {
+  if (
+    data.ok === true &&
+    path.endsWith('/delete')
+  ) {
     return data as unknown as CardApiDeleteResponse;
   }
 
-  if (data.ok === true && data.card && typeof data.card === 'object') {
+  if (
+    data.ok === true &&
+    data.card &&
+    typeof data.card === 'object'
+  ) {
     return data as unknown as CardApiCardResponse;
   }
 
@@ -286,31 +452,45 @@ async function requestCardApi(
 
 function getCardApiErrorMessage(
   code: string,
-  action: 'register' | 'update' | 'delete',
+  action:
+    | 'register'
+    | 'update'
+    | 'delete',
 ): string {
   switch (code) {
     case 'AUTH_REQUIRED':
       return '認証の準備に失敗しました。ページを再読み込みして、もう一度お試しください。';
+
     case 'PROFILE_ALREADY_REGISTERED':
       return 'このREALITYプロフURLでは、すでにキャラカードが登録されています。1ユーザーにつき登録できるキャラカードは1枚です。';
+
     case 'CARD_LIMIT_REACHED':
       return 'このコーデは現在エントリー上限に達しています。別のコーデを選択してください。';
+
     case 'CARD_NOT_FOUND':
       return '対象のカードが見つかりません。一覧を開き直してください。';
+
     case 'PERMISSION_DENIED':
       return 'このカードを編集・削除する権限を確認できませんでした。カードの所有者として認証されている端末でお試しください。';
+
     case 'CARD_DELETED':
       return 'このカードはすでに削除されています。';
+
     case 'CARD_TYPE_OR_PRESET_IMMUTABLE':
       return 'カード種別とコーデは変更できません。';
+
     case 'INVALID_CARD_ID':
       return 'カード情報を確認できませんでした。もう一度一覧から開いてください。';
+
     case 'MODERATION_SERVICE_ERROR':
       return '入力内容を安全確認できなかったため、保存していません。もう一度お試しください。';
+
     case 'CARD_API_INVALID_RESPONSE':
       return 'サーバーから正しい応答を受け取れませんでした。もう一度お試しください。';
+
     case 'CARD_API_REQUEST_FAILED':
       return 'カード処理に失敗しました。もう一度お試しください。';
+
     default:
       return action === 'delete'
         ? 'カードを削除できませんでした。'
@@ -320,20 +500,32 @@ function getCardApiErrorMessage(
   }
 }
 
-function toCachedEntry(card: PublicCardResponse): EntryRecord {
+function toCachedEntry(
+  card: PublicCardResponse,
+): EntryRecord {
   return sanitizeStoredEntry(card);
 }
 
-function MiniRadarChart({ stats }: { stats: CoordinatePreset['stats'] }) {
+function MiniRadarChart({
+  stats,
+}: {
+  stats: CoordinatePreset['stats'];
+}) {
   const size = 96;
   const center = size / 2;
   const radius = 34;
+
   const values = [
     stats.hp,
     stats.intellect,
     stats.dexterity,
     stats.charm,
-  ].map((value) => Math.min(100, Math.max(0, value)));
+  ].map((value) =>
+    Math.min(
+      100,
+      Math.max(0, value),
+    ),
+  );
 
   const points = [
     `${center},${center - (values[0] / 100) * radius}`,
@@ -349,7 +541,8 @@ function MiniRadarChart({ stats }: { stats: CoordinatePreset['stats'] }) {
     `${center - radius},${center}`,
   ].join(' ');
 
-  const middleRadius = radius * 0.5;
+  const middleRadius =
+    radius * 0.5;
 
   const middlePoints = [
     `${center},${center - middleRadius}`,
@@ -371,12 +564,14 @@ function MiniRadarChart({ stats }: { stats: CoordinatePreset['stats'] }) {
         stroke="currentColor"
         strokeOpacity="0.18"
       />
+
       <polygon
         points={middlePoints}
         fill="none"
         stroke="currentColor"
         strokeOpacity="0.12"
       />
+
       <line
         x1={center}
         y1={center - radius}
@@ -385,6 +580,7 @@ function MiniRadarChart({ stats }: { stats: CoordinatePreset['stats'] }) {
         stroke="currentColor"
         strokeOpacity="0.12"
       />
+
       <line
         x1={center - radius}
         y1={center}
@@ -393,6 +589,7 @@ function MiniRadarChart({ stats }: { stats: CoordinatePreset['stats'] }) {
         stroke="currentColor"
         strokeOpacity="0.12"
       />
+
       <polygon
         points={points}
         fill="currentColor"
@@ -412,11 +609,17 @@ export default function CardGenerator({
   openEntryId,
   onOpenEntryList,
 }: CardGeneratorProps) {
-  const [currentCoordinate, setCurrentCoordinate] =
-    useState<CoordinatePreset | null>(selectedCoordinate ?? null);
+  const [
+    currentCoordinate,
+    setCurrentCoordinate,
+  ] = useState<CoordinatePreset | null>(
+    selectedCoordinate ?? null,
+  );
 
   useEffect(() => {
-    setCurrentCoordinate(selectedCoordinate ?? null);
+    setCurrentCoordinate(
+      selectedCoordinate ?? null,
+    );
     setRegistrationStep(2);
     setIsCompleted(false);
     setActiveEditor(null);
@@ -444,36 +647,90 @@ export default function CardGenerator({
     }
   }, [selectedCoordinate]);
 
-  const [profileUrl, setProfileUrl] = useState('');
-  const [userName, setUserName] = useState('');
-  const [imageDataUrl, setImageDataUrl] = useState('');
+  const [profileUrl, setProfileUrl] =
+    useState('');
+
+  const [userName, setUserName] =
+    useState('');
+
+  const [imageDataUrl, setImageDataUrl] =
+    useState('');
+
   const [customSkills, setCustomSkills] =
-    useState<[string, string, string, string]>(emptySkills);
+    useState<
+      [string, string, string, string]
+    >(emptySkills);
+
   const [skillVoices, setSkillVoices] =
-    useState<[string, string, string, string]>(emptySkillVoices);
-  const [flavorText, setFlavorText] = useState('');
-  const [selectedColorHex, setSelectedColorHex] = useState('#22D3EE');
-  const [showProfileUrl, setShowProfileUrl] = useState(true);
+    useState<
+      [string, string, string, string]
+    >(emptySkillVoices);
+
+  const [flavorText, setFlavorText] =
+    useState('');
+
+  const [
+    selectedColorHex,
+    setSelectedColorHex,
+  ] = useState('#22D3EE');
+
+  const [
+    showProfileUrl,
+    setShowProfileUrl,
+  ] = useState(true);
 
   const selectedColorType = useMemo(
-    () => getColorTypeFromHex(selectedColorHex),
+    () =>
+      getColorTypeFromHex(
+        selectedColorHex,
+      ),
     [selectedColorHex],
   );
 
-  const [entries, setEntries] = useState<EntryRecord[]>([]);
-  const [editingId, setEditingId] = useState<string | null>(null);
-  const [errorMessage, setErrorMessage] = useState('');
-  const [successMessage, setSuccessMessage] = useState('');
-  const [draftAvailable, setDraftAvailable] = useState(false);
-  const [draftChecked, setDraftChecked] = useState(false);
-  const [isModerating, setIsModerating] = useState(false);
+  const [entries, setEntries] =
+    useState<EntryRecord[]>([]);
 
-  // 新規カード登録中だけ使用するローディング状態。
-  // 更新処理には影響させない。
-  const [isRegistering, setIsRegistering] = useState(false);
+  const [editingId, setEditingId] =
+    useState<string | null>(null);
 
-  const [activeEditor, setActiveEditor] = useState<
-    'basic' | 'skills' | 'color' | 'flavor' | 'saved' | null
+  const [errorMessage, setErrorMessage] =
+    useState('');
+
+  const [
+    successMessage,
+    setSuccessMessage,
+  ] = useState('');
+
+  const [
+    draftAvailable,
+    setDraftAvailable,
+  ] = useState(false);
+
+  const [
+    draftChecked,
+    setDraftChecked,
+  ] = useState(false);
+
+  const [
+    isModerating,
+    setIsModerating,
+  ] = useState(false);
+
+  const [
+    isRegistering,
+    setIsRegistering,
+  ] = useState(false);
+
+  const [
+    activeEditor,
+    setActiveEditor,
+  ] = useState<
+    | 'basic'
+    | 'skills'
+    | 'color'
+    | 'flavor'
+    | 'saved'
+    | null
   >(null);
 
   useEffect(() => {
@@ -482,26 +739,57 @@ export default function CardGenerator({
     }
   }, [openSaved]);
 
-  const [showProfileHelp, setShowProfileHelp] = useState(false);
-  const [showSkillsHelp, setShowSkillsHelp] = useState(false);
-  const [isColorTouched, setIsColorTouched] = useState(false);
-  const [registrationStep, setRegistrationStep] = useState<2 | 3>(2);
-  const [isCompleted, setIsCompleted] = useState(false);
+  const [
+    showProfileHelp,
+    setShowProfileHelp,
+  ] = useState(false);
+
+  const [
+    showSkillsHelp,
+    setShowSkillsHelp,
+  ] = useState(false);
+
+  const [
+    isColorTouched,
+    setIsColorTouched,
+  ] = useState(false);
+
+  const [
+    registrationStep,
+    setRegistrationStep,
+  ] = useState<2 | 3>(2);
+
+  const [
+    isCompleted,
+    setIsCompleted,
+  ] = useState(false);
 
   useEffect(() => {
-    void ensureAnonymousAuth().catch(() => {});
+    void ensureAnonymousAuth().catch(
+      () => {},
+    );
   }, []);
 
   useEffect(() => {
-    const loadedEntries = getStoredEntries();
+    const loadedEntries =
+      getStoredEntries();
+
     setEntries(loadedEntries);
 
     try {
-      localStorage.removeItem(TOKEN_KEY);
+      localStorage.removeItem(
+        TOKEN_KEY,
+      );
     } catch {}
 
     try {
-      setDraftAvailable(Boolean(localStorage.getItem(DRAFT_KEY)));
+      setDraftAvailable(
+        Boolean(
+          localStorage.getItem(
+            DRAFT_KEY,
+          ),
+        ),
+      );
     } catch {
       setDraftAvailable(false);
     }
@@ -523,16 +811,22 @@ export default function CardGenerator({
 
     try {
       if (!hasDraft) {
-        localStorage.removeItem(DRAFT_KEY);
+        localStorage.removeItem(
+          DRAFT_KEY,
+        );
         setDraftAvailable(false);
         return;
       }
 
       const draft: DraftData = {
-        profileUrl: normalizeProfileUrl(profileUrl),
+        profileUrl:
+          normalizeProfileUrl(
+            profileUrl,
+          ),
         userName,
         imageDataUrl,
-        selectedCoordinateId: currentCoordinate?.id ?? null,
+        selectedCoordinateId:
+          currentCoordinate?.id ?? null,
         customSkills,
         skillVoices,
         flavorText,
@@ -541,7 +835,11 @@ export default function CardGenerator({
         showProfileUrl,
       };
 
-      localStorage.setItem(DRAFT_KEY, JSON.stringify(draft));
+      localStorage.setItem(
+        DRAFT_KEY,
+        JSON.stringify(draft),
+      );
+
       setDraftAvailable(true);
     } catch {}
   }, [
@@ -560,78 +858,149 @@ export default function CardGenerator({
 
   const restoreDraft = () => {
     try {
-      const raw = localStorage.getItem(DRAFT_KEY);
+      const raw =
+        localStorage.getItem(
+          DRAFT_KEY,
+        );
+
       if (!raw) return;
 
-      const draft = JSON.parse(raw) as DraftData;
+      const draft =
+        JSON.parse(raw) as DraftData;
 
-      const preset = draft.selectedCoordinateId
-        ? COORDINATE_PRESETS.find(
-            (item) => item.id === draft.selectedCoordinateId,
-          ) ?? null
-        : null;
+      const preset =
+        draft.selectedCoordinateId
+          ? COORDINATE_PRESETS.find(
+              (item) =>
+                item.id ===
+                draft.selectedCoordinateId,
+            ) ?? null
+          : null;
 
-      setProfileUrl(normalizeProfileUrl(draft.profileUrl ?? ''));
-      setUserName(draft.userName ?? '');
-      setImageDataUrl(draft.imageDataUrl ?? '');
+      setProfileUrl(
+        normalizeProfileUrl(
+          draft.profileUrl ?? '',
+        ),
+      );
+
+      setUserName(
+        draft.userName ?? '',
+      );
+
+      setImageDataUrl(
+        draft.imageDataUrl ?? '',
+      );
+
       setCurrentCoordinate(preset);
 
-      const restoredSkills: [string, string, string, string] =
-        draft.customSkills?.length === 4
+      const restoredSkills: [
+        string,
+        string,
+        string,
+        string,
+      ] =
+        draft.customSkills?.length ===
+        4
           ? [
               draft.customSkills[0],
               draft.customSkills[1],
               draft.customSkills[2],
               draft.customSkills[3],
             ]
-          : preset?.defaultSkills ?? emptySkills;
+          : preset?.defaultSkills ??
+            emptySkills;
 
-      setCustomSkills(restoredSkills);
+      setCustomSkills(
+        restoredSkills,
+      );
 
-      const restoredVoices: [string, string, string, string] =
-        draft.skillVoices?.length === 4
+      const restoredVoices: [
+        string,
+        string,
+        string,
+        string,
+      ] =
+        draft.skillVoices?.length ===
+        4
           ? [
               draft.skillVoices[0] ||
-                getDefaultSkillVoice(restoredSkills[0]),
+                getDefaultSkillVoice(
+                  restoredSkills[0],
+                ),
               draft.skillVoices[1] ||
-                getDefaultSkillVoice(restoredSkills[1]),
+                getDefaultSkillVoice(
+                  restoredSkills[1],
+                ),
               draft.skillVoices[2] ||
-                getDefaultSkillVoice(restoredSkills[2]),
+                getDefaultSkillVoice(
+                  restoredSkills[2],
+                ),
               draft.skillVoices[3] ||
-                getDefaultSkillVoice(restoredSkills[3]),
+                getDefaultSkillVoice(
+                  restoredSkills[3],
+                ),
             ]
-          : getDefaultSkillVoices(restoredSkills);
+          : getDefaultSkillVoices(
+              restoredSkills,
+            );
 
-      setSkillVoices(restoredVoices);
-      setFlavorText(draft.flavorText ?? '');
+      setSkillVoices(
+        restoredVoices,
+      );
+
+      setFlavorText(
+        draft.flavorText ?? '',
+      );
 
       setSelectedColorHex(
-        draft.colorHex && /^#[0-9a-fA-F]{6}$/.test(draft.colorHex)
+        draft.colorHex &&
+          /^#[0-9a-fA-F]{6}$/.test(
+            draft.colorHex,
+          )
           ? draft.colorHex.toUpperCase()
-          : getLegacyColorHex(undefined),
+          : getLegacyColorHex(
+              undefined,
+            ),
       );
 
       setIsColorTouched(
         Boolean(
           draft.colorHex &&
-            /^#[0-9a-fA-F]{6}$/.test(draft.colorHex),
+            /^#[0-9a-fA-F]{6}$/.test(
+              draft.colorHex,
+            ),
         ),
       );
 
-      setShowProfileUrl(draft.showProfileUrl !== false);
+      setShowProfileUrl(
+        draft.showProfileUrl !==
+          false,
+      );
+
       setIsCompleted(false);
       setDraftAvailable(false);
-      setSuccessMessage('前回の続きから復元しました。');
 
-      setTimeout(() => setSuccessMessage(''), 2000);
+      setSuccessMessage(
+        '前回の続きから復元しました。',
+      );
+
+      setTimeout(
+        () =>
+          setSuccessMessage(''),
+        2000,
+      );
     } catch {
-      setErrorMessage('下書きを復元できませんでした。');
+      setErrorMessage(
+        '下書きを復元できませんでした。',
+      );
     }
   };
 
   const discardDraft = () => {
     try {
-      localStorage.removeItem(DRAFT_KEY);
+      localStorage.removeItem(
+        DRAFT_KEY,
+      );
     } catch {}
 
     setDraftAvailable(false);
@@ -653,10 +1022,17 @@ export default function CardGenerator({
     onBackToHub?.();
   };
 
-  const selectCoordinatePreset = (preset: CoordinatePreset) => {
+  const selectCoordinatePreset = (
+    preset: CoordinatePreset,
+  ) => {
     setCurrentCoordinate(preset);
 
-    const nextSkills: [string, string, string, string] = [
+    const nextSkills: [
+      string,
+      string,
+      string,
+      string,
+    ] = [
       preset.defaultSkills[0],
       preset.defaultSkills[1],
       preset.defaultSkills[2],
@@ -664,11 +1040,19 @@ export default function CardGenerator({
     ];
 
     setCustomSkills(nextSkills);
-    setSkillVoices(getDefaultSkillVoices(nextSkills));
+
+    setSkillVoices(
+      getDefaultSkillVoices(
+        nextSkills,
+      ),
+    );
+
     setErrorMessage('');
   };
 
-  const handleProfileUrlChange = (value: string) => {
+  const handleProfileUrlChange = (
+    value: string,
+  ) => {
     setProfileUrl(value);
     setErrorMessage('');
   };
@@ -676,11 +1060,15 @@ export default function CardGenerator({
   const handleImageUpload = async (
     e: ChangeEvent<HTMLInputElement>,
   ) => {
-    const file = e.target.files?.[0];
+    const file =
+      e.target.files?.[0];
+
     if (!file) return;
 
     try {
-      const compressed = await compressImageFile(file);
+      const compressed =
+        await compressImageFile(file);
+
       setImageDataUrl(compressed);
       setErrorMessage('');
     } catch {
@@ -690,64 +1078,105 @@ export default function CardGenerator({
     }
   };
 
-  const handleColorChange = (hex: string) => {
-    const normalized = hex.toUpperCase();
-    if (!/^#[0-9A-F]{6}$/.test(normalized)) return;
+  const handleColorChange = (
+    hex: string,
+  ) => {
+    const normalized =
+      hex.toUpperCase();
 
-    setSelectedColorHex(normalized);
+    if (
+      !/^#[0-9A-F]{6}$/.test(
+        normalized,
+      )
+    ) {
+      return;
+    }
+
+    setSelectedColorHex(
+      normalized,
+    );
+
     setIsColorTouched(true);
     setErrorMessage('');
   };
 
-  const handleSkillChange = (index: number, value: string) => {
-    const previousSkill = customSkills[index];
-    const previousVoice = skillVoices[index];
+  const handleSkillChange = (
+    index: number,
+    value: string,
+  ) => {
+    const previousSkill =
+      customSkills[index];
+
+    const previousVoice =
+      skillVoices[index];
 
     setCustomSkills((prev) => {
-      const next = [...prev] as [
+      const next = [
+        ...prev,
+      ] as [
         string,
         string,
         string,
         string,
       ];
+
       next[index] = value;
+
       return next;
     });
 
     if (
       !previousVoice.trim() ||
-      previousVoice.trim() === getDefaultSkillVoice(previousSkill)
+      previousVoice.trim() ===
+        getDefaultSkillVoice(
+          previousSkill,
+        )
     ) {
       setSkillVoices((prev) => {
-        const next = [...prev] as [
+        const next = [
+          ...prev,
+        ] as [
           string,
           string,
           string,
           string,
         ];
-        next[index] = getDefaultSkillVoice(value);
+
+        next[index] =
+          getDefaultSkillVoice(
+            value,
+          );
+
         return next;
       });
     }
   };
 
-  const handleSkillVoiceChange = (index: number, value: string) => {
+  const handleSkillVoiceChange = (
+    index: number,
+    value: string,
+  ) => {
     setSkillVoices((prev) => {
-      const next = [...prev] as [
+      const next = [
+        ...prev,
+      ] as [
         string,
         string,
         string,
         string,
       ];
+
       next[index] = value;
+
       return next;
     });
   };
 
-  const handleSubmit = async (e: FormEvent) => {
+  const handleSubmit = async (
+    e: FormEvent,
+  ) => {
     e.preventDefault();
 
-    // 新規登録中なら、念のため二重送信を無視する。
     if (isRegistering) {
       return;
     }
@@ -755,11 +1184,19 @@ export default function CardGenerator({
     setErrorMessage('');
     setSuccessMessage('');
 
-    const normalizedCurrentProfileUrl = normalizeProfileUrl(profileUrl);
-    setProfileUrl(normalizedCurrentProfileUrl);
+    const normalizedCurrentProfileUrl =
+      normalizeProfileUrl(
+        profileUrl,
+      );
+
+    setProfileUrl(
+      normalizedCurrentProfileUrl,
+    );
 
     if (!currentCoordinate) {
-      setErrorMessage('コーデを1つ選択してください。');
+      setErrorMessage(
+        'コーデを1つ選択してください。',
+      );
       return;
     }
 
@@ -771,6 +1208,7 @@ export default function CardGenerator({
       setErrorMessage(
         '有効なREALITYプロフURLを入力してください。',
       );
+
       setActiveEditor('basic');
       return;
     }
@@ -778,7 +1216,9 @@ export default function CardGenerator({
     if (
       !userName.trim() ||
       !imageDataUrl ||
-      customSkills.some((skill) => !skill.trim())
+      customSkills.some(
+        (skill) => !skill.trim(),
+      )
     ) {
       setErrorMessage(
         '基本情報と4つのスキルをすべて入力してください。',
@@ -803,7 +1243,9 @@ export default function CardGenerator({
       setIsCompleted(false);
       setRegistrationStep(3);
       setActiveEditor(null);
-      setSuccessMessage('登録内容を確認してください。');
+      setSuccessMessage(
+        '登録内容を確認してください。',
+      );
       return;
     }
 
@@ -815,27 +1257,42 @@ export default function CardGenerator({
     ] = [
       (
         skillVoices[0].trim() ||
-        getDefaultSkillVoice(customSkills[0])
+        getDefaultSkillVoice(
+          customSkills[0],
+        )
       ).trim(),
+
       (
         skillVoices[1].trim() ||
-        getDefaultSkillVoice(customSkills[1])
+        getDefaultSkillVoice(
+          customSkills[1],
+        )
       ).trim(),
+
       (
         skillVoices[2].trim() ||
-        getDefaultSkillVoice(customSkills[2])
+        getDefaultSkillVoice(
+          customSkills[2],
+        )
       ).trim(),
+
       (
         skillVoices[3].trim() ||
-        getDefaultSkillVoice(customSkills[3])
+        getDefaultSkillVoice(
+          customSkills[3],
+        )
       ).trim(),
     ];
 
-    setSkillVoices(normalizedSkillVoices);
+    setSkillVoices(
+      normalizedSkillVoices,
+    );
 
     const moderationTexts = [
       userName.trim(),
-      ...customSkills.map((skill) => skill.trim()),
+      ...customSkills.map(
+        (skill) => skill.trim(),
+      ),
       ...normalizedSkillVoices,
       flavorText.trim(),
     ];
@@ -844,12 +1301,16 @@ export default function CardGenerator({
 
     try {
       const moderationResult =
-        await moderateCardTexts(moderationTexts);
+        await moderateCardTexts(
+          moderationTexts,
+        );
 
       if (!moderationResult.allowed) {
         if (
-          moderationResult.code === 'CUSTOM_RULE' ||
-          moderationResult.code === 'PROFANITY_FILTERED'
+          moderationResult.code ===
+            'CUSTOM_RULE' ||
+          moderationResult.code ===
+            'PROFANITY_FILTERED'
         ) {
           setErrorMessage(
             '入力内容に安全上の問題があるため、保存できませんでした。',
@@ -866,14 +1327,16 @@ export default function CardGenerator({
       setErrorMessage(
         '入力内容を安全確認できなかったため、保存していません。もう一度お試しください。',
       );
+
       return;
     } finally {
       setIsModerating(false);
     }
 
-    const normalizedProfileUrl = normalizeProfileUrl(
-      normalizedCurrentProfileUrl,
-    );
+    const normalizedProfileUrl =
+      normalizeProfileUrl(
+        normalizedCurrentProfileUrl,
+      );
 
     const normalizedCustomSkills: [
       string,
@@ -887,71 +1350,100 @@ export default function CardGenerator({
       customSkills[3].trim(),
     ];
 
-    let normalizedImageDataUrl = imageDataUrl;
+    let normalizedImageDataUrl =
+      imageDataUrl;
 
     try {
       normalizedImageDataUrl =
-        await compressImageDataUrlIfNeeded(imageDataUrl);
+        await compressImageDataUrlIfNeeded(
+          imageDataUrl,
+        );
 
-      if (normalizedImageDataUrl !== imageDataUrl) {
-        setImageDataUrl(normalizedImageDataUrl);
+      if (
+        normalizedImageDataUrl !==
+        imageDataUrl
+      ) {
+        setImageDataUrl(
+          normalizedImageDataUrl,
+        );
       }
     } catch {
       setErrorMessage(
         '画像の圧縮に失敗したため、保存できませんでした。別の画像をお試しください。',
       );
+
       return;
     }
 
-    const requestBody: Record<string, unknown> = {
-      presetId: currentCoordinate.id,
+    const requestBody: Record<
+      string,
+      unknown
+    > = {
+      presetId:
+        currentCoordinate.id,
       cardType: 'coordinate',
-      profileUrl: normalizedProfileUrl,
-      userName: userName.trim(),
-      imageDataUrl: normalizedImageDataUrl,
-      customSkills: normalizedCustomSkills,
-      skillVoices: normalizedSkillVoices,
-      flavorText: flavorText.trim(),
-      colorHex: selectedColorHex,
+      profileUrl:
+        normalizedProfileUrl,
+      userName:
+        userName.trim(),
+      imageDataUrl:
+        normalizedImageDataUrl,
+      customSkills:
+        normalizedCustomSkills,
+      skillVoices:
+        normalizedSkillVoices,
+      flavorText:
+        flavorText.trim(),
+      colorHex:
+        selectedColorHex,
       showProfileUrl,
     };
 
     if (editingId) {
-      requestBody.cardId = editingId;
+      requestBody.cardId =
+        editingId;
     }
 
-    // この時点で editingId を固定して、
-    // API処理中に参照する「新規登録かどうか」が変わらないようにする。
-    const isNewRegistration = !editingId;
+    const isNewRegistration =
+      !editingId;
 
     if (isNewRegistration) {
       setIsRegistering(true);
     }
 
     try {
-      const result = await requestCardApi(
-        editingId
-          ? '/api/cards/update'
-          : '/api/cards/register',
-        requestBody,
-      );
+      const result =
+        await requestCardApi(
+          editingId
+            ? '/api/cards/update'
+            : '/api/cards/register',
+          requestBody,
+        );
 
       if (!result.ok) {
         setErrorMessage(
           getCardApiErrorMessage(
-            result.error ?? 'CARD_API_REQUEST_FAILED',
-            editingId ? 'update' : 'register',
+            result.error ??
+              'CARD_API_REQUEST_FAILED',
+            editingId
+              ? 'update'
+              : 'register',
           ),
         );
 
         if (
-          result.error === 'PROFILE_ALREADY_REGISTERED' ||
-          result.error === 'CARD_LIMIT_REACHED'
+          result.error ===
+            'PROFILE_ALREADY_REGISTERED' ||
+          result.error ===
+            'CARD_LIMIT_REACHED'
         ) {
           setRegistrationStep(2);
         }
 
-        if (result.error === 'PERMISSION_DENIED') {
+        if (
+          result.error ===
+          'PERMISSION_DENIED'
+        ) {
           setActiveEditor('basic');
         }
 
@@ -962,44 +1454,69 @@ export default function CardGenerator({
         setErrorMessage(
           'カード情報を受け取れませんでした。もう一度お試しください。',
         );
+
         return;
       }
 
-      const cachedEntry = toCachedEntry(result.card);
-      const currentEntries = getStoredEntries();
+      const cachedEntry =
+        toCachedEntry(result.card);
+
+      const currentEntries =
+        getStoredEntries();
 
       const nextEntries = editingId
         ? currentEntries.some(
-            (entry) => entry.id === cachedEntry.id,
+            (entry) =>
+              entry.id ===
+              cachedEntry.id,
           )
-          ? currentEntries.map((entry) =>
-              entry.id === cachedEntry.id
-                ? cachedEntry
-                : entry,
+          ? currentEntries.map(
+              (entry) =>
+                entry.id ===
+                cachedEntry.id
+                  ? cachedEntry
+                  : entry,
             )
-          : [cachedEntry, ...currentEntries]
+          : [
+              cachedEntry,
+              ...currentEntries,
+            ]
         : [
             cachedEntry,
             ...currentEntries.filter(
-              (entry) => entry.id !== cachedEntry.id,
+              (entry) =>
+                entry.id !==
+                cachedEntry.id,
             ),
           ];
 
       try {
-        const savedEntries = saveCachedEntries(nextEntries);
+        const savedEntries =
+          saveCachedEntries(
+            nextEntries,
+          );
+
         setEntries(savedEntries);
       } catch {
         setErrorMessage(
           'カードはサーバーに保存されましたが、一覧のキャッシュ更新に失敗しました。',
         );
-        setEditingId(cachedEntry.id);
+
+        setEditingId(
+          cachedEntry.id,
+        );
+
         setIsCompleted(true);
         setRegistrationStep(3);
         setActiveEditor(null);
+
         return;
       }
 
-      setEditingId(cachedEntry.id);
+      setEditingId(
+        cachedEntry.id,
+      );
+
       setIsCompleted(true);
 
       setSuccessMessage(
@@ -1012,7 +1529,9 @@ export default function CardGenerator({
       setActiveEditor(null);
 
       try {
-        localStorage.removeItem(DRAFT_KEY);
+        localStorage.removeItem(
+          DRAFT_KEY,
+        );
       } catch {}
 
       setDraftAvailable(false);
@@ -1025,7 +1544,9 @@ export default function CardGenerator({
       setErrorMessage(
         getCardApiErrorMessage(
           code,
-          editingId ? 'update' : 'register',
+          editingId
+            ? 'update'
+            : 'register',
         ),
       );
     } finally {
@@ -1035,16 +1556,31 @@ export default function CardGenerator({
     }
   };
 
-  const handleEdit = (entry: EntryRecord) => {
+  const handleEdit = (
+    entry: EntryRecord,
+  ) => {
     const preset =
       COORDINATE_PRESETS.find(
-        (item) => item.id === entry.presetId,
+        (item) =>
+          item.id ===
+          entry.presetId,
       ) ?? null;
 
     setCurrentCoordinate(preset);
-    setProfileUrl(normalizeProfileUrl(entry.profileUrl || ''));
-    setUserName(entry.userName);
-    setImageDataUrl(entry.imageDataUrl);
+
+    setProfileUrl(
+      normalizeProfileUrl(
+        entry.profileUrl || '',
+      ),
+    );
+
+    setUserName(
+      entry.userName,
+    );
+
+    setImageDataUrl(
+      entry.imageDataUrl,
+    );
 
     const restoredSkills: [
       string,
@@ -1052,43 +1588,67 @@ export default function CardGenerator({
       string,
       string,
     ] =
-      entry.customSkills?.length === 4
+      entry.customSkills?.length ===
+      4
         ? [
             entry.customSkills[0],
             entry.customSkills[1],
             entry.customSkills[2],
             entry.customSkills[3],
           ]
-        : preset?.defaultSkills ?? emptySkills;
+        : preset?.defaultSkills ??
+          emptySkills;
 
-    setCustomSkills(restoredSkills);
-
-    setSkillVoices(
-      entry.skillVoices?.length === 4
-        ? [
-            entry.skillVoices[0] ||
-              getDefaultSkillVoice(restoredSkills[0]),
-            entry.skillVoices[1] ||
-              getDefaultSkillVoice(restoredSkills[1]),
-            entry.skillVoices[2] ||
-              getDefaultSkillVoice(restoredSkills[2]),
-            entry.skillVoices[3] ||
-              getDefaultSkillVoice(restoredSkills[3]),
-          ]
-        : getDefaultSkillVoices(restoredSkills),
+    setCustomSkills(
+      restoredSkills,
     );
 
-    setFlavorText(entry.flavorText ?? '');
+    setSkillVoices(
+      entry.skillVoices?.length ===
+        4
+        ? [
+            entry.skillVoices[0] ||
+              getDefaultSkillVoice(
+                restoredSkills[0],
+              ),
+            entry.skillVoices[1] ||
+              getDefaultSkillVoice(
+                restoredSkills[1],
+              ),
+            entry.skillVoices[2] ||
+              getDefaultSkillVoice(
+                restoredSkills[2],
+              ),
+            entry.skillVoices[3] ||
+              getDefaultSkillVoice(
+                restoredSkills[3],
+              ),
+          ]
+        : getDefaultSkillVoices(
+            restoredSkills,
+          ),
+    );
+
+    setFlavorText(
+      entry.flavorText ?? '',
+    );
 
     setSelectedColorHex(
       entry.colorHex &&
-        /^#[0-9a-fA-F]{6}$/.test(entry.colorHex)
+        /^#[0-9a-fA-F]{6}$/.test(
+          entry.colorHex,
+        )
         ? entry.colorHex.toUpperCase()
-        : getLegacyColorHex(entry.color),
+        : getLegacyColorHex(
+            entry.color,
+          ),
     );
 
     setIsColorTouched(true);
-    setShowProfileUrl(entry.showProfileUrl !== false);
+    setShowProfileUrl(
+      entry.showProfileUrl !== false,
+    );
+
     setIsCompleted(false);
     setRegistrationStep(2);
     setEditingId(entry.id);
@@ -1098,25 +1658,42 @@ export default function CardGenerator({
   };
 
   useEffect(() => {
-    if (!openEntryId || editingId) return;
+    if (
+      !openEntryId ||
+      editingId
+    ) {
+      return;
+    }
 
     const entry = entries.find(
-      (item) => item.id === openEntryId,
+      (item) =>
+        item.id === openEntryId,
     );
 
     if (!entry) return;
 
-    const preset = COORDINATE_PRESETS.find(
-      (item) => item.id === entry.presetId,
-    );
+    const preset =
+      COORDINATE_PRESETS.find(
+        (item) =>
+          item.id ===
+          entry.presetId,
+      );
 
     if (preset) {
       setCurrentCoordinate(preset);
     }
 
-    setProfileUrl(entry.profileUrl || '');
-    setUserName(entry.userName || '');
-    setImageDataUrl(entry.imageDataUrl || '');
+    setProfileUrl(
+      entry.profileUrl || '',
+    );
+
+    setUserName(
+      entry.userName || '',
+    );
+
+    setImageDataUrl(
+      entry.imageDataUrl || '',
+    );
 
     const restoredSkills: [
       string,
@@ -1124,39 +1701,60 @@ export default function CardGenerator({
       string,
       string,
     ] =
-      entry.customSkills?.length === 4
+      entry.customSkills?.length ===
+      4
         ? [
             entry.customSkills[0],
             entry.customSkills[1],
             entry.customSkills[2],
             entry.customSkills[3],
           ]
-        : preset?.defaultSkills ?? emptySkills;
+        : preset?.defaultSkills ??
+          emptySkills;
 
-    setCustomSkills(restoredSkills);
-
-    setSkillVoices(
-      entry.skillVoices?.length === 4
-        ? [
-            entry.skillVoices[0] ||
-              getDefaultSkillVoice(restoredSkills[0]),
-            entry.skillVoices[1] ||
-              getDefaultSkillVoice(restoredSkills[1]),
-            entry.skillVoices[2] ||
-              getDefaultSkillVoice(restoredSkills[2]),
-            entry.skillVoices[3] ||
-              getDefaultSkillVoice(restoredSkills[3]),
-          ]
-        : getDefaultSkillVoices(restoredSkills),
+    setCustomSkills(
+      restoredSkills,
     );
 
-    setFlavorText(entry.flavorText || '');
+    setSkillVoices(
+      entry.skillVoices?.length ===
+        4
+        ? [
+            entry.skillVoices[0] ||
+              getDefaultSkillVoice(
+                restoredSkills[0],
+              ),
+            entry.skillVoices[1] ||
+              getDefaultSkillVoice(
+                restoredSkills[1],
+              ),
+            entry.skillVoices[2] ||
+              getDefaultSkillVoice(
+                restoredSkills[2],
+              ),
+            entry.skillVoices[3] ||
+              getDefaultSkillVoice(
+                restoredSkills[3],
+              ),
+          ]
+        : getDefaultSkillVoices(
+            restoredSkills,
+          ),
+    );
+
+    setFlavorText(
+      entry.flavorText || '',
+    );
 
     setSelectedColorHex(
       entry.colorHex &&
-        /^#[0-9a-fA-F]{6}$/.test(entry.colorHex)
+        /^#[0-9a-fA-F]{6}$/.test(
+          entry.colorHex,
+        )
         ? entry.colorHex.toUpperCase()
-        : getLegacyColorHex(entry.color),
+        : getLegacyColorHex(
+            entry.color,
+          ),
     );
 
     setIsColorTouched(true);
@@ -1166,9 +1764,15 @@ export default function CardGenerator({
     setErrorMessage('');
     setSuccessMessage('');
     setActiveEditor('basic');
-  }, [openEntryId, entries, editingId]);
+  }, [
+    openEntryId,
+    entries,
+    editingId,
+  ]);
 
-  const handleDelete = async (entry: EntryRecord) => {
+  const handleDelete = async (
+    entry: EntryRecord,
+  ) => {
     if (
       !window.confirm(
         `「${entry.userName}」のキャラカードを削除しますか？\nこの操作は元に戻せません。`,
@@ -1178,24 +1782,32 @@ export default function CardGenerator({
     }
 
     try {
-      const body: Record<string, unknown> = {
+      const body: Record<
+        string,
+        unknown
+      > = {
         cardId: entry.id,
       };
 
-      const result = await requestCardApi(
-        '/api/cards/delete',
-        body,
-      );
+      const result =
+        await requestCardApi(
+          '/api/cards/delete',
+          body,
+        );
 
       if (!result.ok) {
         setErrorMessage(
           getCardApiErrorMessage(
-            result.error ?? 'CARD_API_REQUEST_FAILED',
+            result.error ??
+              'CARD_API_REQUEST_FAILED',
             'delete',
           ),
         );
 
-        if (result.error === 'PERMISSION_DENIED') {
+        if (
+          result.error ===
+          'PERMISSION_DENIED'
+        ) {
           setActiveEditor('basic');
         }
 
@@ -1206,29 +1818,44 @@ export default function CardGenerator({
         setErrorMessage(
           '削除結果を受け取れませんでした。もう一度お試しください。',
         );
+
         return;
       }
 
-      const currentEntries = getStoredEntries();
-      const nextEntries = currentEntries.filter(
-        (item) => item.id !== entry.id,
-      );
+      const currentEntries =
+        getStoredEntries();
+
+      const nextEntries =
+        currentEntries.filter(
+          (item) =>
+            item.id !== entry.id,
+        );
 
       try {
-        const savedEntries = saveCachedEntries(nextEntries);
+        const savedEntries =
+          saveCachedEntries(
+            nextEntries,
+          );
+
         setEntries(savedEntries);
       } catch {
         setEntries(nextEntries);
       }
 
-      if (editingId === entry.id) {
+      if (
+        editingId === entry.id
+      ) {
         setEditingId(null);
         setIsCompleted(false);
         setActiveEditor(null);
         setRegistrationStep(2);
-        setSuccessMessage('✨ キャラカードを削除しました。');
+        setSuccessMessage(
+          '✨ キャラカードを削除しました。',
+        );
       } else {
-        setSuccessMessage('✨ キャラカードを削除しました。');
+        setSuccessMessage(
+          '✨ キャラカードを削除しました。',
+        );
       }
 
       setErrorMessage('');
@@ -1239,25 +1866,36 @@ export default function CardGenerator({
           : 'CARD_API_REQUEST_FAILED';
 
       setErrorMessage(
-        getCardApiErrorMessage(code, 'delete'),
+        getCardApiErrorMessage(
+          code,
+          'delete',
+        ),
       );
     }
   };
 
-  const normalizedProfileUrlForValidation = (value: string) =>
-    normalizeProfileUrl(value).startsWith(
-      'https://reality.app/profile/',
+  const normalizedProfileUrlForValidation =
+    (value: string) =>
+      normalizeProfileUrl(
+        value,
+      ).startsWith(
+        'https://reality.app/profile/',
+      );
+
+  const basicInfoComplete =
+    Boolean(
+      userName.trim() &&
+        normalizedProfileUrlForValidation(
+          profileUrl,
+        ) &&
+        imageDataUrl,
     );
 
-  const basicInfoComplete = Boolean(
-    userName.trim() &&
-      normalizedProfileUrlForValidation(profileUrl) &&
-      imageDataUrl,
-  );
-
-  const skillsComplete = customSkills.every(
-    (skill) => skill.trim().length > 0,
-  );
+  const skillsComplete =
+    customSkills.every(
+      (skill) =>
+        skill.trim().length > 0,
+    );
 
   return (
     <div className="mx-auto flex h-full min-h-0 w-full max-w-5xl flex-col text-gray-900">
@@ -1267,6 +1905,7 @@ export default function CardGenerator({
             <div className="text-[9px] font-black tracking-[0.22em] text-pink-500">
               CHARACTER CARD
             </div>
+
             <h2 className="truncate text-lg font-black">
               キャラカードを作る
             </h2>
@@ -1276,7 +1915,9 @@ export default function CardGenerator({
             {onBackToHub && (
               <button
                 type="button"
-                onClick={handleBackButton}
+                onClick={
+                  handleBackButton
+                }
                 className="rounded-xl bg-gray-100 px-3 py-2 text-[10px] font-black text-gray-700"
               >
                 ← 戻る
@@ -1289,6 +1930,7 @@ export default function CardGenerator({
           <span className="rounded-full bg-pink-100 px-2 py-1 text-center text-pink-800">
             ① コーデ
           </span>
+
           <span className="h-px bg-pink-200" />
 
           <span
@@ -1315,53 +1957,68 @@ export default function CardGenerator({
         </div>
       </div>
 
-      {draftAvailable && !editingId && !openEntryId && (
-        <div className="mx-3 mt-2 shrink-0 rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-[10px] sm:mx-5">
-          <div className="flex items-center justify-between gap-2">
-            <div className="font-bold text-amber-900">
-              前回の続きがあります
-            </div>
+      {draftAvailable &&
+        !editingId &&
+        !openEntryId && (
+          <div className="mx-3 mt-2 shrink-0 rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-[10px] sm:mx-5">
+            <div className="flex items-center justify-between gap-2">
+              <div className="font-bold text-amber-900">
+                前回の続きがあります
+              </div>
 
-            <div className="flex gap-1.5">
-              <button
-                type="button"
-                onClick={restoreDraft}
-                className="rounded-lg bg-amber-600 px-2.5 py-1.5 font-black text-white"
-              >
-                復元
-              </button>
+              <div className="flex gap-1.5">
+                <button
+                  type="button"
+                  onClick={
+                    restoreDraft
+                  }
+                  className="rounded-lg bg-amber-600 px-2.5 py-1.5 font-black text-white"
+                >
+                  復元
+                </button>
 
-              <button
-                type="button"
-                onClick={discardDraft}
-                className="rounded-lg border border-amber-300 bg-white px-2.5 py-1.5 font-black text-amber-900"
-              >
-                破棄
-              </button>
+                <button
+                  type="button"
+                  onClick={
+                    discardDraft
+                  }
+                  className="rounded-lg border border-amber-300 bg-white px-2.5 py-1.5 font-black text-amber-900"
+                >
+                  破棄
+                </button>
+              </div>
             </div>
           </div>
-        </div>
-      )}
+        )}
 
-      {(errorMessage || successMessage) && (
+      {(errorMessage ||
+        successMessage) && (
         <div
           className={`mx-3 mt-2 shrink-0 rounded-xl border px-3 py-2 text-[10px] font-bold sm:mx-5 ${
             errorMessage
               ? 'border-red-200 bg-red-50 text-red-700'
               : 'border-green-200 bg-green-50 text-green-700'
           }`}
-          role={errorMessage ? 'alert' : 'status'}
+          role={
+            errorMessage
+              ? 'alert'
+              : 'status'
+          }
         >
-          {errorMessage || successMessage}
+          {errorMessage ||
+            successMessage}
         </div>
       )}
 
       <form
-        onSubmit={handleSubmit}
+        onSubmit={
+          handleSubmit
+        }
         className="flex min-h-0 flex-1 flex-col"
       >
         <div className="min-h-0 flex-1 overflow-hidden px-3 py-3 sm:px-5">
-          {registrationStep === 2 ? (
+          {registrationStep ===
+          2 ? (
             <div className="flex h-full min-h-0 flex-col gap-3">
               <div className="shrink-0 rounded-2xl border border-indigo-100 bg-indigo-50/60 p-3">
                 <div className="flex items-center gap-3">
@@ -1376,7 +2033,8 @@ export default function CardGenerator({
                       </span>
 
                       <span className="truncate text-sm font-black text-indigo-950">
-                        {currentCoordinate?.name || '未選択'}
+                        {currentCoordinate?.name ||
+                          '未選択'}
                       </span>
                     </div>
 
@@ -1387,7 +2045,11 @@ export default function CardGenerator({
 
                   {currentCoordinate && (
                     <div className="shrink-0 rounded-xl border border-indigo-100 bg-white p-1">
-                      <MiniRadarChart stats={currentCoordinate.stats} />
+                      <MiniRadarChart
+                        stats={
+                          currentCoordinate.stats
+                        }
+                      />
                     </div>
                   )}
                 </div>
@@ -1413,7 +2075,11 @@ export default function CardGenerator({
                 <div className="mt-3 grid grid-cols-2 gap-2">
                   <button
                     type="button"
-                    onClick={() => setActiveEditor('basic')}
+                    onClick={() =>
+                      setActiveEditor(
+                        'basic',
+                      )
+                    }
                     className="rounded-2xl border-2 border-indigo-100 bg-indigo-50/60 p-3 text-left"
                   >
                     <div className="flex items-center justify-between gap-2">
@@ -1441,7 +2107,11 @@ export default function CardGenerator({
 
                   <button
                     type="button"
-                    onClick={() => setActiveEditor('skills')}
+                    onClick={() =>
+                      setActiveEditor(
+                        'skills',
+                      )
+                    }
                     className="rounded-2xl border-2 border-pink-100 bg-pink-50/60 p-3 text-left"
                   >
                     <div className="flex items-center justify-between gap-2">
@@ -1469,13 +2139,19 @@ export default function CardGenerator({
 
                   <button
                     type="button"
-                    onClick={() => setActiveEditor('color')}
+                    onClick={() =>
+                      setActiveEditor(
+                        'color',
+                      )
+                    }
                     style={
                       !isColorTouched
                         ? undefined
                         : {
-                            borderColor: selectedColorHex,
-                            backgroundColor: `${selectedColorHex}14`,
+                            borderColor:
+                              selectedColorHex,
+                            backgroundColor:
+                              `${selectedColorHex}14`,
                           }
                     }
                     className="rounded-2xl border-2 border-cyan-100 bg-cyan-50/60 p-3 text-left"
@@ -1502,16 +2178,22 @@ export default function CardGenerator({
                       <span
                         className="h-2.5 w-2.5 rounded-full border border-white shadow-sm"
                         style={{
-                          backgroundColor: selectedColorHex,
+                          backgroundColor:
+                            selectedColorHex,
                         }}
                       />
+
                       反映：カードの枠・色
                     </div>
                   </button>
 
                   <button
                     type="button"
-                    onClick={() => setActiveEditor('flavor')}
+                    onClick={() =>
+                      setActiveEditor(
+                        'flavor',
+                      )
+                    }
                     className="rounded-2xl border-2 border-amber-100 bg-amber-50/60 p-3 text-left"
                   >
                     <div className="flex items-center justify-between gap-2">
@@ -1556,176 +2238,41 @@ export default function CardGenerator({
               </div>
 
               <div className="min-h-0 flex-1 overflow-y-auto rounded-2xl border border-gray-200 bg-gray-50 p-3">
-                <div
-                  className="mx-auto w-full max-w-sm overflow-hidden rounded-[1.65rem] border-[5px] bg-white shadow-lg"
-                  style={{ borderColor: selectedColorHex }}
-                >
-                  <div className="border-b border-gray-100 px-4 pb-3 pt-4">
-                    <div className="flex items-start justify-between gap-3">
-                      <div className="min-w-0">
-                        <div className="text-[8px] font-black tracking-[0.18em] text-pink-500">
-                          CHARACTER CARD
-                        </div>
-
-                        <div className="mt-1 truncate text-xl font-black text-gray-950">
-                          {userName || '名前未設定'}
-                        </div>
-
-                        <div className="mt-1 flex items-center gap-1.5">
-                          <span className="rounded-md bg-gray-900 px-1.5 py-1 text-[8px] font-black text-white">
-                            {currentCoordinate?.code.toUpperCase()}
-                          </span>
-
-                          <span className="truncate text-[9px] font-black text-gray-600">
-                            {currentCoordinate?.name}
-                          </span>
-                        </div>
-                      </div>
-
-                      <div className="shrink-0 rounded-xl border border-gray-200 bg-gray-50 px-2 py-1 text-[8px] font-black text-gray-500">
-                        PREVIEW
-                      </div>
-                    </div>
-                  </div>
-
-                  <div className="grid grid-cols-[1.1fr_0.9fr] gap-3 p-3">
-                    <div className="overflow-hidden rounded-2xl border border-gray-200 bg-gray-50">
-                      {imageDataUrl ? (
-                        <img
-                          src={imageDataUrl}
-                          alt=""
-                          className="aspect-[4/5] w-full object-cover"
-                        />
-                      ) : (
-                        <div className="flex aspect-[4/5] items-center justify-center text-xs font-black text-gray-400">
-                          画像未設定
-                        </div>
-                      )}
-                    </div>
-
-                    {currentCoordinate && (
-                      <div className="flex min-w-0 flex-col items-center">
-                        <MiniRadarChart
-                          stats={currentCoordinate.stats}
-                        />
-
-                        <div className="mt-1 grid w-full grid-cols-1 gap-1 text-[8px] font-black text-gray-600">
-                          <div className="flex items-center justify-between">
-                            <span>🔥 情熱</span>
-                            <span>{currentCoordinate.stats.hp}</span>
-                          </div>
-
-                          <div className="flex items-center justify-between">
-                            <span>▽ 知性</span>
-                            <span>
-                              {currentCoordinate.stats.intellect}
-                            </span>
-                          </div>
-
-                          <div className="flex items-center justify-between">
-                            <span>⬡ 技能</span>
-                            <span>
-                              {currentCoordinate.stats.dexterity}
-                            </span>
-                          </div>
-
-                          <div className="flex items-center justify-between">
-                            <span>♥ 愛嬌</span>
-                            <span>
-                              {currentCoordinate.stats.charm}
-                            </span>
-                          </div>
-                        </div>
-                      </div>
-                    )}
-                  </div>
-
-                  <div className="px-3 pb-3">
-                    <div className="rounded-2xl border border-pink-100 bg-pink-50/60 p-3">
-                      <div className="text-[9px] font-black tracking-[0.12em] text-pink-600">
-                        SKILLS
-                      </div>
-
-                      <div className="mt-2 grid grid-cols-2 gap-2">
-                        {customSkills.map((skill, index) => (
-                          <div
-                            key={`${skill}-${index}`}
-                            className="rounded-xl border border-white bg-white px-2.5 py-2 shadow-sm"
-                          >
-                            <div className="text-[7px] font-black text-pink-500">
-                              SKILL {index + 1}
-                            </div>
-
-                            <div className="mt-0.5 line-clamp-2 text-[9px] font-black text-gray-800">
-                              {skill}
-                            </div>
-                          </div>
-                        ))}
-                      </div>
-                    </div>
-                  </div>
-
-                  <div className="border-t border-amber-100 bg-amber-50 px-4 py-3 text-center">
-                    <div className="text-[8px] font-black tracking-[0.12em] text-amber-700">
-                      FLAVOR
-                    </div>
-
-                    <div
-                      className={`mt-1 text-[10px] font-bold leading-4 ${
-                        flavorText.trim()
-                          ? 'text-amber-950'
-                          : 'text-amber-500'
-                      }`}
-                    >
-                      {flavorText.trim() || '一言未設定'}
-                    </div>
-                  </div>
-
-                  {showProfileUrl && (
-                    <div className="border-t border-gray-100 bg-white px-3 py-3">
-                      <div className="text-[8px] font-black tracking-[0.12em] text-gray-400">
-                        REALITY PROFILE
-                      </div>
-
-                      <div className="mt-1 break-all text-[9px] font-bold text-gray-700">
-                        {normalizeProfileUrl(profileUrl) || '未設定'}
-                      </div>
-                    </div>
-                  )}
-                </div>
-
-                <div className="mx-auto mt-3 grid w-full max-w-sm grid-cols-2 gap-2 text-[8px] font-bold text-gray-500">
-                  <div className="rounded-xl border border-white bg-white px-2.5 py-2">
-                    カードカラー
-                    <br />
-                    <span
-                      className="font-black"
-                      style={{ color: selectedColorHex }}
-                    >
-                      {selectedColorHex.toUpperCase()}
-                    </span>
-                  </div>
-
-                  <div className="rounded-xl border border-white bg-white px-2.5 py-2">
-                    プロフURL表示
-                    <br />
-                    <span
-                      className={`font-black ${
-                        showProfileUrl
-                          ? 'text-emerald-600'
-                          : 'text-gray-400'
-                      }`}
-                    >
-                      {showProfileUrl ? 'ON' : 'OFF'}
-                    </span>
-                  </div>
-                </div>
+                {currentCoordinate && (
+                  <CardDetailView
+                    type="character"
+                    userName={userName}
+                    imageDataUrl={
+                      imageDataUrl
+                    }
+                    coordinate={
+                      currentCoordinate
+                    }
+                    customSkills={
+                      customSkills
+                    }
+                    flavorText={
+                      flavorText
+                    }
+                    selectedColorHex={
+                      selectedColorHex
+                    }
+                    profileUrl={
+                      profileUrl
+                    }
+                    showProfileUrl={
+                      showProfileUrl
+                    }
+                  />
+                )}
               </div>
 
               <button
                 type="button"
                 onClick={() => {
-                  setRegistrationStep(2);
+                  setRegistrationStep(
+                    2,
+                  );
                   setErrorMessage('');
                   setSuccessMessage('');
                 }}
@@ -1738,7 +2285,9 @@ export default function CardGenerator({
         </div>
 
         <div className="shrink-0 border-t border-gray-200 bg-white px-3 py-2.5 sm:px-5">
-          {registrationStep === 3 && isCompleted ? (
+          {registrationStep ===
+            3 &&
+          isCompleted ? (
             <button
               type="button"
               onClick={() =>
@@ -1764,7 +2313,8 @@ export default function CardGenerator({
                 ? '安全確認中…'
                 : isRegistering
                   ? 'キャラカード登録中…'
-                  : registrationStep === 2
+                  : registrationStep ===
+                      2
                     ? '③ 登録内容を確認'
                     : editingId
                       ? 'このカードを更新する'
@@ -1779,16 +2329,34 @@ export default function CardGenerator({
           <div className="flex max-h-[88dvh] w-full max-w-md flex-col overflow-hidden rounded-3xl bg-white shadow-2xl">
             <div className="flex shrink-0 items-center justify-between gap-3 border-b border-gray-200 px-4 py-3">
               <div className="text-sm font-black">
-                {activeEditor === 'basic' && '基本情報を編集'}
-                {activeEditor === 'skills' && 'スキルを編集'}
-                {activeEditor === 'color' && 'カードカラーを設定'}
-                {activeEditor === 'flavor' && 'カードの一言を編集'}
-                {activeEditor === 'saved' && '自分のキャラカード'}
+                {activeEditor ===
+                  'basic' &&
+                  '基本情報を編集'}
+
+                {activeEditor ===
+                  'skills' &&
+                  'スキルを編集'}
+
+                {activeEditor ===
+                  'color' &&
+                  'カードカラーを設定'}
+
+                {activeEditor ===
+                  'flavor' &&
+                  'カードの一言を編集'}
+
+                {activeEditor ===
+                  'saved' &&
+                  '自分のキャラカード'}
               </div>
 
               <button
                 type="button"
-                onClick={() => setActiveEditor(null)}
+                onClick={() =>
+                  setActiveEditor(
+                    null,
+                  )
+                }
                 className="rounded-lg bg-gray-100 px-2.5 py-1.5 text-xs font-black"
               >
                 ✕
@@ -1796,13 +2364,16 @@ export default function CardGenerator({
             </div>
 
             <div className="min-h-0 overflow-y-auto p-4">
-              {activeEditor === 'basic' && (
+              {activeEditor ===
+                'basic' && (
                 <div className="space-y-4 text-xs">
                   <div>
                     <div className="mb-1 flex items-center justify-between gap-2">
                       <label className="block font-bold">
                         アバター名{' '}
-                        <span className="text-red-500">*</span>
+                        <span className="text-red-500">
+                          *
+                        </span>
                       </label>
                     </div>
 
@@ -1810,7 +2381,9 @@ export default function CardGenerator({
                       type="text"
                       value={userName}
                       onChange={(e) =>
-                        setUserName(e.target.value)
+                        setUserName(
+                          e.target.value,
+                        )
                       }
                       maxLength={40}
                       placeholder="例：キャラ太郎"
@@ -1822,12 +2395,18 @@ export default function CardGenerator({
                     <div className="mb-1 flex items-center justify-between gap-2">
                       <label className="block font-bold">
                         REALITY プロフURL{' '}
-                        <span className="text-red-500">*</span>
+                        <span className="text-red-500">
+                          *
+                        </span>
                       </label>
 
                       <button
                         type="button"
-                        onClick={() => setShowProfileHelp(true)}
+                        onClick={() =>
+                          setShowProfileHelp(
+                            true,
+                          )
+                        }
                         className="rounded-lg border border-indigo-200 bg-indigo-50 px-2.5 py-1.5 text-[9px] font-black text-indigo-700"
                       >
                         手順
@@ -1864,10 +2443,13 @@ export default function CardGenerator({
                       >
                         <input
                           type="checkbox"
-                          checked={showProfileUrl}
+                          checked={
+                            showProfileUrl
+                          }
                           onChange={(e) =>
                             setShowProfileUrl(
-                              e.target.checked,
+                              e.target
+                                .checked,
                             )
                           }
                           className="peer sr-only"
@@ -1887,13 +2469,17 @@ export default function CardGenerator({
                   <div>
                     <label className="mb-1 block font-bold">
                       アバター画像{' '}
-                      <span className="text-red-500">*</span>
+                      <span className="text-red-500">
+                        *
+                      </span>
                     </label>
 
                     {imageDataUrl && (
                       <div className="mb-2 flex items-center gap-3 rounded-xl border border-emerald-200 bg-emerald-50 p-2">
                         <img
-                          src={imageDataUrl}
+                          src={
+                            imageDataUrl
+                          }
                           alt="選択したアバター画像"
                           className="h-16 w-16 shrink-0 rounded-lg object-cover"
                         />
@@ -1913,14 +2499,17 @@ export default function CardGenerator({
                     <input
                       type="file"
                       accept="image/*"
-                      onChange={handleImageUpload}
+                      onChange={
+                        handleImageUpload
+                      }
                       className="w-full text-xs file:mr-3 file:rounded-lg file:border-0 file:bg-rose-100 file:px-3 file:py-2 file:text-[10px] file:font-black file:text-rose-700 hover:file:bg-rose-200"
                     />
                   </div>
                 </div>
               )}
 
-              {activeEditor === 'skills' &&
+              {activeEditor ===
+                'skills' &&
                 currentCoordinate && (
                   <div className="space-y-3 text-xs">
                     <div className="flex items-start justify-between gap-2 rounded-xl border border-pink-100 bg-pink-50 px-3 py-2">
@@ -1931,7 +2520,9 @@ export default function CardGenerator({
                       <button
                         type="button"
                         onClick={() =>
-                          setShowSkillsHelp(true)
+                          setShowSkillsHelp(
+                            true,
+                          )
                         }
                         className="shrink-0 rounded-lg border border-pink-200 bg-white px-2 py-1 text-[9px] font-black text-pink-700"
                       >
@@ -1939,97 +2530,134 @@ export default function CardGenerator({
                       </button>
                     </div>
 
-                    {[0, 1, 2, 3].map((index) => (
-                      <div
-                        key={index}
-                        className="rounded-2xl border border-pink-100 bg-pink-50/50 p-3"
-                      >
-                        <div className="font-black text-pink-700">
-                          スキル{index + 1}
-                        </div>
-
-                        <div className="mt-2 rounded-xl border border-pink-100 bg-white px-3 py-2">
-                          <div className="text-[8px] font-black text-pink-500">
-                            効果説明
+                    {[0, 1, 2, 3].map(
+                      (index) => (
+                        <div
+                          key={index}
+                          className="rounded-2xl border border-pink-100 bg-pink-50/50 p-3"
+                        >
+                          <div className="font-black text-pink-700">
+                            スキル
+                            {index +
+                              1}
                           </div>
 
-                          <p className="mt-0.5 text-[9px] font-bold leading-4 text-gray-600">
-                            {
-                              currentCoordinate
-                                .skillDescriptions[index]
+                          <div className="mt-2 rounded-xl border border-pink-100 bg-white px-3 py-2">
+                            <div className="text-[8px] font-black text-pink-500">
+                              効果説明
+                            </div>
+
+                            <p className="mt-0.5 text-[9px] font-bold leading-4 text-gray-600">
+                              {
+                                currentCoordinate
+                                  .skillDescriptions[
+                                  index
+                                ]
+                              }
+                            </p>
+                          </div>
+
+                          <label className="mt-2 block text-[8px] font-black text-gray-500">
+                            スキル名
+                          </label>
+
+                          <input
+                            type="text"
+                            value={
+                              customSkills[
+                                index
+                              ]
                             }
+                            onChange={(
+                              e,
+                            ) =>
+                              handleSkillChange(
+                                index,
+                                e.target
+                                  .value,
+                              )
+                            }
+                            maxLength={
+                              40
+                            }
+                            className="mt-1 w-full rounded-xl border px-3 py-2.5"
+                          />
+
+                          <label className="mt-2 block text-[8px] font-black text-pink-600">
+                            スキル使用時のセリフテキスト
+                          </label>
+
+                          <input
+                            type="text"
+                            value={
+                              skillVoices[
+                                index
+                              ]
+                            }
+                            onChange={(
+                              e,
+                            ) =>
+                              handleSkillVoiceChange(
+                                index,
+                                e.target
+                                  .value,
+                              )
+                            }
+                            maxLength={
+                              80
+                            }
+                            placeholder={getDefaultSkillVoice(
+                              customSkills[
+                                index
+                              ],
+                            )}
+                            className="mt-1 w-full rounded-xl border border-pink-200 bg-white px-3 py-2.5"
+                          />
+
+                          <p className="mt-1 text-[8px] font-bold text-gray-400">
+                            未編集なら「
+                            {getDefaultSkillVoice(
+                              customSkills[
+                                index
+                              ],
+                            ) ||
+                              'スキル名！'}
+                            」が入ります。
                           </p>
                         </div>
-
-                        <label className="mt-2 block text-[8px] font-black text-gray-500">
-                          スキル名
-                        </label>
-
-                        <input
-                          type="text"
-                          value={customSkills[index]}
-                          onChange={(e) =>
-                            handleSkillChange(
-                              index,
-                              e.target.value,
-                            )
-                          }
-                          maxLength={40}
-                          className="mt-1 w-full rounded-xl border px-3 py-2.5"
-                        />
-
-                        <label className="mt-2 block text-[8px] font-black text-pink-600">
-                          スキル使用時のセリフテキスト
-                        </label>
-
-                        <input
-                          type="text"
-                          value={skillVoices[index]}
-                          onChange={(e) =>
-                            handleSkillVoiceChange(
-                              index,
-                              e.target.value,
-                            )
-                          }
-                          maxLength={80}
-                          placeholder={getDefaultSkillVoice(
-                            customSkills[index],
-                          )}
-                          className="mt-1 w-full rounded-xl border border-pink-200 bg-white px-3 py-2.5"
-                        />
-
-                        <p className="mt-1 text-[8px] font-bold text-gray-400">
-                          未編集なら「
-                          {getDefaultSkillVoice(
-                            customSkills[index],
-                          ) || 'スキル名！'}
-                          」が入ります。
-                        </p>
-                      </div>
-                    ))}
+                      ),
+                    )}
                   </div>
                 )}
 
-              {activeEditor === 'color' && (
+              {activeEditor ===
+                'color' && (
                 <div className="space-y-4">
                   <div className="flex flex-wrap gap-2">
-                    {COLOR_PALETTE.map((color) => (
-                      <button
-                        key={color}
-                        type="button"
-                        onClick={() =>
-                          handleColorChange(color)
-                        }
-                        aria-label={`カラー ${color}`}
-                        className={`h-10 w-10 rounded-full border-2 ${
-                          selectedColorHex.toUpperCase() ===
-                          color.toUpperCase()
-                            ? 'border-gray-900 ring-2 ring-offset-1 ring-gray-300'
-                            : 'border-white shadow-sm'
-                        }`}
-                        style={{ backgroundColor: color }}
-                      />
-                    ))}
+                    {COLOR_PALETTE.map(
+                      (color) => (
+                        <button
+                          key={color}
+                          type="button"
+                          onClick={() =>
+                            handleColorChange(
+                              color,
+                            )
+                          }
+                          aria-label={`カラー ${color}`}
+                          className={`h-10 w-10 rounded-full border-2 ${
+                            selectedColorHex.toUpperCase() ===
+                            color.toUpperCase()
+                              ? 'border-gray-900 ring-2 ring-offset-1 ring-gray-300'
+                              : 'border-white shadow-sm'
+                          }`}
+                          style={{
+                            backgroundColor:
+                              color,
+                          }}
+                        />
+                      ),
+                    )}
                   </div>
 
                   <div className="rounded-2xl border border-gray-200 bg-gray-50 p-3">
@@ -2039,7 +2667,9 @@ export default function CardGenerator({
 
                     <input
                       type="color"
-                      value={selectedColorHex}
+                      value={
+                        selectedColorHex
+                      }
                       onChange={(e) =>
                         handleColorChange(
                           e.target.value,
@@ -2049,23 +2679,33 @@ export default function CardGenerator({
                     />
 
                     <div className="mt-2 text-[10px] font-bold text-gray-600">
-                      {selectedColorHex.toUpperCase()} /{' '}
-                      {getColorTypeLabel(selectedColorType)}
+                      {
+                        selectedColorHex
+                      }{' '}
+                      /{' '}
+                      {getColorTypeLabel(
+                        selectedColorType,
+                      )}
                     </div>
                   </div>
                 </div>
               )}
 
-              {activeEditor === 'flavor' && (
+              {activeEditor ===
+                'flavor' && (
                 <div>
                   <label className="mb-1 block text-xs font-bold">
                     カードの一言
                   </label>
 
                   <textarea
-                    value={flavorText}
+                    value={
+                      flavorText
+                    }
                     onChange={(e) =>
-                      setFlavorText(e.target.value)
+                      setFlavorText(
+                        e.target.value,
+                      )
                     }
                     rows={6}
                     maxLength={120}
@@ -2080,18 +2720,24 @@ export default function CardGenerator({
               )}
             </div>
 
-            {activeEditor !== 'saved' && (
+            {activeEditor !==
+              'saved' && (
               <div className="shrink-0 space-y-2 border-t border-gray-200 p-3">
                 {editingId && (
                   <button
                     type="button"
                     onClick={() => {
-                      const entry = entries.find(
-                        (item) => item.id === editingId,
-                      );
+                      const entry =
+                        entries.find(
+                          (item) =>
+                            item.id ===
+                            editingId,
+                        );
 
                       if (entry) {
-                        void handleDelete(entry);
+                        void handleDelete(
+                          entry,
+                        );
                       }
                     }}
                     className="w-full rounded-xl border border-red-200 bg-red-50 py-2.5 text-xs font-black text-red-700 hover:bg-red-100"
@@ -2102,7 +2748,11 @@ export default function CardGenerator({
 
                 <button
                   type="button"
-                  onClick={() => setActiveEditor(null)}
+                  onClick={() =>
+                    setActiveEditor(
+                      null,
+                    )
+                  }
                   className="w-full rounded-xl bg-gray-900 py-2.5 text-xs font-black text-white"
                 >
                   完了
@@ -2123,7 +2773,11 @@ export default function CardGenerator({
 
               <button
                 type="button"
-                onClick={() => setShowProfileHelp(false)}
+                onClick={() =>
+                  setShowProfileHelp(
+                    false,
+                  )
+                }
                 className="rounded-lg bg-gray-100 px-2.5 py-1.5 text-xs font-black"
               >
                 ✕
@@ -2155,7 +2809,11 @@ export default function CardGenerator({
             <div className="border-t border-gray-200 p-3">
               <button
                 type="button"
-                onClick={() => setShowProfileHelp(false)}
+                onClick={() =>
+                  setShowProfileHelp(
+                    false,
+                  )
+                }
                 className="w-full rounded-xl bg-gray-900 py-2.5 text-xs font-black text-white"
               >
                 閉じる
@@ -2175,7 +2833,11 @@ export default function CardGenerator({
 
               <button
                 type="button"
-                onClick={() => setShowSkillsHelp(false)}
+                onClick={() =>
+                  setShowSkillsHelp(
+                    false,
+                  )
+                }
                 className="rounded-lg bg-gray-100 px-2.5 py-1.5 text-xs font-black"
               >
                 ✕
@@ -2203,7 +2865,11 @@ export default function CardGenerator({
             <div className="border-t border-gray-200 p-3">
               <button
                 type="button"
-                onClick={() => setShowSkillsHelp(false)}
+                onClick={() =>
+                  setShowSkillsHelp(
+                    false,
+                  )
+                }
                 className="w-full rounded-xl bg-gray-900 py-2.5 text-xs font-black text-white"
               >
                 閉じる
@@ -2215,4 +2881,3 @@ export default function CardGenerator({
     </div>
   );
 }
-
