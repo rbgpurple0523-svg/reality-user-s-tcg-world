@@ -5,6 +5,7 @@ import { ensureAnonymousAuth, db } from '@/lib/firebase';
 import { collection, getDocs, query, where } from 'firebase/firestore';
 import CardGenerator from './CardGenerator';
 import SupportCardGenerator from './SupportCardGenerator';
+import CardDetailView from './CardDetailView';
 import { EMOTION_PRESETS } from './emotionPresets';
 import type { EmotionAxisKey, EmotionPreset } from './emotionPresets';
 import { COORDINATE_PRESETS } from './coordinatePresets';
@@ -715,6 +716,11 @@ export default function EntryHub({
   } | null>(null);
 
   const [
+    detailEntry,
+    setDetailEntry,
+  ] = useState<EntryRecord | null>(null);
+
+  const [
     transferTarget,
     setTransferTarget,
   ] = useState<EntryRecord | null>(null);
@@ -853,6 +859,16 @@ export default function EntryHub({
   const handleCloseEntryList = () => {
     setShowEntryList(false);
     onEntryListClose?.();
+  };
+
+  const openCardDetail = (
+    entry: EntryRecord,
+  ) => {
+    setDetailEntry(entry);
+  };
+
+  const closeCardDetail = () => {
+    setDetailEntry(null);
   };
 
   const totalPossibleSlots =
@@ -1254,7 +1270,7 @@ export default function EntryHub({
                   }
                   className="rounded-xl bg-white px-4 py-2.5 text-xs font-black text-indigo-900 shadow-sm transition hover:bg-indigo-50"
                 >
-                  チームを構築する
+                  チームを編成する
                 </button>
               )}
 
@@ -1274,43 +1290,43 @@ export default function EntryHub({
         </div>
 
         <div className="flex flex-wrap items-center justify-between gap-3 border-t border-gray-200 bg-gray-50 px-4 py-3">
+          <div className="text-xs font-black text-gray-700">
+            登録状況：
+            <span className="text-indigo-700">
+              キャラ{' '}
+              {characterEntries.length} /{' '}
+              {COORDINATE_PRESETS.length}{' '}
+              (
+              {COORDINATE_PRESETS.length > 0
+                ? Math.round(
+                    (characterEntries.length /
+                      COORDINATE_PRESETS.length) *
+                      100,
+                  )
+                : 0}
+              %)
+            </span>
 
-<div className="text-xs font-black text-gray-700">
-  登録状況：
-  <span className="text-indigo-700">
-    キャラ{' '}
-    {characterEntries.length} /{' '}
-    {COORDINATE_PRESETS.length}{' '}
-    (
-    {COORDINATE_PRESETS.length > 0
-      ? Math.round(
-          (characterEntries.length /
-            COORDINATE_PRESETS.length) *
-            100,
-        )
-      : 0}
-    %)
-  </span>
+            <span className="mx-1 text-gray-400">
+              ・
+            </span>
 
-  <span className="mx-1 text-gray-400">
-    ・
-  </span>
+            <span className="text-purple-700">
+              サポート{' '}
+              {supportEntries.length} /{' '}
+              {EMOTION_PRESETS.length}{' '}
+              (
+              {EMOTION_PRESETS.length > 0
+                ? Math.round(
+                    (supportEntries.length /
+                      EMOTION_PRESETS.length) *
+                      100,
+                  )
+                : 0
+              }%)
+            </span>
+          </div>
 
-  <span className="text-purple-700">
-    サポート{' '}
-    {supportEntries.length} /{' '}
-    {EMOTION_PRESETS.length}{' '}
-    (
-    {EMOTION_PRESETS.length > 0
-      ? Math.round(
-          (supportEntries.length /
-            EMOTION_PRESETS.length) *
-            100,
-        )
-      : 0}
-    %)
-  </span>
-</div>
           <button
             type="button"
             onClick={() =>
@@ -2037,7 +2053,7 @@ export default function EntryHub({
           role="dialog"
           aria-modal="true"
         >
-          <div className="max-h-[88vh] w-full max-w-2xl overflow-y-auto rounded-t-3xl bg-white shadow-2xl sm:rounded-3xl">
+          <div className="max-h-[88vh] w-full max-w-3xl overflow-y-auto rounded-t-3xl bg-white shadow-2xl sm:rounded-3xl">
             <div className="sticky top-0 z-10 flex items-center justify-between border-b border-gray-200 bg-white/95 px-5 py-4 backdrop-blur">
               <div>
                 <div className="text-[9px] font-black tracking-[0.16em] text-gray-400">
@@ -2060,235 +2076,395 @@ export default function EntryHub({
               </button>
             </div>
 
-            <div className="space-y-3 p-5">
-              {entries.map(
-                (entry) => {
-                  const emotion =
-                    entry.cardType ===
-                    'emotion'
-                      ? EMOTION_PRESETS.find(
-                          (item) =>
-                            item.id ===
-                            entry.presetId,
-                        )
-                      : null;
+            <div className="grid gap-3 p-5 sm:grid-cols-2">
+              {entries.map((entry) => {
+                const emotion =
+                  entry.cardType === 'emotion'
+                    ? EMOTION_PRESETS.find(
+                        (item) =>
+                          item.id ===
+                          entry.presetId,
+                      )
+                    : null;
 
-                  const coordinate =
-                    entry.cardType ===
-                    'coordinate'
-                      ? COORDINATE_PRESETS.find(
-                          (item) =>
-                            item.id ===
-                            entry.presetId,
-                        )
-                      : null;
+                const coordinate =
+                  entry.cardType === 'coordinate'
+                    ? COORDINATE_PRESETS.find(
+                        (item) =>
+                          item.id ===
+                          entry.presetId,
+                      )
+                    : null;
 
-                  const isOwner =
-                    ownedCardIds.has(
-                      entry.id,
-                    );
+                const isOwner =
+                  ownedCardIds.has(
+                    entry.id,
+                  );
 
-                  const isTransferring =
-                    entry.transferStatus ===
-                    'pending';
+                const isTransferring =
+                  entry.transferStatus ===
+                  'pending';
 
-                  return (
-                    <article
-                      key={entry.id}
-                      className="rounded-2xl border border-gray-200 bg-gray-50 p-3"
-                    >
-                      <div className="flex items-center gap-3">
-                        <div className="shrink-0">
-                          {isTransferring ? (
-                            <div className="flex flex-col items-stretch gap-1.5">
-                              <div className="rounded-xl bg-gray-200 px-3 py-2 text-center text-[10px] font-black text-gray-500">
-                                引き継ぎ中
-                              </div>
-
-                              <button
-                                type="button"
-                                onClick={() =>
-                                  openTransferAcceptDialog(
-                                    entry,
-                                  )
-                                }
-                                className="whitespace-nowrap rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-[10px] font-black text-amber-800 transition hover:bg-amber-100"
-                              >
-                                引き継ぎコードを入力
-                              </button>
-                            </div>
-                          ) : (
-                            isOwner && (
-                              <button
-                                type="button"
-                                onClick={() => {
-                                  if (
-                                    entry.cardType ===
-                                    'coordinate'
-                                  ) {
-                                    const preset =
-                                      COORDINATE_PRESETS.find(
-                                        (item) =>
-                                          item.id ===
-                                          entry.presetId,
-                                      );
-
-                                    if (!preset) {
-                                      return;
-                                    }
-
-                                    handleCloseEntryList();
-
-                                    setActiveGenerator(
-                                      {
-                                        type: 'coordinate',
-                                        preset,
-                                        editEntryId:
-                                          entry.id,
-                                      },
-                                    );
-
-                                    return;
-                                  }
-
-                                  const preset =
-                                    EMOTION_PRESETS.find(
-                                      (item) =>
-                                        item.id ===
-                                        entry.presetId,
-                                    );
-
-                                  if (!preset) {
-                                    return;
-                                  }
-
-                                  handleCloseEntryList();
-
-                                  setActiveGenerator(
-                                    {
-                                      type: 'emotion',
-                                      preset,
-                                      editEntryId:
-                                        entry.id,
-                                    },
-                                  );
-                                }}
-                                className={`rounded-xl px-3 py-2 text-[10px] font-black text-white ${
-                                  entry.cardType ===
-                                  'coordinate'
-                                    ? 'bg-indigo-600 hover:bg-indigo-700'
-                                    : 'bg-purple-600 hover:bg-purple-700'
-                                }`}
-                              >
-                                編集・削除
-                              </button>
-                            )
-                          )}
-                        </div>
-
+                return (
+                  <article
+                    key={entry.id}
+                    className="overflow-hidden rounded-2xl border border-gray-200 bg-white shadow-sm"
+                  >
+                    <div className="flex gap-3 p-3">
+                      <div className="shrink-0">
                         {entry.imageDataUrl ? (
                           <img
                             src={
                               entry.imageDataUrl
                             }
                             alt=""
-                            className="h-12 w-12 rounded-xl border border-gray-200 object-cover"
+                            className="h-20 w-20 rounded-2xl border border-gray-200 object-cover"
                           />
                         ) : (
-                          <div className="h-12 w-12 rounded-xl bg-gray-200" />
+                          <div className="flex h-20 w-20 items-center justify-center rounded-2xl bg-gray-100 text-[9px] font-black text-gray-400">
+                            画像なし
+                          </div>
                         )}
-
-                        <div className="min-w-0 flex-1">
-                          <div className="text-[9px] font-black text-gray-400">
-                            {entry.cardType ===
-                            'coordinate'
-                              ? 'キャラカード'
-                              : 'サポートカード'}
-                          </div>
-
-                          <div className="truncate text-sm font-black text-gray-900">
-                            {
-                              entry.userName
-                            }
-                          </div>
-
-                          <div className="mt-0.5 truncate text-[10px] font-bold text-gray-500">
-                            {
-                              coordinate?.name ||
-                              emotion?.name ||
-                              entry.presetId
-                            }
-                          </div>
-                        </div>
                       </div>
 
-                      {isOwner &&
-                        !isTransferring && (
-                          <div className="mt-3">
-                            <button
-                              type="button"
-                              onClick={() =>
-                                openTransferDialog(
-                                  entry,
-                                )
+                      <div className="min-w-0 flex-1">
+                        <div
+                          className={`text-[9px] font-black ${
+                            entry.cardType ===
+                            'coordinate'
+                              ? 'text-indigo-500'
+                              : 'text-purple-500'
+                          }`}
+                        >
+                          {entry.cardType ===
+                          'coordinate'
+                            ? 'CHARACTER CARD'
+                            : 'SUPPORT CARD'}
+                        </div>
+
+                        <div className="mt-1 truncate text-sm font-black text-gray-900">
+                          {
+                            entry.userName
+                          }
+                        </div>
+
+                        <div className="mt-1 truncate text-[10px] font-bold text-gray-500">
+                          {coordinate?.name ||
+                            emotion?.name ||
+                            entry.presetId}
+                        </div>
+
+                        {entry.cardType ===
+                          'coordinate' && (
+                          <div className="mt-1 text-[9px] font-bold text-indigo-600">
+                            コーデカード
+                          </div>
+                        )}
+
+                        {entry.cardType ===
+                          'emotion' && (
+                          <div className="mt-1 truncate text-[9px] font-bold text-purple-600">
+                            {entry.customEffectName ||
+                              emotion?.name ||
+                              '効果名未設定'}
+                          </div>
+                        )}
+                      </div>
+                    </div>
+
+                    {isTransferring && (
+                      <div className="mx-3 mb-3 rounded-xl border border-gray-200 bg-gray-100 px-3 py-2.5">
+                        <div className="text-[10px] font-black text-gray-500">
+                          引き継ぎ中
+                        </div>
+
+                        <div className="mt-1 text-[9px] font-bold leading-relaxed text-gray-500">
+                          このカードは現在、引き継ぎコードの入力を待っています。
+                        </div>
+
+                        <button
+                          type="button"
+                          onClick={() =>
+                            openTransferAcceptDialog(
+                              entry,
+                            )
+                          }
+                          className="mt-2 w-full rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-[10px] font-black text-amber-800 transition hover:bg-amber-100"
+                        >
+                          引き継ぎコードを入力
+                        </button>
+                      </div>
+                    )}
+
+                    <div className="grid grid-cols-2 gap-2 border-t border-gray-100 bg-gray-50 p-3">
+                      <button
+                        type="button"
+                        onClick={() =>
+                          openCardDetail(
+                            entry,
+                          )
+                        }
+                        className={`rounded-xl border px-3 py-2.5 text-[10px] font-black transition ${
+                          entry.cardType ===
+                          'coordinate'
+                            ? 'border-indigo-200 bg-indigo-50 text-indigo-700 hover:bg-indigo-100'
+                            : 'border-purple-200 bg-purple-50 text-purple-700 hover:bg-purple-100'
+                        }`}
+                      >
+                        詳細を見る
+                      </button>
+
+                      {!isTransferring &&
+                        isOwner && (
+                          <button
+                            type="button"
+                            onClick={() => {
+                              if (
+                                entry.cardType ===
+                                'coordinate'
+                              ) {
+                                const preset =
+                                  COORDINATE_PRESETS.find(
+                                    (item) =>
+                                      item.id ===
+                                      entry.presetId,
+                                  );
+
+                                if (!preset) {
+                                  return;
+                                }
+
+                                handleCloseEntryList();
+
+                                setActiveGenerator(
+                                  {
+                                    type: 'coordinate',
+                                    preset,
+                                    editEntryId:
+                                      entry.id,
+                                  },
+                                );
+
+                                return;
                               }
-                              className="w-full rounded-xl border border-amber-200 bg-amber-50 px-3 py-2.5 text-[10px] font-black text-amber-800 transition hover:bg-amber-100"
-                            >
-                              ↔ このカードを引き継ぐ
-                            </button>
+
+                              const preset =
+                                EMOTION_PRESETS.find(
+                                  (item) =>
+                                    item.id ===
+                                    entry.presetId,
+                                );
+
+                              if (!preset) {
+                                return;
+                              }
+
+                              handleCloseEntryList();
+
+                              setActiveGenerator(
+                                {
+                                  type: 'emotion',
+                                  preset,
+                                  editEntryId:
+                                    entry.id,
+                                },
+                              );
+                            }}
+                            className={`rounded-xl px-3 py-2.5 text-[10px] font-black text-white ${
+                              entry.cardType ===
+                              'coordinate'
+                                ? 'bg-indigo-600 hover:bg-indigo-700'
+                                : 'bg-purple-600 hover:bg-purple-700'
+                            }`}
+                          >
+                            編集・削除
+                          </button>
+                        )}
+
+                      {!isTransferring &&
+                        !isOwner && (
+                          <div className="flex items-center justify-center rounded-xl border border-gray-200 bg-white px-3 py-2.5 text-center text-[9px] font-bold text-gray-400">
+                            閲覧のみ
                           </div>
                         )}
 
                       {isTransferring && (
-                        <div className="mt-3 rounded-xl border border-gray-200 bg-gray-100 px-3 py-2.5 text-[10px] font-bold leading-relaxed text-gray-600">
-                          このカードは現在、引き継ぎコードの入力を待っています。
+                        <div className="flex items-center justify-center rounded-xl border border-gray-200 bg-white px-3 py-2.5 text-center text-[9px] font-bold text-gray-400">
+                          引き継ぎ中
                         </div>
                       )}
+                    </div>
 
-                      {entry.cardType ===
-                        'emotion' && (
-                        <div className="mt-2 rounded-xl bg-white p-2.5 text-[10px] text-gray-600">
-                          <div className="font-black text-purple-700">
-                            効果名：
-                            {entry.customEffectName ||
-                              emotion?.name ||
-                              '未設定'}
-                          </div>
-
-                          {entry.flavorText && (
-                            <div className="mt-1">
-                              💬{' '}
-                              {
-                                entry.flavorText
-                              }
-                            </div>
-                          )}
+                    {isOwner &&
+                      !isTransferring && (
+                        <div className="border-t border-gray-100 px-3 pb-3 pt-2">
+                          <button
+                            type="button"
+                            onClick={() =>
+                              openTransferDialog(
+                                entry,
+                              )
+                            }
+                            className="w-full rounded-xl border border-amber-200 bg-amber-50 px-3 py-2.5 text-[10px] font-black text-amber-800 transition hover:bg-amber-100"
+                          >
+                            ↔ このカードを引き継ぐ
+                          </button>
                         </div>
                       )}
+                  </article>
+                );
+              })}
+            </div>
+          </div>
+        </div>
+      )}
 
-                      {entry.cardType ===
-                        'coordinate' && (
-                        <div className="mt-2 rounded-xl bg-white p-2.5 text-[10px] text-gray-600">
-                          <div className="font-black text-indigo-700">
-                            コーデ：
-                            {coordinate?.name ||
-                              entry.presetId}
-                          </div>
+      {detailEntry && (
+        <div
+          className="fixed inset-0 z-[55] flex items-end justify-center bg-black/50 p-0 sm:items-center sm:p-4"
+          role="dialog"
+          aria-modal="true"
+        >
+          <div className="max-h-[92vh] w-full max-w-lg overflow-y-auto rounded-t-3xl bg-gray-50 shadow-2xl sm:rounded-3xl">
+            <div className="sticky top-0 z-20 flex items-center justify-between border-b border-gray-200 bg-white/95 px-5 py-4 backdrop-blur">
+              <div>
+                <div className="text-[9px] font-black tracking-[0.16em] text-gray-400">
+                  CARD DETAILS
+                </div>
 
-                          {entry.flavorText && (
-                            <div className="mt-1">
-                              💬{' '}
-                              {
-                                entry.flavorText
-                              }
-                            </div>
-                          )}
-                        </div>
-                      )}
-                    </article>
+                <h3 className="mt-1 text-base font-black text-gray-900">
+                  登録カードの詳細
+                </h3>
+              </div>
+
+              <button
+                type="button"
+                onClick={
+                  closeCardDetail
+                }
+                className="rounded-full bg-gray-100 px-3 py-1.5 text-[10px] font-black text-gray-600 hover:bg-gray-200"
+              >
+                閉じる
+              </button>
+            </div>
+
+            <div className="p-4 sm:p-5">
+              {detailEntry.cardType ===
+                'coordinate' &&
+                (() => {
+                  const coordinate =
+                    COORDINATE_PRESETS.find(
+                      (item) =>
+                        item.id ===
+                        detailEntry.presetId,
+                    );
+
+                  if (!coordinate) {
+                    return (
+                      <div className="rounded-2xl border border-red-200 bg-red-50 p-4 text-xs font-bold text-red-700">
+                        コーデ情報を取得できませんでした。
+                      </div>
+                    );
+                  }
+
+                  const customSkills =
+                    detailEntry.customSkills ??
+                    [
+                      '',
+                      '',
+                      '',
+                      '',
+                    ] as [
+                      string,
+                      string,
+                      string,
+                      string,
+                    ];
+
+                  return (
+                    <CardDetailView
+                      type="character"
+                      userName={
+                        detailEntry.userName
+                      }
+                      imageDataUrl={
+                        detailEntry.imageDataUrl
+                      }
+                      coordinate={
+                        coordinate
+                      }
+                      customSkills={
+                        customSkills
+                      }
+                      flavorText={
+                        detailEntry.flavorText ||
+                        ''
+                      }
+                      selectedColorHex={
+                        detailEntry.colorHex ||
+                        '#6366f1'
+                      }
+                      profileUrl={
+                        detailEntry.profileUrl
+                      }
+                      showProfileUrl={
+                        detailEntry.showProfileUrl ??
+                        false
+                      }
+                    />
                   );
-                },
-              )}
+                })()}
+
+              {detailEntry.cardType ===
+                'emotion' &&
+                (() => {
+                  const emotion =
+                    EMOTION_PRESETS.find(
+                      (item) =>
+                        item.id ===
+                        detailEntry.presetId,
+                    );
+
+                  if (!emotion) {
+                    return (
+                      <div className="rounded-2xl border border-red-200 bg-red-50 p-4 text-xs font-bold text-red-700">
+                        エモーション情報を取得できませんでした。
+                      </div>
+                    );
+                  }
+
+                  return (
+                    <CardDetailView
+                      type="support"
+                      userName={
+                        detailEntry.userName
+                      }
+                      imageDataUrl={
+                        detailEntry.imageDataUrl
+                      }
+                      emotion={emotion}
+                      effectName={
+                        detailEntry.customEffectName ||
+                        emotion.name
+                      }
+                      flavorText={
+                        detailEntry.flavorText ||
+                        ''
+                      }
+                      selectedColorHex={
+                        detailEntry.colorHex ||
+                        '#a855f7'
+                      }
+                      profileUrl={
+                        detailEntry.profileUrl
+                      }
+                      showProfileUrl={
+                        detailEntry.showProfileUrl ??
+                        false
+                      }
+                    />
+                  );
+                })()}
             </div>
           </div>
         </div>

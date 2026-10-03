@@ -15,6 +15,7 @@ import {
   type EmotionPreset,
 } from './emotionPresets';
 import type { EntryRecord } from './EntryHub';
+import CardDetailView from './CardDetailView';
 import {
   COLOR_PALETTE,
   getColorTypeFromHex,
@@ -41,7 +42,12 @@ type ModerationResult = {
 
 type EmotionPickerMode = 'feeling' | 'performance';
 type RegistrationStep = 2 | 3;
-type EditorKey = 'basic' | 'effect' | 'color' | 'flavor' | null;
+type EditorKey =
+  | 'basic'
+  | 'effect'
+  | 'color'
+  | 'flavor'
+  | null;
 type ModalKey = 'emotion' | 'saved' | null;
 
 type PublicCardResponse = EntryRecord;
@@ -2438,163 +2444,17 @@ export default function SupportCardGenerator({
               </div>
 
               <div className="min-h-0 flex-1 overflow-y-auto rounded-2xl border border-gray-200 bg-gray-50 p-3">
-                <div
-                  className="mx-auto w-full max-w-sm overflow-hidden rounded-[1.65rem] border-[5px] bg-white shadow-lg"
-                  style={{
-                    borderColor:
-                      selectedColorHex,
-                  }}
-                >
-                  <div className="border-b border-gray-100 px-4 pb-3 pt-4">
-                    <div className="text-[8px] font-black tracking-[0.18em] text-purple-500">
-                      SUPPORT CARD
-                    </div>
-
-                    <div className="mt-1 text-xl font-black text-gray-950">
-                      {effectName ||
-                        '効果名未設定'}
-                    </div>
-
-                    <div className="mt-1 text-[9px] font-bold text-gray-500">
-                      {
-                        activeEmotion.statEffect
-                      }
-                      {activeEmotion.effectAmount
-                        ? ` ${activeEmotion.effectAmount}`
-                        : ''}{' '}
-                      /{' '}
-                      {
-                        activeEmotion.target
-                      }{' '}
-                      /{' '}
-                      {
-                        activeEmotion.duration
-                      }
-                    </div>
-                  </div>
-
-                  <div className="p-3">
-                    <div className="overflow-hidden rounded-2xl border border-gray-200 bg-gray-100">
-                      {imageDataUrl ? (
-                        <img
-                          src={
-                            imageDataUrl
-                          }
-                          alt=""
-                          className="aspect-[4/5] w-full object-contain"
-                        />
-                      ) : (
-                        <div className="flex aspect-[4/5] items-center justify-center text-xs font-black text-gray-400">
-                          画像未設定
-                        </div>
-                      )}
-                    </div>
-                  </div>
-
-                  <div className="px-3 pb-3">
-                    <div className="rounded-2xl border border-gray-200 bg-gray-50 p-3">
-                      <div className="text-[9px] font-black tracking-[0.12em] text-gray-500">
-                        EFFECT
-                      </div>
-
-                      <div className="mt-1 text-sm font-black text-gray-900">
-                        {
-                          activeEmotion.statEffect
-                        }
-                        {activeEmotion.effectAmount
-                          ? `（${activeEmotion.effectAmount}）`
-                          : ''}
-                      </div>
-
-                      <div className="mt-1 text-[9px] font-bold text-gray-500">
-                        {
-                          activeEmotion.target
-                        }{' '}
-                        /{' '}
-                        {
-                          activeEmotion.duration
-                        }{' '}
-                        /{' '}
-                        {
-                          activeEmotion.effectCategory
-                        }
-                      </div>
-
-                      <div className="mt-2 text-[10px] leading-4 text-gray-600">
-                        {
-                          activeEmotion.description
-                        }
-                      </div>
-                    </div>
-                  </div>
-
-                  <div className="px-3 pb-3">
-                    <div className="rounded-2xl border border-amber-100 bg-amber-50 p-3">
-                      <div className="text-[9px] font-black tracking-[0.12em] text-amber-700">
-                        FLAVOR
-                      </div>
-
-                      <div
-                        className={`mt-1 text-[10px] font-bold leading-4 ${
-                          flavorText.trim()
-                            ? 'text-amber-950'
-                            : 'text-amber-500'
-                        }`}
-                      >
-                        {flavorText.trim() ||
-                          '一言未設定'}
-                      </div>
-                    </div>
-                  </div>
-
-                  <div className="border-t border-gray-100 bg-white px-3 pb-3 pt-2">
-                    <div className="rounded-2xl border border-gray-200 bg-gray-50 p-3">
-                      <div className="text-[9px] font-black tracking-[0.12em] text-gray-500">
-                        REGISTERED USER
-                      </div>
-
-                      <div className="mt-1 text-sm font-black text-gray-950">
-                        {userName ||
-                          '未設定'}
-                      </div>
-
-                      {showProfileUrl && (
-                        <>
-                          <div className="mt-3 text-[8px] font-black text-gray-400">
-                            REALITYプロフィールURL
-                          </div>
-
-                          <div className="mt-0.5 break-all text-[10px] font-bold text-gray-700">
-                            {normalizeProfileUrl(
-                              profileUrl,
-                            ) ||
-                              '未設定'}
-                          </div>
-                        </>
-                      )}
-                    </div>
-                  </div>
-
-                  <div className="border-t border-gray-100 bg-white px-3 pb-4 pt-3">
-                    <div className="flex items-center justify-between gap-3 rounded-2xl border border-gray-200 bg-white p-3">
-                      <span className="text-[9px] font-black text-gray-500">
-                        カラー
-                      </span>
-
-                      <span className="inline-flex items-center gap-1.5 text-[9px] font-black text-gray-700">
-                        <span
-                          className="h-3 w-3 rounded-full border border-gray-300"
-                          style={{
-                            backgroundColor:
-                              selectedColorHex,
-                          }}
-                        />
-
-                        {selectedColorHex.toUpperCase()}
-                      </span>
-                    </div>
-                  </div>
-                </div>
+                <CardDetailView
+                  type="support"
+                  userName={userName}
+                  imageDataUrl={imageDataUrl}
+                  emotion={activeEmotion}
+                  effectName={effectName}
+                  flavorText={flavorText}
+                  selectedColorHex={selectedColorHex}
+                  profileUrl={profileUrl}
+                  showProfileUrl={showProfileUrl}
+                />
               </div>
 
               <button

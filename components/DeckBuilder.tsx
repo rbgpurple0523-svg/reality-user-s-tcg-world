@@ -1,12 +1,26 @@
 'use client';
 
-import React, { useEffect, useMemo, useState, ChangeEvent } from 'react';
+import React, {
+  useEffect,
+  useMemo,
+  useState,
+  ChangeEvent,
+} from 'react';
 import { ensureAnonymousAuth, db } from '@/lib/firebase';
-import { collection, getDocs, query, where } from 'firebase/firestore';
+import {
+  collection,
+  getDocs,
+  query,
+  where,
+} from 'firebase/firestore';
 import { CHARACTER_SAMPLE_CARDS } from './characterSampleCards';
 import { COORDINATE_PRESETS } from './EntryHub';
 import { EMOTION_PRESETS } from './emotionPresets';
-import { createVirtualSupportCards, VIRTUAL_SUPPORT_PREFIX } from './supportSampleCards';
+import {
+  createVirtualSupportCards,
+  VIRTUAL_SUPPORT_PREFIX,
+} from './supportSampleCards';
+import CardDetailView from './CardDetailView';
 
 // --- LocalStorage キー定義 ---
 const STORAGE_ENTRIES_KEY = 'reality_world_entries';
@@ -43,6 +57,10 @@ export interface EntryRecord {
   createdAt?: string;
   customSkills?: string[];
   skillDescriptions?: string[];
+  skillVoices?: string[];
+  flavorText?: string;
+  profileUrl?: string;
+  showProfileUrl?: boolean;
 }
 
 type PublicCardRecord = {
@@ -56,25 +74,46 @@ type PublicCardRecord = {
   color?: string;
   customSkills?: string[];
   skillDescriptions?: string[];
+  skillVoices?: string[];
   customEffectName?: string;
   description?: string;
   effect?: string;
   firstUser?: string;
   createdAt?: string;
+  flavorText?: string;
+  profileUrl?: string;
+  showProfileUrl?: boolean;
 };
 
-function readString(value: unknown): string | undefined {
-  return typeof value === 'string' ? value : undefined;
+function readString(
+  value: unknown,
+): string | undefined {
+  return typeof value === 'string'
+    ? value
+    : undefined;
 }
 
-function readStringArray(value: unknown): string[] | undefined {
+function readBoolean(
+  value: unknown,
+): boolean | undefined {
+  return typeof value === 'boolean'
+    ? value
+    : undefined;
+}
+
+function readStringArray(
+  value: unknown,
+): string[] | undefined {
   if (!Array.isArray(value)) return undefined;
 
   const result = value.filter(
-    (item): item is string => typeof item === 'string',
+    (item): item is string =>
+      typeof item === 'string',
   );
 
-  return result.length === value.length ? result : undefined;
+  return result.length === value.length
+    ? result
+    : undefined;
 }
 
 function parsePublicCard(
@@ -83,7 +122,10 @@ function parsePublicCard(
 ): PublicCardRecord | null {
   const cardType = data.cardType;
 
-  if (cardType !== 'coordinate' && cardType !== 'emotion') {
+  if (
+    cardType !== 'coordinate' &&
+    cardType !== 'emotion'
+  ) {
     return null;
   }
 
@@ -96,28 +138,61 @@ function parsePublicCard(
     imageUrl: readString(data.imageUrl),
     colorHex: readString(data.colorHex),
     color: readString(data.color),
-    customSkills: readStringArray(data.customSkills),
-    skillDescriptions: readStringArray(data.skillDescriptions),
-    customEffectName: readString(data.customEffectName),
-    description: readString(data.description),
+    customSkills: readStringArray(
+      data.customSkills,
+    ),
+    skillDescriptions: readStringArray(
+      data.skillDescriptions,
+    ),
+    skillVoices: readStringArray(
+      data.skillVoices,
+    ),
+    customEffectName: readString(
+      data.customEffectName,
+    ),
+    description: readString(
+      data.description,
+    ),
     effect: readString(data.effect),
     firstUser: readString(data.firstUser),
     createdAt: readString(data.createdAt),
+    flavorText: readString(data.flavorText),
+    profileUrl: readString(data.profileUrl),
+    showProfileUrl: readBoolean(
+      data.showProfileUrl,
+    ),
   };
 }
 
 function getCachedEntries(): EntryRecord[] {
   try {
-    const raw = localStorage.getItem(STORAGE_ENTRIES_KEY);
+    const raw = localStorage.getItem(
+      STORAGE_ENTRIES_KEY,
+    );
+
     if (!raw) return [];
 
-    const parsed = JSON.parse(raw) as unknown;
+    const parsed = JSON.parse(
+      raw,
+    ) as unknown;
+
     if (!Array.isArray(parsed)) return [];
 
-    return parsed.filter((entry): entry is EntryRecord => {
-      if (!entry || typeof entry !== 'object') return false;
-      return 'id' in entry && 'cardType' in entry;
-    });
+    return parsed.filter(
+      (entry): entry is EntryRecord => {
+        if (
+          !entry ||
+          typeof entry !== 'object'
+        ) {
+          return false;
+        }
+
+        return (
+          'id' in entry &&
+          'cardType' in entry
+        );
+      },
+    );
   } catch {
     return [];
   }
@@ -140,6 +215,10 @@ export interface AvatarCard {
   presetId?: string;
   customSkills?: string[];
   skillDescriptions?: string[];
+  skillVoices?: string[];
+  flavorText?: string;
+  profileUrl?: string;
+  showProfileUrl?: boolean;
 }
 
 export interface SupportCard {
@@ -152,6 +231,10 @@ export interface SupportCard {
   colorHex?: string;
   presetId?: string;
   isVirtual?: boolean;
+  userName?: string;
+  flavorText?: string;
+  profileUrl?: string;
+  showProfileUrl?: boolean;
 }
 
 export interface Deck {
@@ -193,12 +276,21 @@ export interface BattleDeckSnapshot {
   createdAt: string;
 }
 
-type PositionRole = 'vanguard' | 'center' | 'general';
+type PositionRole =
+  | 'vanguard'
+  | 'center'
+  | 'general';
 
 interface DeckBuilderProps {
-  onGoToCpuBattle?: (snapshot: BattleDeckSnapshot) => void;
-  onGoToBattle?: (snapshot: BattleDeckSnapshot) => void;
-  onDeckConfirmed?: (snapshot: BattleDeckSnapshot) => void;
+  onGoToCpuBattle?: (
+    snapshot: BattleDeckSnapshot,
+  ) => void;
+  onGoToBattle?: (
+    snapshot: BattleDeckSnapshot,
+  ) => void;
+  onDeckConfirmed?: (
+    snapshot: BattleDeckSnapshot,
+  ) => void;
   initialDeckId?: string | null;
   battleButtonLabel?: string;
   onGoToEntryHub?: () => void;
@@ -212,90 +304,240 @@ export default function DeckBuilder({
   battleButtonLabel = '⚔️ CPU対戦で試す',
   onGoToEntryHub,
 }: DeckBuilderProps) {
-  const goToCpuBattle = onGoToCpuBattle ?? onGoToBattle;
-  const [cards, setCards] = useState<AvatarCard[]>([]);
-  const [supportPool, setSupportPool] = useState<SupportCard[]>([]);
+  const goToCpuBattle =
+    onGoToCpuBattle ?? onGoToBattle;
 
-  const [decks, setDecks] = useState<Deck[]>([]);
-  const [selectedDeckId, setSelectedDeckId] = useState<string | null>(null);
-  const [deckName, setDeckName] = useState<string>('新しいチーム');
+  const [cards, setCards] = useState<
+    AvatarCard[]
+  >([]);
 
-  const [vanguardId, setVanguardId] = useState<string | null>(null);
-  const [centerId, setCenterId] = useState<string | null>(null);
-  const [generalId, setGeneralId] = useState<string | null>(null);
-  const [supportIds, setSupportIds] = useState<string[]>([]);
+  const [supportPool, setSupportPool] =
+    useState<SupportCard[]>([]);
 
-  const [selectedTargetRole, setSelectedTargetRole] = useState<PositionRole | null>(null);
-  const [selectedCardId, setSelectedCardId] = useState<string | null>(null);
+  const [decks, setDecks] = useState<
+    Deck[]
+  >([]);
 
-  const [message, setMessage] = useState<string>('');
+  const [selectedDeckId, setSelectedDeckId] =
+    useState<string | null>(null);
 
-  const [isSaveAsOpen, setIsSaveAsOpen] = useState<boolean>(false);
-  const [saveAsName, setSaveAsName] = useState<string>('');
-  const [saveAsConflictName, setSaveAsConflictName] = useState<string | null>(null);
+  const [deckName, setDeckName] =
+    useState<string>('新しいチーム');
 
-  const [isCharFilterOpen, setIsCharFilterOpen] = useState<boolean>(false);
-  const [charSearchQuery, setCharSearchQuery] = useState<string>('');
-  const [selectedColors, setSelectedColors] = useState<string[]>([]);
-  const [selectedCoordinateTypes, setSelectedCoordinateTypes] = useState<string[]>([]);
+  const [vanguardId, setVanguardId] =
+    useState<string | null>(null);
 
-  const [supSearchQuery, setSupSearchQuery] = useState<string>('');
-  const [isSupportFilterOpen, setIsSupportFilterOpen] = useState<boolean>(false);
-  const [selectedSupportCategories, setSelectedSupportCategories] = useState<string[]>([]);
-  const [supportPage, setSupportPage] = useState<number>(1);
-  const [selectedSupportDetail, setSelectedSupportDetail] = useState<SupportCard | null>(null);
-  const [selectedCharacterDetail, setSelectedCharacterDetail] = useState<AvatarCard | null>(null);
-  const [isDeckDashboardOpen, setIsDeckDashboardOpen] = useState<boolean>(false);
-  const [isOtherMenuOpen, setIsOtherMenuOpen] = useState<boolean>(false);
+  const [centerId, setCenterId] =
+    useState<string | null>(null);
+
+  const [generalId, setGeneralId] =
+    useState<string | null>(null);
+
+  const [supportIds, setSupportIds] =
+    useState<string[]>([]);
+
+  const [
+    selectedTargetRole,
+    setSelectedTargetRole,
+  ] =
+    useState<PositionRole | null>(null);
+
+  const [
+    selectedCardId,
+    setSelectedCardId,
+  ] =
+    useState<string | null>(null);
+
+  const [message, setMessage] =
+    useState<string>('');
+
+  const [isSaveAsOpen, setIsSaveAsOpen] =
+    useState<boolean>(false);
+
+  const [saveAsName, setSaveAsName] =
+    useState<string>('');
+
+  const [
+    saveAsConflictName,
+    setSaveAsConflictName,
+  ] =
+    useState<string | null>(null);
+
+  const [
+    isCharFilterOpen,
+    setIsCharFilterOpen,
+  ] =
+    useState<boolean>(false);
+
+  const [
+    charSearchQuery,
+    setCharSearchQuery,
+  ] =
+    useState<string>('');
+
+  const [
+    selectedColors,
+    setSelectedColors,
+  ] =
+    useState<string[]>([]);
+
+  const [
+    selectedCoordinateTypes,
+    setSelectedCoordinateTypes,
+  ] =
+    useState<string[]>([]);
+
+  const [
+    supSearchQuery,
+    setSupSearchQuery,
+  ] =
+    useState<string>('');
+
+  const [
+    isSupportFilterOpen,
+    setIsSupportFilterOpen,
+  ] =
+    useState<boolean>(false);
+
+  const [
+    selectedSupportCategories,
+    setSelectedSupportCategories,
+  ] =
+    useState<string[]>([]);
+
+  const [
+    supportPage,
+    setSupportPage,
+  ] =
+    useState<number>(1);
+
+  const [
+    selectedSupportDetail,
+    setSelectedSupportDetail,
+  ] =
+    useState<SupportCard | null>(null);
+
+  const [
+    selectedCharacterDetail,
+    setSelectedCharacterDetail,
+  ] =
+    useState<AvatarCard | null>(null);
+
+  const [
+    isDeckDashboardOpen,
+    setIsDeckDashboardOpen,
+  ] =
+    useState<boolean>(false);
+
+  const [
+    isOtherMenuOpen,
+    setIsOtherMenuOpen,
+  ] =
+    useState<boolean>(false);
+
   const SUPPORT_PAGE_SIZE = 20;
 
-  const hasUnsavedChanges = useMemo(() => {
-    if (!selectedDeckId) return true;
+  const hasUnsavedChanges =
+    useMemo(() => {
+      if (!selectedDeckId) return true;
 
-    const savedDeck = decks.find(deck => deck.id === selectedDeckId);
-    if (!savedDeck) return true;
+      const savedDeck = decks.find(
+        deck =>
+          deck.id === selectedDeckId,
+      );
 
-    return (
-      savedDeck.name.trim() !== deckName.trim() ||
-      savedDeck.vanguardCardId !== vanguardId ||
-      savedDeck.centerCardId !== centerId ||
-      savedDeck.generalCardId !== generalId ||
-      JSON.stringify(savedDeck.supportCardIds || []) !== JSON.stringify(supportIds)
-    );
-  }, [
-    decks,
-    selectedDeckId,
-    deckName,
-    vanguardId,
-    centerId,
-    generalId,
-    supportIds,
-  ]);
+      if (!savedDeck) return true;
 
-  const resolveSupportIds = (ids: string[], emotionEntries: EntryRecord[]) => {
-    const realByPreset = new Map<string, string[]>();
+      return (
+        savedDeck.name.trim() !==
+          deckName.trim() ||
+        savedDeck.vanguardCardId !==
+          vanguardId ||
+        savedDeck.centerCardId !==
+          centerId ||
+        savedDeck.generalCardId !==
+          generalId ||
+        JSON.stringify(
+          savedDeck.supportCardIds || [],
+        ) !==
+          JSON.stringify(supportIds)
+      );
+    }, [
+      decks,
+      selectedDeckId,
+      deckName,
+      vanguardId,
+      centerId,
+      generalId,
+      supportIds,
+    ]);
+
+  const resolveSupportIds = (
+    ids: string[],
+    emotionEntries: EntryRecord[],
+  ) => {
+    const realByPreset =
+      new Map<string, string[]>();
 
     emotionEntries.forEach(entry => {
       if (!entry.presetId) return;
-      const list = realByPreset.get(entry.presetId) || [];
+
+      const list =
+        realByPreset.get(
+          entry.presetId,
+        ) || [];
+
       list.push(entry.id);
-      realByPreset.set(entry.presetId, list);
+
+      realByPreset.set(
+        entry.presetId,
+        list,
+      );
     });
 
-    const usedPerPreset = new Map<string, number>();
+    const usedPerPreset =
+      new Map<string, number>();
 
     return ids.map(id => {
-      if (!id.startsWith(VIRTUAL_SUPPORT_PREFIX)) return id;
+      if (
+        !id.startsWith(
+          VIRTUAL_SUPPORT_PREFIX,
+        )
+      ) {
+        return id;
+      }
 
-      const presetId = id.slice(VIRTUAL_SUPPORT_PREFIX.length);
-      const realIds = realByPreset.get(presetId);
+      const presetId =
+        id.slice(
+          VIRTUAL_SUPPORT_PREFIX.length,
+        );
 
-      if (!realIds || realIds.length === 0) return id;
+      const realIds =
+        realByPreset.get(
+          presetId,
+        );
 
-      const used = usedPerPreset.get(presetId) || 0;
-      const resolved = realIds[used % realIds.length];
+      if (
+        !realIds ||
+        realIds.length === 0
+      ) {
+        return id;
+      }
 
-      usedPerPreset.set(presetId, used + 1);
+      const used =
+        usedPerPreset.get(
+          presetId,
+        ) || 0;
+
+      const resolved =
+        realIds[
+          used % realIds.length
+        ];
+
+      usedPerPreset.set(
+        presetId,
+        used + 1,
+      );
 
       return resolved;
     });
@@ -305,213 +547,447 @@ export default function DeckBuilder({
     let cancelled = false;
 
     const initialize = async () => {
-      const defaultAvatars: AvatarCard[] = CHARACTER_SAMPLE_CARDS.map((a) => ({
-        id: a.id,
-        userName: a.userName,
-        color: a.color,
-        archetype: a.archetype,
-        imageDataUrl: a.imageDataUrl,
-        hp: a.stats.hp,
-        ap: a.stats.intellect,
-        intellect: a.stats.intellect,
-        dexterity: a.stats.dexterity,
-        charm: a.stats.charm,
-        favoredSeason: a.favoredSeason,
-        presetId: a.presetId,
-        customSkills: a.customSkills,
-        skillDescriptions: (() => {
-          const preset = COORDINATE_PRESETS.find((p) => p.id === a.presetId);
-          return preset ? [...preset.skillDescriptions] : undefined;
-        })(),
-      }));
+      const defaultAvatars: AvatarCard[] =
+        CHARACTER_SAMPLE_CARDS.map(a => ({
+          id: a.id,
+          userName: a.userName,
+          color: a.color,
+          archetype: a.archetype,
+          imageDataUrl:
+            a.imageDataUrl,
+          hp: a.stats.hp,
+          ap: a.stats.intellect,
+          intellect:
+            a.stats.intellect,
+          dexterity:
+            a.stats.dexterity,
+          charm: a.stats.charm,
+          favoredSeason:
+            a.favoredSeason,
+          presetId: a.presetId,
+          customSkills:
+            a.customSkills,
+          skillDescriptions:
+            (() => {
+              const preset =
+                COORDINATE_PRESETS.find(
+                  p =>
+                    p.id ===
+                    a.presetId,
+                );
 
-      const cachedEntries = getCachedEntries();
-      let sharedEntries: EntryRecord[] = [];
+              return preset
+                ? [
+                    ...preset.skillDescriptions,
+                  ]
+                : undefined;
+            })(),
+        }));
+
+      const cachedEntries =
+        getCachedEntries();
+
+      let sharedEntries:
+        EntryRecord[] | null =
+        null;
 
       try {
         await ensureAnonymousAuth();
 
-        const cardsQuery = query(
-          collection(db, 'cards'),
-          where('status', '==', 'active'),
+        const cardsQuery =
+          query(
+            collection(
+              db,
+              'cards',
+            ),
+            where(
+              'status',
+              '==',
+              'active',
+            ),
+          );
+
+        const snapshot =
+          await getDocs(
+            cardsQuery,
+          );
+
+        sharedEntries =
+          snapshot.docs
+            .map(doc =>
+              parsePublicCard(
+                doc.id,
+                doc.data() as Record<
+                  string,
+                  unknown
+                >,
+              ),
+            )
+            .filter(
+              (
+                card,
+              ): card is PublicCardRecord =>
+                Boolean(card),
+            )
+            .map(card => ({
+              id: card.id,
+              cardType:
+                card.cardType,
+              presetId:
+                card.presetId,
+              userName:
+                card.userName,
+              imageDataUrl:
+                card.imageDataUrl,
+              imageUrl:
+                card.imageUrl,
+              colorHex:
+                card.colorHex,
+              color:
+                card.color,
+              customSkills:
+                card.customSkills,
+              skillDescriptions:
+                card.skillDescriptions,
+              skillVoices:
+                card.skillVoices,
+              customEffectName:
+                card.customEffectName,
+              description:
+                card.description,
+              effect:
+                card.effect,
+              firstUser:
+                card.firstUser,
+              createdAt:
+                card.createdAt,
+              flavorText:
+                card.flavorText,
+              profileUrl:
+                card.profileUrl,
+              showProfileUrl:
+                card.showProfileUrl,
+            }));
+      } catch (error) {
+        console.error(
+          'Failed to load shared cards',
+          error,
         );
 
-        const snapshot = await getDocs(cardsQuery);
-
-        sharedEntries = snapshot.docs
-          .map((doc) => parsePublicCard(doc.id, doc.data() as Record<string, unknown>))
-          .filter((card): card is PublicCardRecord => Boolean(card))
-          .map((card) => ({
-            id: card.id,
-            cardType: card.cardType,
-            presetId: card.presetId,
-            userName: card.userName,
-            imageDataUrl: card.imageDataUrl,
-            imageUrl: card.imageUrl,
-            colorHex: card.colorHex,
-            color: card.color,
-            customSkills: card.customSkills,
-            skillDescriptions: card.skillDescriptions,
-            customEffectName: card.customEffectName,
-            description: card.description,
-            effect: card.effect,
-            firstUser: card.firstUser,
-            createdAt: card.createdAt,
-          }));
-      } catch (error) {
-        console.error('Failed to load shared cards', error);
-
-        if (!cancelled && cachedEntries.length === 0) {
-          setMessage('カードライブラリを読み込めませんでした。公式カードを表示しています。');
+        if (
+          !cancelled &&
+          cachedEntries.length === 0
+        ) {
+          setMessage(
+            'カードライブラリを読み込めませんでした。公式カードを表示しています。',
+          );
         }
       }
 
       if (cancelled) return;
 
-      const mergedEntries = new Map<string, EntryRecord>();
+      /*
+       * Firestore取得成功時はFirestoreを正とする。
+       *
+       * 以前は cachedEntries と sharedEntries を
+       * マージしていたため、Firestore上で削除済みの
+       * カードがlocalStorageから復活する可能性があった。
+       *
+       * Firestore取得失敗時だけlocalStorageを
+       * フォールバックとして使用する。
+       */
+      const allEntries =
+        sharedEntries ??
+        cachedEntries;
 
-      cachedEntries.forEach((entry) => {
-        mergedEntries.set(entry.id, entry);
-      });
-
-      sharedEntries.forEach((entry) => {
-        mergedEntries.set(entry.id, entry);
-      });
-
-      const allEntries = Array.from(mergedEntries.values());
-
-      const loadedAvatars: AvatarCard[] = allEntries
-        .filter((entry) => entry.cardType === 'coordinate')
-        .map((entry) => {
-          const preset = entry.presetId
-            ? COORDINATE_PRESETS.find((p) => p.id === entry.presetId)
-            : undefined;
-
-          const savedSkills =
-            entry.customSkills && entry.customSkills.length === 4
-              ? [...entry.customSkills]
-              : preset?.defaultSkills;
-
-          const presetStats = preset?.stats;
-
-          return {
-            id: entry.id,
-            userName: entry.userName || entry.title || '無題のキャラ',
-            color: entry.color || entry.type || 'ノーマル',
-            archetype: entry.archetype || entry.rarity || 'バランス型',
-            imageDataUrl: entry.imageDataUrl || entry.imageUrl || '',
-            colorHex: entry.colorHex,
-            hp: presetStats?.hp ?? entry.hp,
-            ap: presetStats?.intellect ?? entry.ap,
-            intellect: presetStats?.intellect ?? entry.ap,
-            dexterity: presetStats?.dexterity ?? entry.dexterity,
-            charm: presetStats?.charm ?? entry.charm,
-            favoredSeason:
-              entry.favoredSeason ||
-              (entry.archetype === 'マッスル型'
-                ? '春'
-                : entry.archetype === '頭脳型'
-                  ? '秋'
-                  : entry.archetype === '職人型'
-                    ? '冬'
-                    : '夏'),
-            presetId: entry.presetId,
-            customSkills: savedSkills,
-            skillDescriptions: preset
-              ? [...preset.skillDescriptions]
-              : entry.skillDescriptions,
-          };
-        });
-
-      const combinedAvatars = [...defaultAvatars];
-
-      loadedAvatars.forEach((avatar) => {
-        if (!combinedAvatars.some((item) => item.id === avatar.id)) {
-          combinedAvatars.push(avatar);
+      if (
+        sharedEntries !== null
+      ) {
+        try {
+          localStorage.setItem(
+            STORAGE_ENTRIES_KEY,
+            JSON.stringify(
+              sharedEntries,
+            ),
+          );
+        } catch {
+          // localStorage保存失敗はカード表示を妨げない
         }
-      });
+      }
+
+      const loadedAvatars: AvatarCard[] =
+        allEntries
+          .filter(
+            entry =>
+              entry.cardType ===
+              'coordinate',
+          )
+          .map(entry => {
+            const preset =
+              entry.presetId
+                ? COORDINATE_PRESETS.find(
+                    p =>
+                      p.id ===
+                      entry.presetId,
+                  )
+                : undefined;
+
+            const savedSkills =
+              entry.customSkills &&
+              entry.customSkills.length ===
+                4
+                ? [
+                    ...entry.customSkills,
+                  ]
+                : preset?.defaultSkills;
+
+            const presetStats =
+              preset?.stats;
+
+            return {
+              id: entry.id,
+              userName:
+                entry.userName ||
+                entry.title ||
+                '無題のキャラ',
+              color:
+                entry.color ||
+                entry.type ||
+                'ノーマル',
+              archetype:
+                entry.archetype ||
+                entry.rarity ||
+                'バランス型',
+              imageDataUrl:
+                entry.imageDataUrl ||
+                entry.imageUrl ||
+                '',
+              colorHex:
+                entry.colorHex,
+              hp:
+                presetStats?.hp ??
+                entry.hp,
+              ap:
+                presetStats?.intellect ??
+                entry.ap,
+              intellect:
+                presetStats?.intellect ??
+                entry.ap,
+              dexterity:
+                presetStats?.dexterity ??
+                entry.dexterity,
+              charm:
+                presetStats?.charm ??
+                entry.charm,
+              favoredSeason:
+                entry.favoredSeason ||
+                (entry.archetype ===
+                'マッスル型'
+                  ? '春'
+                  : entry.archetype ===
+                      '頭脳型'
+                    ? '秋'
+                    : entry.archetype ===
+                        '職人型'
+                      ? '冬'
+                      : '夏'),
+              presetId:
+                entry.presetId,
+              customSkills:
+                savedSkills,
+              skillDescriptions:
+                preset
+                  ? [
+                      ...preset.skillDescriptions,
+                    ]
+                  : entry.skillDescriptions,
+              skillVoices:
+                entry.skillVoices,
+              flavorText:
+                entry.flavorText,
+              profileUrl:
+                entry.profileUrl,
+              showProfileUrl:
+                entry.showProfileUrl,
+            };
+          });
+
+      const combinedAvatars = [
+        ...defaultAvatars,
+      ];
+
+      loadedAvatars.forEach(
+        avatar => {
+          if (
+            !combinedAvatars.some(
+              item =>
+                item.id ===
+                avatar.id,
+            )
+          ) {
+            combinedAvatars.push(
+              avatar,
+            );
+          }
+        },
+      );
 
       setCards(combinedAvatars);
 
-      const emotionEntries = allEntries.filter(
-        (entry) => entry.cardType === 'emotion',
+      const emotionEntries =
+        allEntries.filter(
+          entry =>
+            entry.cardType ===
+            'emotion',
+        );
+
+      const realSupportCards:
+        SupportCard[] =
+        emotionEntries.map(entry => {
+          const preset =
+            entry.presetId
+              ? EMOTION_PRESETS.find(
+                  emotion =>
+                    emotion.id ===
+                    entry.presetId,
+                )
+              : undefined;
+
+          return {
+            id: entry.id,
+            name:
+              entry.customEffectName ||
+              entry.title ||
+              preset?.name ||
+              '無題のサポート',
+            description:
+              preset?.description ||
+              entry.effect ||
+              entry.description ||
+              '',
+            cost: 1,
+            category:
+              preset?.effectCategory ||
+              entry.category ||
+              'サポート',
+            imageDataUrl:
+              entry.imageDataUrl ||
+              entry.imageUrl ||
+              '',
+            colorHex:
+              entry.colorHex,
+            presetId:
+              entry.presetId,
+            isVirtual: false,
+            userName:
+              entry.userName,
+            flavorText:
+              entry.flavorText,
+            profileUrl:
+              entry.profileUrl,
+            showProfileUrl:
+              entry.showProfileUrl,
+          };
+        });
+
+      const enteredPresetIds =
+        new Set(
+          realSupportCards
+            .map(
+              support =>
+                support.presetId,
+            )
+            .filter(
+              (
+                id,
+              ): id is string =>
+                Boolean(id),
+            ),
+        );
+
+      const virtualEmotionSupports =
+        createVirtualSupportCards(
+          enteredPresetIds,
+        );
+
+      const combinedSupports:
+        SupportCard[] = [
+        ...virtualEmotionSupports,
+      ];
+
+      realSupportCards.forEach(
+        support => {
+          if (
+            !combinedSupports.some(
+              item =>
+                item.id ===
+                support.id,
+            )
+          ) {
+            combinedSupports.push(
+              support,
+            );
+          }
+        },
       );
 
-      const realSupportCards: SupportCard[] = emotionEntries.map((entry) => {
-        const preset = entry.presetId
-          ? EMOTION_PRESETS.find((emotion) => emotion.id === entry.presetId)
-          : undefined;
-
-        return {
-          id: entry.id,
-          name:
-            entry.customEffectName ||
-            entry.title ||
-            preset?.name ||
-            '無題のサポート',
-          description:
-            preset?.description ||
-            entry.effect ||
-            entry.description ||
-            '',
-          cost: 1,
-          category:
-            preset?.effectCategory ||
-            entry.category ||
-            'サポート',
-          imageDataUrl: entry.imageDataUrl || entry.imageUrl || '',
-          colorHex: entry.colorHex,
-          presetId: entry.presetId,
-          isVirtual: false,
-        };
-      });
-
-      const enteredPresetIds = new Set(
-        realSupportCards
-          .map((support) => support.presetId)
-          .filter((id): id is string => Boolean(id)),
+      setSupportPool(
+        combinedSupports,
       );
 
-      const virtualEmotionSupports = createVirtualSupportCards(
-        enteredPresetIds,
-      );
-
-      const combinedSupports: SupportCard[] = [...virtualEmotionSupports];
-
-      realSupportCards.forEach((support) => {
-        if (!combinedSupports.some((item) => item.id === support.id)) {
-          combinedSupports.push(support);
-        }
-      });
-
-      setSupportPool(combinedSupports);
-
-      const rawDecks = localStorage.getItem(STORAGE_DECKS_KEY);
+      const rawDecks =
+        localStorage.getItem(
+          STORAGE_DECKS_KEY,
+        );
 
       if (rawDecks) {
         try {
-          const parsedDecks: Deck[] = JSON.parse(rawDecks);
+          const parsedDecks:
+            Deck[] =
+            JSON.parse(
+              rawDecks,
+            );
 
-          const resolvedDecks = parsedDecks.map((deck) => ({
-            ...deck,
-            supportCardIds: resolveSupportIds(
-              deck.supportCardIds || [],
-              emotionEntries,
-            ),
-          }));
+          const resolvedDecks =
+            parsedDecks.map(
+              deck => ({
+                ...deck,
+                supportCardIds:
+                  resolveSupportIds(
+                    deck.supportCardIds ||
+                      [],
+                    emotionEntries,
+                  ),
+              }),
+            );
 
-          setDecks(resolvedDecks);
+          setDecks(
+            resolvedDecks,
+          );
 
-          if (resolvedDecks.length > 0) {
-            const initialDeck = initialDeckId
-              ? resolvedDecks.find((deck) => deck.id === initialDeckId) ||
-                resolvedDecks[0]
-              : resolvedDecks[0];
+          if (
+            resolvedDecks.length >
+            0
+          ) {
+            const initialDeck =
+              initialDeckId
+                ? resolvedDecks.find(
+                    deck =>
+                      deck.id ===
+                      initialDeckId,
+                  ) ||
+                  resolvedDecks[0]
+                : resolvedDecks[0];
 
-            loadDeckToEditor(initialDeck);
+            loadDeckToEditor(
+              initialDeck,
+            );
           }
         } catch (error) {
-          console.error('Failed to parse decks', error);
+          console.error(
+            'Failed to parse decks',
+            error,
+          );
         }
       }
     };
@@ -523,63 +999,150 @@ export default function DeckBuilder({
     };
   }, []);
 
-  const groupedSupportCards = useMemo(() => {
-    const map = new Map<string, number>();
+  const groupedSupportCards =
+    useMemo(() => {
+      const map =
+        new Map<string, number>();
 
-    supportIds.forEach(id => {
-      map.set(id, (map.get(id) || 0) + 1);
-    });
+      supportIds.forEach(id => {
+        map.set(
+          id,
+          (map.get(id) || 0) +
+            1,
+        );
+      });
 
-    return Array.from(map.entries()).map(([id, count]) => ({
-      id,
-      count,
-      data: supportPool.find(s => s.id === id)
-    }));
-  }, [supportIds, supportPool]);
+      return Array.from(
+        map.entries(),
+      ).map(
+        ([id, count]) => ({
+          id,
+          count,
+          data: supportPool.find(
+            s => s.id === id,
+          ),
+        }),
+      );
+    }, [
+      supportIds,
+      supportPool,
+    ]);
 
-  const COLOR_TYPE_OPTIONS = ['マゼンタ系', 'シアン系', 'イエロー系'];
-  const COORDINATE_TYPE_OPTIONS = ['情熱', '知性', '技能', '愛嬌'];
+  const COLOR_TYPE_OPTIONS = [
+    'マゼンタ系',
+    'シアン系',
+    'イエロー系',
+  ];
 
-  const getCardColorType = (card: AvatarCard) => {
-    if (card.color === '青') return 'マゼンタ系';
-    if (card.color === '赤') return 'シアン系';
-    if (card.color === '黄') return 'イエロー系';
+  const COORDINATE_TYPE_OPTIONS = [
+    '情熱',
+    '知性',
+    '技能',
+    '愛嬌',
+  ];
+
+  const getCardColorType = (
+    card: AvatarCard,
+  ) => {
+    if (card.color === '青')
+      return 'マゼンタ系';
+
+    if (card.color === '赤')
+      return 'シアン系';
+
+    if (card.color === '黄')
+      return 'イエロー系';
+
     return '';
   };
 
-  const getCardCoordinateType = (card: AvatarCard) => {
-    const preset = card.presetId
-      ? COORDINATE_PRESETS.find(p => p.id === card.presetId)
-      : undefined;
+  const getCardCoordinateType = (
+    card: AvatarCard,
+  ) => {
+    const preset =
+      card.presetId
+        ? COORDINATE_PRESETS.find(
+            p =>
+              p.id ===
+              card.presetId,
+          )
+        : undefined;
 
-    const code = preset?.code?.toLowerCase() || '';
+    const code =
+      preset?.code?.toLowerCase() ||
+      '';
 
-    if (code.startsWith('a')) return '情熱';
-    if (code.startsWith('w')) return '知性';
-    if (code.startsWith('t')) return '技能';
-    if (code.startsWith('c')) return '愛嬌';
+    if (code.startsWith('a'))
+      return '情熱';
 
-    if (card.archetype === 'マッスル型') return '情熱';
-    if (card.archetype === '頭脳型') return '知性';
-    if (card.archetype === '職人型') return '技能';
-    if (card.archetype === 'ディーバ型') return '愛嬌';
+    if (code.startsWith('w'))
+      return '知性';
+
+    if (code.startsWith('t'))
+      return '技能';
+
+    if (code.startsWith('c'))
+      return '愛嬌';
+
+    if (
+      card.archetype ===
+      'マッスル型'
+    )
+      return '情熱';
+
+    if (
+      card.archetype ===
+      '頭脳型'
+    )
+      return '知性';
+
+    if (
+      card.archetype ===
+      '職人型'
+    )
+      return '技能';
+
+    if (
+      card.archetype ===
+      'ディーバ型'
+    )
+      return '愛嬌';
 
     return '';
   };
 
-  const toggleColorFilter = (colorType: string) => {
+  const toggleColorFilter = (
+    colorType: string,
+  ) => {
     setSelectedColors(prev =>
       prev.includes(colorType)
-        ? prev.filter(c => c !== colorType)
-        : [...prev, colorType]
+        ? prev.filter(
+            c => c !== colorType,
+          )
+        : [
+            ...prev,
+            colorType,
+          ],
     );
   };
 
-  const toggleCoordinateTypeFilter = (coordinateType: string) => {
-    setSelectedCoordinateTypes(prev =>
-      prev.includes(coordinateType)
-        ? prev.filter(type => type !== coordinateType)
-        : [...prev, coordinateType]
+  const toggleCoordinateTypeFilter = (
+    coordinateType: string,
+  ) => {
+    setSelectedCoordinateTypes(
+      prev =>
+        prev.includes(
+          coordinateType,
+        )
+          ? prev.filter(
+              type =>
+                type !==
+                coordinateType,
+            )
+          : [
+              ...prev,
+              coordinateType,
+            ],
     );
   };
 
@@ -589,118 +1152,240 @@ export default function DeckBuilder({
     setSelectedCoordinateTypes([]);
   };
 
-  const filteredCards = useMemo(() => {
-    return cards.filter(card => {
-      const colorType = getCardColorType(card);
-      const coordinateType = getCardCoordinateType(card);
+  const filteredCards =
+    useMemo(() => {
+      return cards.filter(
+        card => {
+          const colorType =
+            getCardColorType(
+              card,
+            );
 
-      if (charSearchQuery.trim()) {
-        const q = charSearchQuery.toLowerCase();
-        const matchName = card.userName?.toLowerCase().includes(q);
-        const matchColor = card.color?.toLowerCase().includes(q);
-        const matchColorType = colorType.toLowerCase().includes(q);
-        const matchCoordinateType = coordinateType.toLowerCase().includes(q);
+          const coordinateType =
+            getCardCoordinateType(
+              card,
+            );
 
-        if (!matchName && !matchColor && !matchColorType && !matchCoordinateType) {
-          return false;
+          if (
+            charSearchQuery.trim()
+          ) {
+            const q =
+              charSearchQuery.toLowerCase();
+
+            const matchName =
+              card.userName
+                ?.toLowerCase()
+                .includes(q);
+
+            const matchColor =
+              card.color
+                ?.toLowerCase()
+                .includes(q);
+
+            const matchColorType =
+              colorType
+                .toLowerCase()
+                .includes(q);
+
+            const matchCoordinateType =
+              coordinateType
+                .toLowerCase()
+                .includes(q);
+
+            if (
+              !matchName &&
+              !matchColor &&
+              !matchColorType &&
+              !matchCoordinateType
+            ) {
+              return false;
+            }
+          }
+
+          if (
+            selectedColors.length >
+              0 &&
+            !selectedColors.includes(
+              colorType,
+            )
+          ) {
+            return false;
+          }
+
+          if (
+            selectedCoordinateTypes.length >
+              0 &&
+            !selectedCoordinateTypes.includes(
+              coordinateType,
+            )
+          ) {
+            return false;
+          }
+
+          return true;
+        },
+      );
+    }, [
+      cards,
+      charSearchQuery,
+      selectedColors,
+      selectedCoordinateTypes,
+    ]);
+
+  const availableSupportCategories =
+    useMemo(() => {
+      const set =
+        new Set<string>();
+
+      supportPool.forEach(sup => {
+        if (sup.category) {
+          set.add(
+            sup.category,
+          );
         }
-      }
+      });
 
-      if (
-        selectedColors.length > 0 &&
-        !selectedColors.includes(colorType)
-      ) {
-        return false;
-      }
+      return Array.from(set);
+    }, [supportPool]);
 
-      if (
-        selectedCoordinateTypes.length > 0 &&
-        !selectedCoordinateTypes.includes(coordinateType)
-      ) {
-        return false;
-      }
-
-      return true;
-    });
-  }, [cards, charSearchQuery, selectedColors, selectedCoordinateTypes]);
-
-  const availableSupportCategories = useMemo(() => {
-    const set = new Set<string>();
-
-    supportPool.forEach(sup => {
-      if (sup.category) set.add(sup.category);
-    });
-
-    return Array.from(set);
-  }, [supportPool]);
-
-  const toggleSupportCategoryFilter = (category: string) => {
-    setSelectedSupportCategories(prev =>
-      prev.includes(category)
-        ? prev.filter(c => c !== category)
-        : [...prev, category]
-    );
-  };
+  const toggleSupportCategoryFilter =
+    (category: string) => {
+      setSelectedSupportCategories(
+        prev =>
+          prev.includes(category)
+            ? prev.filter(
+                c =>
+                  c !==
+                  category,
+              )
+            : [
+                ...prev,
+                category,
+              ],
+      );
+    };
 
   const clearSupportFilters = () => {
     setSupSearchQuery('');
-    setSelectedSupportCategories([]);
+    setSelectedSupportCategories(
+      [],
+    );
   };
 
-  const filteredSupportCards = useMemo(() => {
-    return supportPool.filter(sup => {
-      if (supSearchQuery.trim()) {
-        const q = supSearchQuery.toLowerCase();
-        const matchName = sup.name.toLowerCase().includes(q);
-        const matchDesc = sup.description.toLowerCase().includes(q);
+  const filteredSupportCards =
+    useMemo(() => {
+      return supportPool.filter(
+        sup => {
+          if (
+            supSearchQuery.trim()
+          ) {
+            const q =
+              supSearchQuery.toLowerCase();
 
-        if (!matchName && !matchDesc) return false;
-      }
+            const matchName =
+              sup.name
+                .toLowerCase()
+                .includes(q);
 
-      if (
-        selectedSupportCategories.length > 0 &&
-        !selectedSupportCategories.includes(sup.category || '')
-      ) {
-        return false;
-      }
+            const matchDesc =
+              sup.description
+                .toLowerCase()
+                .includes(q);
 
-      return true;
-    });
-  }, [supportPool, supSearchQuery, selectedSupportCategories]);
+            if (
+              !matchName &&
+              !matchDesc
+            ) {
+              return false;
+            }
+          }
 
-  const supportTotalPages = Math.max(
-    1,
-    Math.ceil(filteredSupportCards.length / SUPPORT_PAGE_SIZE),
-  );
+          if (
+            selectedSupportCategories.length >
+              0 &&
+            !selectedSupportCategories.includes(
+              sup.category || '',
+            )
+          ) {
+            return false;
+          }
 
-  const paginatedSupportCards = useMemo(() => {
-    const start = (supportPage - 1) * SUPPORT_PAGE_SIZE;
-    return filteredSupportCards.slice(
-      start,
-      start + SUPPORT_PAGE_SIZE,
+          return true;
+        },
+      );
+    }, [
+      supportPool,
+      supSearchQuery,
+      selectedSupportCategories,
+    ]);
+
+  const supportTotalPages =
+    Math.max(
+      1,
+      Math.ceil(
+        filteredSupportCards.length /
+          SUPPORT_PAGE_SIZE,
+      ),
     );
-  }, [filteredSupportCards, supportPage]);
+
+  const paginatedSupportCards =
+    useMemo(() => {
+      const start =
+        (supportPage - 1) *
+        SUPPORT_PAGE_SIZE;
+
+      return filteredSupportCards.slice(
+        start,
+        start +
+          SUPPORT_PAGE_SIZE,
+      );
+    }, [
+      filteredSupportCards,
+      supportPage,
+    ]);
 
   const activeSupportFilterCount =
-    selectedSupportCategories.length + (supSearchQuery ? 1 : 0);
+    selectedSupportCategories.length +
+    (supSearchQuery ? 1 : 0);
 
   useEffect(() => {
     setSupportPage(1);
-  }, [supSearchQuery, selectedSupportCategories]);
+  }, [
+    supSearchQuery,
+    selectedSupportCategories,
+  ]);
 
   useEffect(() => {
-    if (supportPage > supportTotalPages) {
-      setSupportPage(supportTotalPages);
+    if (
+      supportPage >
+      supportTotalPages
+    ) {
+      setSupportPage(
+        supportTotalPages,
+      );
     }
-  }, [supportPage, supportTotalPages]);
+  }, [
+    supportPage,
+    supportTotalPages,
+  ]);
 
-  const loadDeckToEditor = (deck: Deck) => {
+  const loadDeckToEditor = (
+    deck: Deck,
+  ) => {
     setSelectedDeckId(deck.id);
     setDeckName(deck.name);
-    setVanguardId(deck.vanguardCardId);
-    setCenterId(deck.centerCardId);
-    setGeneralId(deck.generalCardId);
-    setSupportIds(deck.supportCardIds || []);
+    setVanguardId(
+      deck.vanguardCardId,
+    );
+    setCenterId(
+      deck.centerCardId,
+    );
+    setGeneralId(
+      deck.generalCardId,
+    );
+    setSupportIds(
+      deck.supportCardIds || [],
+    );
     resetSelections();
   };
 
@@ -718,40 +1403,72 @@ export default function DeckBuilder({
   const resetSelections = () => {
     setSelectedTargetRole(null);
     setSelectedCardId(null);
+    setSelectedCharacterDetail(
+      null,
+    );
+    setSelectedSupportDetail(
+      null,
+    );
   };
 
   const assignCardToRole = (
     cardId: string,
     role: PositionRole,
   ) => {
-    if (vanguardId === cardId) setVanguardId(null);
-    if (centerId === cardId) setCenterId(null);
-    if (generalId === cardId) setGeneralId(null);
+    if (vanguardId === cardId)
+      setVanguardId(null);
 
-    if (role === 'vanguard') setVanguardId(cardId);
-    if (role === 'center') setCenterId(cardId);
-    if (role === 'general') setGeneralId(cardId);
+    if (centerId === cardId)
+      setCenterId(null);
+
+    if (generalId === cardId)
+      setGeneralId(null);
+
+    if (role === 'vanguard')
+      setVanguardId(cardId);
+
+    if (role === 'center')
+      setCenterId(cardId);
+
+    if (role === 'general')
+      setGeneralId(cardId);
 
     resetSelections();
     setMessage('');
   };
 
-  const handleSlotClick = (role: PositionRole) => {
+  const handleSlotClick = (
+    role: PositionRole,
+  ) => {
     if (selectedCardId) {
-      assignCardToRole(selectedCardId, role);
+      assignCardToRole(
+        selectedCardId,
+        role,
+      );
     } else {
-      setSelectedTargetRole(prev =>
-        prev === role ? null : role
+      setSelectedTargetRole(
+        prev =>
+          prev === role
+            ? null
+            : role,
       );
     }
   };
 
-  const handleCardClick = (cardId: string) => {
+  const handleCardClick = (
+    cardId: string,
+  ) => {
     if (selectedTargetRole) {
-      assignCardToRole(cardId, selectedTargetRole);
+      assignCardToRole(
+        cardId,
+        selectedTargetRole,
+      );
     } else {
-      setSelectedCardId(prev =>
-        prev === cardId ? null : cardId
+      setSelectedCardId(
+        prev =>
+          prev === cardId
+            ? null
+            : cardId,
       );
     }
   };
@@ -760,10 +1477,15 @@ export default function DeckBuilder({
     e: React.DragEvent,
     cardId: string,
   ) => {
-    e.dataTransfer.setData('text/plain', cardId);
+    e.dataTransfer.setData(
+      'text/plain',
+      cardId,
+    );
   };
 
-  const handleDragOver = (e: React.DragEvent) => {
+  const handleDragOver = (
+    e: React.DragEvent,
+  ) => {
     e.preventDefault();
   };
 
@@ -773,10 +1495,16 @@ export default function DeckBuilder({
   ) => {
     e.preventDefault();
 
-    const cardId = e.dataTransfer.getData('text/plain');
+    const cardId =
+      e.dataTransfer.getData(
+        'text/plain',
+      );
 
     if (cardId) {
-      assignCardToRole(cardId, role);
+      assignCardToRole(
+        cardId,
+        role,
+      );
     }
   };
 
@@ -788,7 +1516,9 @@ export default function DeckBuilder({
       'text/plain',
       `support:${supId}`,
     );
-    e.dataTransfer.effectAllowed = 'copy';
+
+    e.dataTransfer.effectAllowed =
+      'copy';
   };
 
   const handleSupportDrop = (
@@ -796,14 +1526,28 @@ export default function DeckBuilder({
   ) => {
     e.preventDefault();
 
-    const data = e.dataTransfer.getData('text/plain');
+    const data =
+      e.dataTransfer.getData(
+        'text/plain',
+      );
 
-    if (!data.startsWith('support:')) return;
+    if (
+      !data.startsWith(
+        'support:',
+      )
+    ) {
+      return;
+    }
 
-    const supId = data.slice('support:'.length);
+    const supId =
+      data.slice(
+        'support:'.length,
+      );
 
     if (supId) {
-      handleAddSupport(supId);
+      handleAddSupport(
+        supId,
+      );
     }
   };
 
@@ -813,23 +1557,35 @@ export default function DeckBuilder({
   ) => {
     e.stopPropagation();
 
-    if (role === 'vanguard') setVanguardId(null);
-    if (role === 'center') setCenterId(null);
-    if (role === 'general') setGeneralId(null);
+    if (role === 'vanguard')
+      setVanguardId(null);
+
+    if (role === 'center')
+      setCenterId(null);
+
+    if (role === 'general')
+      setGeneralId(null);
   };
 
-  const handleAddSupport = (supId: string) => {
+  const handleAddSupport = (
+    supId: string,
+  ) => {
     if (supportIds.length >= 18) {
-      setMessage('⚠️ サポートカードは最大18枚までです。');
+      setMessage(
+        '⚠️ サポートカードは最大18枚までです。',
+      );
       return;
     }
 
-    const count = supportIds.filter(
-      id => id === supId,
-    ).length;
+    const count =
+      supportIds.filter(
+        id => id === supId,
+      ).length;
 
     if (count >= 2) {
-      setMessage('⚠️ 同じサポートカードは2枚までしか入れられません。');
+      setMessage(
+        '⚠️ 同じサポートカードは2枚までしか入れられません。',
+      );
       return;
     }
 
@@ -841,246 +1597,388 @@ export default function DeckBuilder({
     setMessage('');
   };
 
-  const handleRemoveSingleSupport = (
-    supId: string,
-  ) => {
-    const idx = supportIds.indexOf(supId);
+  const handleRemoveSingleSupport =
+    (supId: string) => {
+      const idx =
+        supportIds.indexOf(
+          supId,
+        );
 
-    if (idx !== -1) {
-      const updated = [...supportIds];
-      updated.splice(idx, 1);
-      setSupportIds(updated);
-    }
-  };
+      if (idx !== -1) {
+        const updated = [
+          ...supportIds,
+        ];
 
-  const handleClearAllSupports = () => {
-    if (supportIds.length === 0) return;
+        updated.splice(idx, 1);
 
-    setSupportIds([]);
-    setMessage('🧹 サポートカードをすべて解除しました。');
-  };
+        setSupportIds(
+          updated,
+        );
+      }
+    };
+
+  const handleClearAllSupports =
+    () => {
+      if (
+        supportIds.length ===
+        0
+      ) {
+        return;
+      }
+
+      setSupportIds([]);
+
+      setMessage(
+        '🧹 サポートカードをすべて解除しました。',
+      );
+    };
 
   const handleOpenSupportDetail = (
     e: React.MouseEvent,
     sup: SupportCard,
   ) => {
     e.stopPropagation();
-    setSelectedSupportDetail(sup);
+    setSelectedSupportDetail(
+      sup,
+    );
   };
 
   const getSupportDetailMeta = (
     sup: SupportCard,
   ) => {
-    const preset = sup.presetId
-      ? EMOTION_PRESETS.find(
-          emotion => emotion.id === sup.presetId,
-        )
-      : undefined;
+    const preset =
+      sup.presetId
+        ? EMOTION_PRESETS.find(
+            emotion =>
+              emotion.id ===
+              sup.presetId,
+          )
+        : undefined;
 
     return {
-      duration: preset?.duration,
+      duration:
+        preset?.duration,
       target: preset?.target,
-      statEffect: preset?.statEffect,
-      effectAmount: preset?.effectAmount,
+      statEffect:
+        preset?.statEffect,
+      effectAmount:
+        preset?.effectAmount,
       note: preset?.note,
     };
   };
 
-  const validateDeckForSave = () => {
-    if (!deckName.trim()) {
-      setMessage('⚠️ チーム名を入力してください。');
-      return false;
-    }
+  const validateDeckForSave =
+    () => {
+      if (!deckName.trim()) {
+        setMessage(
+          '⚠️ チーム名を入力してください。',
+        );
 
-    if (!vanguardId || !centerId || !generalId) {
-      setMessage('⚠️ フェザークラス・オーロラクラス・スタークラスのすべてにキャラカードをセットしてください。');
-      return false;
-    }
+        return false;
+      }
 
-    if (supportIds.length !== 18) {
-      setMessage(
-        `⚠️ サポートカードは18枚ピッタリ用意してください。（現在: ${supportIds.length}枚）`,
-      );
-      return false;
-    }
+      if (
+        !vanguardId ||
+        !centerId ||
+        !generalId
+      ) {
+        setMessage(
+          '⚠️ フェザークラス・オーロラクラス・スタークラスのすべてにキャラカードをセットしてください。',
+        );
 
-    return true;
-  };
+        return false;
+      }
+
+      if (
+        supportIds.length !==
+        18
+      ) {
+        setMessage(
+          `⚠️ サポートカードは18枚ピッタリ用意してください。（現在: ${supportIds.length}枚）`,
+        );
+
+        return false;
+      }
+
+      return true;
+    };
 
   const saveDeckWithName = (
     name: string,
     targetId: string | null,
     createdAt?: string,
   ) => {
-    const now = new Date().toISOString();
+    const now =
+      new Date().toISOString();
 
     const deckData: Deck = {
-      id: targetId || `deck_${Date.now()}`,
+      id:
+        targetId ||
+        `deck_${Date.now()}`,
       name: name.trim(),
-      vanguardCardId: vanguardId,
-      centerCardId: centerId,
-      generalCardId: generalId,
-      supportCardIds: [...supportIds],
-      createdAt: createdAt || now,
+      vanguardCardId:
+        vanguardId,
+      centerCardId:
+        centerId,
+      generalCardId:
+        generalId,
+      supportCardIds: [
+        ...supportIds,
+      ],
+      createdAt:
+        createdAt || now,
       updatedAt: now,
     };
 
-    const updatedDecks = targetId
-      ? decks.map(d =>
-          d.id === targetId ? deckData : d,
-        )
-      : [deckData, ...decks];
+    const updatedDecks =
+      targetId
+        ? decks.map(d =>
+            d.id === targetId
+              ? deckData
+              : d,
+          )
+        : [
+            deckData,
+            ...decks,
+          ];
 
-    setDecks(updatedDecks);
+    setDecks(
+      updatedDecks,
+    );
+
     localStorage.setItem(
       STORAGE_DECKS_KEY,
-      JSON.stringify(updatedDecks),
+      JSON.stringify(
+        updatedDecks,
+      ),
     );
-    setSelectedDeckId(deckData.id);
-    setDeckName(deckData.name);
+
+    setSelectedDeckId(
+      deckData.id,
+    );
+
+    setDeckName(
+      deckData.name,
+    );
 
     return deckData;
   };
 
-  const handleSaveDeck = (): Deck | null => {
-    if (!validateDeckForSave()) return null;
+  const handleSaveDeck =
+    (): Deck | null => {
+      if (
+        !validateDeckForSave()
+      ) {
+        return null;
+      }
 
-    if (selectedDeckId) {
-      const currentDeck = decks.find(
-        d => d.id === selectedDeckId,
+      if (selectedDeckId) {
+        const currentDeck =
+          decks.find(
+            d =>
+              d.id ===
+              selectedDeckId,
+          );
+
+        const savedDeck =
+          saveDeckWithName(
+            deckName,
+            selectedDeckId,
+            currentDeck?.createdAt,
+          );
+
+        setMessage(
+          '✅ チームを上書き保存しました。',
+        );
+
+        return savedDeck;
+      }
+
+      const savedDeck =
+        saveDeckWithName(
+          deckName,
+          null,
+        );
+
+      setMessage(
+        '🎉 新しいチームを保存しました！',
       );
-
-      const savedDeck = saveDeckWithName(
-        deckName,
-        selectedDeckId,
-        currentDeck?.createdAt,
-      );
-
-      setMessage('✅ チームを上書き保存しました。');
 
       return savedDeck;
-    }
-
-    const savedDeck = saveDeckWithName(
-      deckName,
-      null,
-    );
-
-    setMessage('🎉 新しいチームを保存しました！');
-
-    return savedDeck;
-  };
-
-  const handleOpenSaveAs = () => {
-    if (!validateDeckForSave()) return;
-
-    setSaveAsName(deckName.trim());
-    setSaveAsConflictName(null);
-    setIsSaveAsOpen(true);
-  };
-
-  const handleSaveAsConfirm = () => {
-    const name = saveAsName.trim();
-
-    if (!name) {
-      setMessage('⚠️ チーム名を入力してください。');
-      return;
-    }
-
-    const duplicate = decks.find(
-      d => d.name.trim() === name,
-    );
-
-    if (duplicate) {
-      setSaveAsConflictName(name);
-      return;
-    }
-
-    saveDeckWithName(name, null);
-    setIsSaveAsOpen(false);
-    setSaveAsConflictName(null);
-    setMessage(
-      `🎉 「${name}」を新しいチームとして保存しました！`,
-    );
-  };
-
-  const handleSaveAsOverwrite = () => {
-    if (!saveAsConflictName) return;
-
-    const duplicate = decks.find(
-      d => d.name.trim() === saveAsConflictName,
-    );
-
-    if (!duplicate) {
-      setSaveAsConflictName(null);
-      return;
-    }
-
-    saveDeckWithName(
-      duplicate.name,
-      duplicate.id,
-      duplicate.createdAt,
-    );
-
-    setIsSaveAsOpen(false);
-    setSaveAsConflictName(null);
-    setMessage(
-      `✅ 「${duplicate.name}」を上書き保存しました。`,
-    );
-  };
-
-  const handleDuplicateDeck = () => {
-    const baseName =
-      deckName.trim() || '新規チーム';
-
-    let newName = `${baseName} のコピー`;
-    let suffix = 2;
-
-    while (
-      decks.some(
-        d => d.name.trim() === newName,
-      )
-    ) {
-      newName =
-        `${baseName} のコピー（${suffix}）`;
-      suffix++;
-    }
-
-    const now = new Date().toISOString();
-
-    const duplicatedDeck: Deck = {
-      id: `deck_${Date.now()}`,
-      name: newName,
-      vanguardCardId: vanguardId,
-      centerCardId: centerId,
-      generalCardId: generalId,
-      supportCardIds: [...supportIds],
-      createdAt: now,
-      updatedAt: now,
     };
 
-    const updatedDecks = [
-      duplicatedDeck,
-      ...decks,
-    ];
+  const handleOpenSaveAs =
+    () => {
+      if (
+        !validateDeckForSave()
+      ) {
+        return;
+      }
 
-    setDecks(updatedDecks);
+      setSaveAsName(
+        deckName.trim(),
+      );
 
-    localStorage.setItem(
-      STORAGE_DECKS_KEY,
-      JSON.stringify(updatedDecks),
-    );
+      setSaveAsConflictName(
+        null,
+      );
 
-    setSelectedDeckId(
-      duplicatedDeck.id,
-    );
+      setIsSaveAsOpen(true);
+    };
 
-    setDeckName(newName);
+  const handleSaveAsConfirm =
+    () => {
+      const name =
+        saveAsName.trim();
 
-    setMessage(
-      `📋 「${newName}」を作成しました！`,
-    );
-  };
+      if (!name) {
+        setMessage(
+          '⚠️ チーム名を入力してください。',
+        );
+
+        return;
+      }
+
+      const duplicate =
+        decks.find(
+          d =>
+            d.name.trim() ===
+            name,
+        );
+
+      if (duplicate) {
+        setSaveAsConflictName(
+          name,
+        );
+
+        return;
+      }
+
+      saveDeckWithName(
+        name,
+        null,
+      );
+
+      setIsSaveAsOpen(false);
+      setSaveAsConflictName(
+        null,
+      );
+
+      setMessage(
+        `🎉 「${name}」を新しいチームとして保存しました！`,
+      );
+    };
+
+  const handleSaveAsOverwrite =
+    () => {
+      if (
+        !saveAsConflictName
+      ) {
+        return;
+      }
+
+      const duplicate =
+        decks.find(
+          d =>
+            d.name.trim() ===
+            saveAsConflictName,
+        );
+
+      if (!duplicate) {
+        setSaveAsConflictName(
+          null,
+        );
+
+        return;
+      }
+
+      saveDeckWithName(
+        duplicate.name,
+        duplicate.id,
+        duplicate.createdAt,
+      );
+
+      setIsSaveAsOpen(false);
+      setSaveAsConflictName(
+        null,
+      );
+
+      setMessage(
+        `✅ 「${duplicate.name}」を上書き保存しました。`,
+      );
+    };
+
+  const handleDuplicateDeck =
+    () => {
+      const baseName =
+        deckName.trim() ||
+        '新規チーム';
+
+      let newName =
+        `${baseName} のコピー`;
+
+      let suffix = 2;
+
+      while (
+        decks.some(
+          d =>
+            d.name.trim() ===
+            newName,
+        )
+      ) {
+        newName =
+          `${baseName} のコピー（${suffix}）`;
+
+        suffix++;
+      }
+
+      const now =
+        new Date().toISOString();
+
+      const duplicatedDeck: Deck = {
+        id: `deck_${Date.now()}`,
+        name: newName,
+        vanguardCardId:
+          vanguardId,
+        centerCardId:
+          centerId,
+        generalCardId:
+          generalId,
+        supportCardIds: [
+          ...supportIds,
+        ],
+        createdAt: now,
+        updatedAt: now,
+      };
+
+      const updatedDecks = [
+        duplicatedDeck,
+        ...decks,
+      ];
+
+      setDecks(
+        updatedDecks,
+      );
+
+      localStorage.setItem(
+        STORAGE_DECKS_KEY,
+        JSON.stringify(
+          updatedDecks,
+        ),
+      );
+
+      setSelectedDeckId(
+        duplicatedDeck.id,
+      );
+
+      setDeckName(
+        newName,
+      );
+
+      setMessage(
+        `📋 「${newName}」を作成しました！`,
+      );
+    };
 
   const handleDeleteDeck = (
     deckId: string,
@@ -1090,15 +1988,18 @@ export default function DeckBuilder({
         'このチームを削除してもよろしいですか？',
       )
     ) {
-      const updated = decks.filter(
-        d => d.id !== deckId,
-      );
+      const updated =
+        decks.filter(
+          d => d.id !== deckId,
+        );
 
       setDecks(updated);
 
       localStorage.setItem(
         STORAGE_DECKS_KEY,
-        JSON.stringify(updated),
+        JSON.stringify(
+          updated,
+        ),
       );
 
       resetToNewDeck();
@@ -1109,111 +2010,143 @@ export default function DeckBuilder({
     }
   };
 
-  const handleExportDeck = () => {
-    const exportData = {
-      version: '2.0',
-      type: 'single_deck',
-      exportedAt: new Date().toISOString(),
-      deck: {
-        name: deckName,
-        vanguardCardId: vanguardId,
-        centerCardId: centerId,
-        generalCardId: generalId,
-        supportCardIds: supportIds,
-      },
-      cards: cards.filter(
-        c =>
-          [
+  const handleExportDeck =
+    () => {
+      const exportData = {
+        version: '2.0',
+        type: 'single_deck',
+        exportedAt:
+          new Date().toISOString(),
+        deck: {
+          name: deckName,
+          vanguardCardId:
             vanguardId,
+          centerCardId:
             centerId,
+          generalCardId:
             generalId,
-          ].includes(c.id),
-      ),
-      supportCards: supportPool.filter(
-        s => supportIds.includes(s.id),
-      ),
-    };
+          supportCardIds:
+            supportIds,
+        },
+        cards: cards.filter(
+          c =>
+            [
+              vanguardId,
+              centerId,
+              generalId,
+            ].includes(c.id),
+        ),
+        supportCards:
+          supportPool.filter(
+            s =>
+              supportIds.includes(
+                s.id,
+              ),
+          ),
+      };
 
-    downloadJson(
-      exportData,
-      `${deckName.replace(/\s+/g, '_')}_deck.json`,
-    );
+      downloadJson(
+        exportData,
+        `${deckName.replace(
+          /\s+/g,
+          '_',
+        )}_deck.json`,
+      );
 
-    setMessage(
-      '📥 単一チームファイルをダウンロードしました。',
-    );
-  };
-
-  const handleExportAllDecks = () => {
-    if (decks.length === 0) {
       setMessage(
-        '⚠️ 出力できる保存済みチームがありません。',
+        '📥 単一チームファイルをダウンロードしました。',
       );
-      return;
-    }
-
-    const usedCardIds = new Set<string>();
-    const usedSupportIds = new Set<string>();
-
-    decks.forEach(d => {
-      if (d.vanguardCardId)
-        usedCardIds.add(
-          d.vanguardCardId,
-        );
-
-      if (d.centerCardId)
-        usedCardIds.add(
-          d.centerCardId,
-        );
-
-      if (d.generalCardId)
-        usedCardIds.add(
-          d.generalCardId,
-        );
-
-      d.supportCardIds?.forEach(
-        sId => usedSupportIds.add(sId),
-      );
-    });
-
-    const exportData = {
-      version: '2.0',
-      type: 'all_decks',
-      exportedAt: new Date().toISOString(),
-      decks,
-      cards: cards.filter(
-        c => usedCardIds.has(c.id),
-      ),
-      supportCards: supportPool.filter(
-        s =>
-          usedSupportIds.has(s.id),
-      ),
     };
 
-    const dateStr =
-      new Date()
-        .toISOString()
-        .split('T')[0];
+  const handleExportAllDecks =
+    () => {
+      if (decks.length === 0) {
+        setMessage(
+          '⚠️ 出力できる保存済みチームがありません。',
+        );
 
-    downloadJson(
-      exportData,
-      `all_decks_backup_${dateStr}.json`,
-    );
+        return;
+      }
 
-    setMessage(
-      `📦 ${decks.length}件のチームをまとめてダウンロードしました。`,
-    );
-  };
+      const usedCardIds =
+        new Set<string>();
+
+      const usedSupportIds =
+        new Set<string>();
+
+      decks.forEach(d => {
+        if (d.vanguardCardId) {
+          usedCardIds.add(
+            d.vanguardCardId,
+          );
+        }
+
+        if (d.centerCardId) {
+          usedCardIds.add(
+            d.centerCardId,
+          );
+        }
+
+        if (d.generalCardId) {
+          usedCardIds.add(
+            d.generalCardId,
+          );
+        }
+
+        d.supportCardIds?.forEach(
+          sId =>
+            usedSupportIds.add(
+              sId,
+            ),
+        );
+      });
+
+      const exportData = {
+        version: '2.0',
+        type: 'all_decks',
+        exportedAt:
+          new Date().toISOString(),
+        decks,
+        cards: cards.filter(
+          c =>
+            usedCardIds.has(
+              c.id,
+            ),
+        ),
+        supportCards:
+          supportPool.filter(
+            s =>
+              usedSupportIds.has(
+                s.id,
+              ),
+          ),
+      };
+
+      const dateStr =
+        new Date()
+          .toISOString()
+          .split('T')[0];
+
+      downloadJson(
+        exportData,
+        `all_decks_backup_${dateStr}.json`,
+      );
+
+      setMessage(
+        `📦 ${decks.length}件のチームをまとめてダウンロードしました。`,
+      );
+    };
 
   const downloadJson = (
     data: any,
     fileName: string,
   ) => {
-    const jsonString = JSON.stringify(
-      data,
-      null,
-      2,
-    );
+    const jsonString =
+      JSON.stringify(
+        data,
+        null,
+        2,
+      );
 
     const blob = new Blob(
       [jsonString],
@@ -1223,45 +2156,54 @@ export default function DeckBuilder({
     );
 
     const url =
-      URL.createObjectURL(blob);
+      URL.createObjectURL(
+        blob,
+      );
 
     const a =
-      document.createElement('a');
+      document.createElement(
+        'a',
+      );
 
     a.href = url;
     a.download = fileName;
     a.click();
 
-    URL.revokeObjectURL(url);
+    URL.revokeObjectURL(
+      url,
+    );
   };
 
   const handleImportDeck = (
     e: ChangeEvent<HTMLInputElement>,
   ) => {
-    const file = e.target.files?.[0];
+    const file =
+      e.target.files?.[0];
 
     if (!file) return;
 
     const reader =
       new FileReader();
 
-    reader.onload = (
-      event,
-    ) => {
+    reader.onload = event => {
       try {
         const importedData =
           JSON.parse(
-            event.target?.result as string,
+            event.target
+              ?.result as string,
           );
 
         if (
-          importedData.type === 'all_decks' &&
+          importedData.type ===
+            'all_decks' &&
           Array.isArray(
             importedData.decks,
           )
         ) {
           const existingDeckIds =
-            decks.map(d => d.id);
+            decks.map(
+              d => d.id,
+            );
 
           const newDecks = [
             ...decks,
@@ -1279,6 +2221,7 @@ export default function DeckBuilder({
                 newDecks.push(
                   impDeck,
                 );
+
                 importedCount++;
               }
             },
@@ -1288,10 +2231,15 @@ export default function DeckBuilder({
 
           localStorage.setItem(
             STORAGE_DECKS_KEY,
-            JSON.stringify(newDecks),
+            JSON.stringify(
+              newDecks,
+            ),
           );
 
-          if (newDecks.length > 0) {
+          if (
+            newDecks.length >
+            0
+          ) {
             loadDeckToEditor(
               newDecks[0],
             );
@@ -1324,10 +2272,13 @@ export default function DeckBuilder({
 
           setSupportIds(
             importedData.deck
-              .supportCardIds || [],
+              .supportCardIds ||
+              [],
           );
 
-          setSelectedDeckId(null);
+          setSelectedDeckId(
+            null,
+          );
 
           setMessage(
             '🎉 ファイルからチームを復元しました！',
@@ -1337,7 +2288,7 @@ export default function DeckBuilder({
             '形式が不正です',
           );
         }
-      } catch (err) {
+      } catch {
         setMessage(
           '❌ ファイルの読み込みに失敗しました。正しいチームJSONかご確認ください。',
         );
@@ -1374,15 +2325,22 @@ export default function DeckBuilder({
       [string, number]
     > = [
       ['情熱', stats.hp],
-      ['知性', stats.intellect],
-      ['技能', stats.dexterity],
+      [
+        '知性',
+        stats.intellect,
+      ],
+      [
+        '技能',
+        stats.dexterity,
+      ],
       ['愛嬌', stats.charm],
     ];
 
     const sorted = [
       ...labels,
     ].sort(
-      (a, b) => b[1] - a[1],
+      (a, b) =>
+        b[1] - a[1],
     );
 
     const groups: Array<{
@@ -1399,7 +2357,8 @@ export default function DeckBuilder({
 
         if (
           last &&
-          last.value === value
+          last.value ===
+            value
         ) {
           last.labels.push(
             label,
@@ -1415,7 +2374,9 @@ export default function DeckBuilder({
 
     return groups
       .map(group =>
-        group.labels.join('＝')
+        group.labels.join(
+          '＝',
+        ),
       )
       .join('＞');
   };
@@ -1429,20 +2390,23 @@ export default function DeckBuilder({
     if (
       card.archetype ===
       'マッスル型'
-    )
+    ) {
       return '春';
+    }
 
     if (
       card.archetype ===
       '頭脳型'
-    )
+    ) {
       return '秋';
+    }
 
     if (
       card.archetype ===
       '職人型'
-    )
+    ) {
       return '冬';
+    }
 
     return '夏';
   };
@@ -1460,11 +2424,14 @@ export default function DeckBuilder({
       card.presetId ||
       sampleCard?.presetId;
 
-    const preset = presetId
-      ? COORDINATE_PRESETS.find(
-          p => p.id === presetId,
-        )
-      : undefined;
+    const preset =
+      presetId
+        ? COORDINATE_PRESETS.find(
+            p =>
+              p.id ===
+              presetId,
+          )
+        : undefined;
 
     const savedNames =
       card.customSkills?.filter(
@@ -1482,9 +2449,11 @@ export default function DeckBuilder({
       ) || [];
 
     const names =
-      savedNames.length === 4
+      savedNames.length ===
+      4
         ? savedNames
-        : sampleNames.length === 4
+        : sampleNames.length ===
+            4
           ? sampleNames
           : preset?.defaultSkills ||
             [];
@@ -1522,10 +2491,12 @@ export default function DeckBuilder({
       supportIds.forEach(id => {
         const sup =
           supportPool.find(
-            card => card.id === id,
+            card =>
+              card.id === id,
           );
 
-        if (!sup?.presetId) return;
+        if (!sup?.presetId)
+          return;
 
         const preset =
           EMOTION_PRESETS.find(
@@ -1536,7 +2507,8 @@ export default function DeckBuilder({
 
         if (
           !preset ||
-          preset.target !== '自分'
+          preset.target !==
+            '自分'
         ) {
           return;
         }
@@ -1590,7 +2562,8 @@ export default function DeckBuilder({
           preset.effectCategory ===
           '愛嬌'
         ) {
-          delta.charm += amount;
+          delta.charm +=
+            amount;
         }
 
         if (
@@ -1791,7 +2764,9 @@ export default function DeckBuilder({
               />
 
               <polygon
-                points={comparePolygon}
+                points={
+                  comparePolygon
+                }
                 fill="rgba(249,115,22,0.18)"
                 stroke="#f97316"
                 strokeWidth="3"
@@ -1803,7 +2778,8 @@ export default function DeckBuilder({
                   index,
                 ) => {
                   const next =
-                    (index + 1) % 4;
+                    (index + 1) %
+                    4;
 
                   const compareValue =
                     compareValues[
@@ -1870,10 +2846,15 @@ export default function DeckBuilder({
                         compareB,
                         compareA,
                       ]
-                        .map(p =>
-                          p.join(','),
+                        .map(
+                          p =>
+                            p.join(
+                              ',',
+                            ),
                         )
-                        .join(' ')}
+                        .join(
+                          ' ',
+                        )}
                       fill={
                         isIncrease
                           ? '#fb923c'
@@ -1925,7 +2906,8 @@ export default function DeckBuilder({
                   fontWeight="700"
                   fill="#374151"
                 >
-                  {label} {displayValue}
+                  {label}{' '}
+                  {displayValue}
                 </text>
               );
             },
@@ -1940,6 +2922,7 @@ export default function DeckBuilder({
               </span>{' '}
               基礎値
             </span>
+
             <span>
               <span className="text-orange-500">
                 ■
@@ -1970,79 +2953,114 @@ export default function DeckBuilder({
 
     if (
       characterIds.some(
-        (id): id is null =>
+        (
+          id,
+        ): id is null =>
           id === null,
       )
     ) {
       setMessage(
         '⚠️ 対戦用デッキを確定できません。キャラ3枚を確認してください。',
       );
+
       return null;
     }
 
-    const characterCards = characterIds.map(
-  id => cards.find(card => card.id === id),
-);
+    const characterCards =
+      characterIds.map(id =>
+        cards.find(
+          card =>
+            card.id === id,
+        ),
+      );
 
-const vanguardCard = characterCards[0];
-const centerCard = characterCards[1];
-const generalCard = characterCards[2];
+    const vanguardCard =
+      characterCards[0];
 
-if (!vanguardCard || !centerCard || !generalCard) {
-  setMessage(
-    '⚠️ 対戦に必要なキャラカードを確認できませんでした。カードライブラリを再読み込みしてください。',
-  );
-  return null;
-}
+    const centerCard =
+      characterCards[1];
 
-const supportReferences = deck.supportCardIds.map(
-  cardId => {
-    const support = supportPool.find(
-      item => item.id === cardId,
-    );
+    const generalCard =
+      characterCards[2];
 
-    return {
-      cardId,
-      presetId: support?.presetId,
-    };
-  },
-);
+    if (
+      !vanguardCard ||
+      !centerCard ||
+      !generalCard
+    ) {
+      setMessage(
+        '⚠️ 対戦に必要なキャラカードを確認できませんでした。カードライブラリを再読み込みしてください。',
+      );
 
-if (supportReferences.length !== 18) {
-  setMessage(
-    '⚠️ 対戦用デッキのサポートカードが18枚ではありません。',
-  );
-  return null;
-}
+      return null;
+    }
 
-if (
-  supportReferences.some(
-    support => !support.cardId,
-  )
-) {
-  setMessage(
-    '⚠️ 対戦用サポートカードを確認できませんでした。',
-  );
-  return null;
-}
+    const supportReferences =
+      deck.supportCardIds.map(
+        cardId => {
+          const support =
+            supportPool.find(
+              item =>
+                item.id ===
+                cardId,
+            );
 
-const characters: BattleDeckSnapshot['characters'] = [
-  {
-    role: 'vanguard',
-    cardId: vanguardCard.id,
-    presetId: vanguardCard.presetId,
-  },
-  {
-    role: 'center',
-    cardId: centerCard.id,
-    presetId: centerCard.presetId,
-  },
-  {
-    role: 'general',
-    cardId: generalCard.id,
-    presetId: generalCard.presetId,
-  },
-];
+          return {
+            cardId,
+            presetId:
+              support?.presetId,
+          };
+        },
+      );
+
+    if (
+      supportReferences.length !==
+      18
+    ) {
+      setMessage(
+        '⚠️ 対戦用デッキのサポートカードが18枚ではありません。',
+      );
+
+      return null;
+    }
+
+    if (
+      supportReferences.some(
+        support =>
+          !support.cardId,
+      )
+    ) {
+      setMessage(
+        '⚠️ 対戦用サポートカードを確認できませんでした。',
+      );
+
+      return null;
+    }
+
+    const characters: BattleDeckSnapshot['characters'] =
+      [
+        {
+          role: 'vanguard',
+          cardId:
+            vanguardCard.id,
+          presetId:
+            vanguardCard.presetId,
+        },
+        {
+          role: 'center',
+          cardId:
+            centerCard.id,
+          presetId:
+            centerCard.presetId,
+        },
+        {
+          role: 'general',
+          cardId:
+            generalCard.id,
+          presetId:
+            generalCard.presetId,
+        },
+      ];
 
     return {
       version: 1,
@@ -2097,6 +3115,48 @@ const characters: BattleDeckSnapshot['characters'] = [
     supportIds.length ===
       18;
 
+  const selectedCharacterCoordinate =
+    selectedCharacterDetail?.presetId
+      ? COORDINATE_PRESETS.find(
+          preset =>
+            preset.id ===
+            selectedCharacterDetail.presetId,
+        )
+      : undefined;
+
+  const selectedSupportEmotion =
+    selectedSupportDetail?.presetId
+      ? EMOTION_PRESETS.find(
+          emotion =>
+            emotion.id ===
+            selectedSupportDetail.presetId,
+        )
+      : undefined;
+
+  const selectedCharacterSkills =
+    selectedCharacterDetail
+      ? getCharacterSkills(
+          selectedCharacterDetail,
+        )
+      : [];
+
+  const selectedCharacterSkillNames: [
+    string,
+    string,
+    string,
+    string,
+  ] =
+    [
+      selectedCharacterSkills[0]
+        ?.name || '',
+      selectedCharacterSkills[1]
+        ?.name || '',
+      selectedCharacterSkills[2]
+        ?.name || '',
+      selectedCharacterSkills[3]
+        ?.name || '',
+    ];
+
   return (
     <div className="flex h-full min-h-0 flex-col bg-gray-50 text-gray-900">
       <div className="shrink-0 border-b border-gray-200 bg-white px-4 py-3 shadow-sm sm:px-5">
@@ -2105,6 +3165,7 @@ const characters: BattleDeckSnapshot['characters'] = [
             <div className="text-[9px] font-black tracking-[0.24em] text-indigo-500">
               TEAM BUILDER
             </div>
+
             <h1 className="mt-0.5 truncate text-xl font-black text-indigo-950">
               チームを編成する
             </h1>
@@ -2221,6 +3282,7 @@ const characters: BattleDeckSnapshot['characters'] = [
                 <div className="text-[9px] font-black tracking-[0.16em] text-indigo-500">
                   CHARACTER LINEUP
                 </div>
+
                 <h2 className="mt-0.5 text-sm font-black text-indigo-950">
                   キャラカード
                 </h2>
@@ -2277,9 +3339,11 @@ const characters: BattleDeckSnapshot['characters'] = [
                         setSelectedTargetRole(
                           role,
                         );
+
                         setSelectedCardId(
                           null,
                         );
+
                         setSelectedCharacterDetail(
                           null,
                         );
@@ -2327,7 +3391,7 @@ const characters: BattleDeckSnapshot['characters'] = [
                           </div>
 
                           <div className="mt-0.5 text-center text-[8px] font-bold text-gray-400">
-                            詳しく見る／変更
+                            詳細を見る
                           </div>
                         </div>
                       ) : (
@@ -2341,6 +3405,7 @@ const characters: BattleDeckSnapshot['characters'] = [
                           <span className="text-lg">
                             ＋
                           </span>
+
                           <span className="mt-1 text-[9px] font-black">
                             キャラを選ぶ
                           </span>
@@ -2359,6 +3424,7 @@ const characters: BattleDeckSnapshot['characters'] = [
                 <div className="text-[9px] font-black tracking-[0.16em] text-purple-500">
                   SUPPORT LINEUP
                 </div>
+
                 <h2 className="mt-0.5 text-sm font-black text-purple-950">
                   サポートカード
                 </h2>
@@ -2385,6 +3451,7 @@ const characters: BattleDeckSnapshot['characters'] = [
                     setIsSupportFilterOpen(
                       true,
                     );
+
                     setSelectedSupportDetail(
                       null,
                     );
@@ -2411,7 +3478,7 @@ const characters: BattleDeckSnapshot['characters'] = [
                   「カードを選ぶ」から追加してください
                 </div>
               ) : (
-                <div className="grid grid-flow-col grid-rows-2 auto-cols-[76px] gap-2 min-w-max">
+                <div className="grid min-w-max grid-flow-col grid-rows-2 auto-cols-[76px] gap-2">
                   {groupedSupportCards.map(
                     ({
                       id,
@@ -2551,6 +3618,7 @@ const characters: BattleDeckSnapshot['characters'] = [
                     setSelectedTargetRole(
                       null,
                     );
+
                     setSelectedCharacterDetail(
                       null,
                     );
@@ -2699,6 +3767,10 @@ const characters: BattleDeckSnapshot['characters'] = [
                           card.id,
                         );
 
+                      const isDetailOpen =
+                        selectedCharacterDetail?.id ===
+                        card.id;
+
                       return (
                         <div
                           key={
@@ -2707,7 +3779,9 @@ const characters: BattleDeckSnapshot['characters'] = [
                           className={`rounded-2xl border p-2 transition ${
                             isAssigned
                               ? 'border-gray-200 bg-gray-100 opacity-45'
-                              : 'border-gray-200 bg-white hover:border-indigo-300'
+                              : isDetailOpen
+                                ? 'border-indigo-500 bg-indigo-50 ring-2 ring-indigo-100'
+                                : 'border-gray-200 bg-white hover:border-indigo-300'
                           }`}
                         >
                           <button
@@ -2720,6 +3794,7 @@ const characters: BattleDeckSnapshot['characters'] = [
                                 card.id,
                                 selectedTargetRole,
                               );
+
                               setSelectedCharacterDetail(
                                 null,
                               );
@@ -2766,10 +3841,18 @@ const characters: BattleDeckSnapshot['characters'] = [
                             type="button"
                             onClick={() =>
                               setSelectedCharacterDetail(
-                                card,
+                                prev =>
+                                  prev?.id ===
+                                  card.id
+                                    ? null
+                                    : card,
                               )
                             }
-                            className="mt-1 w-full rounded-lg bg-gray-50 py-1 text-[8px] font-black text-gray-500 hover:bg-indigo-50 hover:text-indigo-700"
+                            className={`mt-1 w-full rounded-lg py-1 text-[8px] font-black ${
+                              isDetailOpen
+                                ? 'bg-indigo-600 text-white'
+                                : 'bg-gray-50 text-gray-500 hover:bg-indigo-50 hover:text-indigo-700'
+                            }`}
                           >
                             詳細を見る
                           </button>
@@ -2782,117 +3865,85 @@ const characters: BattleDeckSnapshot['characters'] = [
             </div>
 
             {selectedCharacterDetail && (
-              <div className="shrink-0 max-h-[34dvh] overflow-y-auto border-t border-gray-200 bg-gray-50 p-3">
-                <div className="flex items-start gap-3">
-                  <div
-                    className="w-24 shrink-0 overflow-hidden rounded-2xl border-2 bg-white"
-                    style={{
-                      borderColor:
-                        selectedCharacterDetail.colorHex ||
-                        '#dbeafe',
-                    }}
-                  >
-                    {selectedCharacterDetail.imageDataUrl ? (
-                      <img
-                        src={
-                          selectedCharacterDetail.imageDataUrl
-                        }
-                        alt=""
-                        className="aspect-square w-full object-cover"
-                      />
-                    ) : (
-                      <div className="flex aspect-square items-center justify-center text-[8px] text-gray-400">
-                        画像なし
-                      </div>
-                    )}
-                  </div>
-
-                  <div className="min-w-0 flex-1">
-                    <div className="text-sm font-black text-gray-950">
-                      {
+              <div className="shrink-0 max-h-[52dvh] overflow-y-auto border-t border-gray-200 bg-gray-50 p-3">
+                {selectedCharacterCoordinate ? (
+                  <div className="mx-auto flex w-full max-w-sm flex-col items-center">
+                    <CardDetailView
+                      type="character"
+                      userName={
                         selectedCharacterDetail.userName
                       }
-                    </div>
+                      imageDataUrl={
+                        selectedCharacterDetail.imageDataUrl ||
+                        ''
+                      }
+                      coordinate={
+                        selectedCharacterCoordinate
+                      }
+                      customSkills={
+                        selectedCharacterSkillNames
+                      }
+                      flavorText={
+                        selectedCharacterDetail.flavorText ||
+                        ''
+                      }
+                      selectedColorHex={
+                        selectedCharacterDetail.colorHex ||
+                        '#6366F1'
+                      }
+                      profileUrl={
+                        selectedCharacterDetail.profileUrl ||
+                        ''
+                      }
+                      showProfileUrl={
+                        selectedCharacterDetail.showProfileUrl ??
+                        false
+                      }
+                    />
 
-                    <div className="mt-1 grid grid-cols-2 gap-1 text-[9px] font-black text-gray-600">
-                      {([
-                        'hp',
-                        'intellect',
-                        'dexterity',
-                        'charm',
-                      ] as const).map(
-                        key => (
-                          <div
-                            key={key}
-                            className="rounded-lg bg-white px-2 py-1"
-                          >
-                            {key ===
-                            'hp'
-                              ? '情熱'
-                              : key ===
-                                  'intellect'
-                                ? '知性'
-                                : key ===
-                                    'dexterity'
-                                  ? '技能'
-                                  : '愛嬌'}{' '}
-                            {
-                              getCharacterStats(
-                                selectedCharacterDetail,
-                              )[key]
-                            }
-                          </div>
-                        ),
-                      )}
-                    </div>
+                    <div className="mt-3 flex w-full gap-2">
+                      <button
+                        type="button"
+                        onClick={() =>
+                          setSelectedCharacterDetail(
+                            null,
+                          )
+                        }
+                        className="flex-1 rounded-xl bg-white px-3 py-2 text-[9px] font-black text-gray-600"
+                      >
+                        閉じる
+                      </button>
 
-                    <div className="mt-2 flex flex-wrap gap-1.5">
-                      {getCharacterSkills(
-                        selectedCharacterDetail,
-                      ).map(
-                        skill => (
-                          <div
-                            key={
-                              skill.number
-                            }
-                            className="rounded-lg bg-white px-2 py-1 text-[8px] font-bold text-gray-600"
-                          >
-                            スキル
-                            {
-                              skill.number
-                            }：
-                            {
-                              skill.name
-                            }
-                          </div>
-                        ),
-                      )}
-                    </div>
-
-                    <button
-                      type="button"
-                      disabled={[
-                        vanguardId,
-                        centerId,
-                        generalId,
-                      ].includes(
-                        selectedCharacterDetail.id,
-                      )}
-                      onClick={() => {
-                        assignCardToRole(
+                      <button
+                        type="button"
+                        disabled={[
+                          vanguardId,
+                          centerId,
+                          generalId,
+                        ].includes(
                           selectedCharacterDetail.id,
-                          selectedTargetRole,
-                        );
-                        setSelectedCharacterDetail(
-                          null,
-                        );
-                      }}
-                      className="mt-2 rounded-xl bg-indigo-600 px-4 py-2 text-[9px] font-black text-white disabled:bg-gray-300"
-                    >
-                      このキャラをセットする
-                    </button>
+                        )}
+                        onClick={() => {
+                          assignCardToRole(
+                            selectedCharacterDetail.id,
+                            selectedTargetRole,
+                          );
+
+                          setSelectedCharacterDetail(
+                            null,
+                          );
+                        }}
+                        className="flex-1 rounded-xl bg-indigo-600 px-3 py-2 text-[9px] font-black text-white disabled:bg-gray-300"
+                      >
+                        このキャラをセットする
+                      </button>
+                    </div>
                   </div>
-                </div>
+                ) : (
+                  <div className="rounded-2xl border border-dashed border-gray-200 bg-white py-8 text-center text-[10px] font-bold text-gray-400">
+                    このキャラの詳細情報を表示できません。
+                  </div>
+                )}
               </div>
             )}
           </div>
@@ -2909,6 +3960,7 @@ const characters: BattleDeckSnapshot['characters'] = [
                     <div className="text-[9px] font-black tracking-[0.16em] text-purple-500">
                       SUPPORT CARD SELECT
                     </div>
+
                     <h2 className="mt-0.5 text-base font-black text-gray-950">
                       サポートカードを選ぶ
                     </h2>
@@ -3033,15 +4085,32 @@ const characters: BattleDeckSnapshot['characters'] = [
                             sup,
                           );
 
+                        const isDetailOpen =
+                          selectedSupportDetail?.id ===
+                          sup.id;
+
+                        const stateClass =
+                          currentCount ===
+                          0
+                            ? isDetailOpen
+                              ? 'border-purple-500 bg-purple-50 ring-2 ring-purple-100'
+                              : 'border-gray-200 bg-white hover:border-purple-300'
+                            : currentCount ===
+                                1
+                              ? 'border-amber-400 bg-amber-50'
+                              : 'border-emerald-400 bg-emerald-50';
+
                         return (
                           <div
                             key={
                               sup.id
                             }
-                            className={`rounded-2xl border p-2 transition ${
-                              full
-                                ? 'border-gray-200 bg-gray-100 opacity-55'
-                                : 'border-gray-200 bg-white hover:border-purple-300'
+                            className={`rounded-2xl border p-2 transition ${stateClass} ${
+                              full &&
+                              currentCount ===
+                                0
+                                ? 'opacity-55'
+                                : ''
                             }`}
                           >
                             <button
@@ -3057,7 +4126,7 @@ const characters: BattleDeckSnapshot['characters'] = [
                               className="w-full text-left disabled:cursor-not-allowed"
                             >
                               <div
-                                className="overflow-hidden rounded-xl border-2 bg-gray-100"
+                                className="relative overflow-hidden rounded-xl border-2 bg-gray-100"
                                 style={{
                                   borderColor:
                                     sup.colorHex ||
@@ -3077,6 +4146,23 @@ const characters: BattleDeckSnapshot['characters'] = [
                                     画像なし
                                   </div>
                                 )}
+
+                                {currentCount >
+                                  0 && (
+                                  <span
+                                    className={`absolute right-1 top-1 rounded-full px-1.5 py-0.5 text-[8px] font-black text-white ${
+                                      currentCount ===
+                                      1
+                                        ? 'bg-amber-500'
+                                        : 'bg-emerald-600'
+                                    }`}
+                                  >
+                                    ×
+                                    {
+                                      currentCount
+                                    }
+                                  </span>
+                                )}
                               </div>
 
                               <div className="mt-1 line-clamp-2 text-[9px] font-black text-gray-950">
@@ -3091,25 +4177,64 @@ const characters: BattleDeckSnapshot['characters'] = [
                                   'サポート効果'}
                               </div>
 
-                              <div className="mt-0.5 text-[8px] text-gray-400">
-                                {currentCount >
+                              <div
+                                className={`mt-1 text-[8px] font-black ${
+                                  currentCount ===
+                                  0
+                                    ? 'text-gray-400'
+                                    : currentCount ===
+                                        1
+                                      ? 'text-amber-700'
+                                      : 'text-emerald-700'
+                                }`}
+                              >
+                                {currentCount ===
                                 0
-                                  ? `現在 ×${currentCount}`
-                                  : 'タップで追加'}
+                                  ? '未使用'
+                                  : currentCount ===
+                                      1
+                                    ? '1枚使用中'
+                                    : '2枚使用中'}
                               </div>
                             </button>
 
-                            <button
-                              type="button"
-                              onClick={() =>
-                                setSelectedSupportDetail(
-                                  sup,
-                                )
-                              }
-                              className="mt-1 w-full rounded-lg bg-gray-50 py-1 text-[8px] font-black text-gray-500 hover:bg-purple-50 hover:text-purple-700"
-                            >
-                              詳細を見る
-                            </button>
+                            <div className="mt-1 grid grid-cols-2 gap-1">
+                              <button
+                                type="button"
+                                onClick={() =>
+                                  setSelectedSupportDetail(
+                                    prev =>
+                                      prev?.id ===
+                                      sup.id
+                                        ? null
+                                        : sup,
+                                  )
+                                }
+                                className={`rounded-lg py-1 text-[8px] font-black ${
+                                  isDetailOpen
+                                    ? 'bg-purple-600 text-white'
+                                    : 'bg-gray-50 text-gray-500 hover:bg-purple-50 hover:text-purple-700'
+                                }`}
+                              >
+                                詳細を見る
+                              </button>
+
+                              <button
+                                type="button"
+                                disabled={
+                                  currentCount ===
+                                  0
+                                }
+                                onClick={() =>
+                                  handleRemoveSingleSupport(
+                                    sup.id,
+                                  )
+                                }
+                                className="rounded-lg bg-white py-1 text-[8px] font-black text-gray-500 disabled:cursor-not-allowed disabled:opacity-35 hover:bg-red-50 hover:text-red-600"
+                              >
+                                1枚減らす
+                              </button>
+                            </div>
                           </div>
                         );
                       },
@@ -3119,136 +4244,123 @@ const characters: BattleDeckSnapshot['characters'] = [
               </div>
 
               {selectedSupportDetail && (
-                <div className="shrink-0 max-h-[34dvh] overflow-y-auto border-t border-gray-200 bg-gray-50 p-3">
-                  <div className="flex items-start gap-3">
-                    <div
-                      className="w-24 shrink-0 overflow-hidden rounded-2xl border-2 bg-white"
-                      style={{
-                        borderColor:
-                          selectedSupportDetail.colorHex ||
-                          '#e9d5ff',
-                      }}
-                    >
-                      {selectedSupportDetail.imageDataUrl ? (
-                        <img
-                          src={
-                            selectedSupportDetail.imageDataUrl
-                          }
-                          alt=""
-                          className="aspect-square w-full object-cover"
-                        />
-                      ) : (
-                        <div className="flex aspect-square items-center justify-center text-[8px] text-gray-400">
-                          画像なし
-                        </div>
-                      )}
-                    </div>
-
-                    <div className="min-w-0 flex-1">
-                      <div className="text-sm font-black text-gray-950">
-                        {
+                <div className="shrink-0 max-h-[52dvh] overflow-y-auto border-t border-gray-200 bg-gray-50 p-3">
+                  {selectedSupportEmotion ? (
+                    <div className="mx-auto flex w-full max-w-sm flex-col items-center">
+                      <CardDetailView
+                        type="support"
+                        userName={
+                          selectedSupportDetail.userName ||
+                          '登録ユーザー'
+                        }
+                        imageDataUrl={
+                          selectedSupportDetail.imageDataUrl ||
+                          ''
+                        }
+                        emotion={
+                          selectedSupportEmotion
+                        }
+                        effectName={
                           selectedSupportDetail.name
                         }
-                      </div>
+                        flavorText={
+                          selectedSupportDetail.flavorText ||
+                          ''
+                        }
+                        selectedColorHex={
+                          selectedSupportDetail.colorHex ||
+                          '#9333EA'
+                        }
+                        profileUrl={
+                          selectedSupportDetail.profileUrl ||
+                          ''
+                        }
+                        showProfileUrl={
+                          selectedSupportDetail.showProfileUrl ??
+                          false
+                        }
+                      />
 
-                      {(() => {
-                        const meta =
-                          getSupportDetailMeta(
-                            selectedSupportDetail,
-                          );
+                      <div className="mt-3 w-full">
+                        <div className="mb-2 rounded-xl border border-purple-100 bg-white px-3 py-2 text-[9px] font-bold leading-5 text-gray-600">
+                          {selectedSupportDetail.description ||
+                            '説明はありません。'}
+                        </div>
 
-                        return (
-                          <>
-                            <div className="mt-1 flex flex-wrap gap-1.5 text-[8px] font-black text-gray-600">
-                              {meta.target && (
-                                <span className="rounded-lg bg-white px-2 py-1">
-                                  対象：
-                                  {
-                                    meta.target
-                                  }
-                                </span>
-                              )}
+                        <div className="grid grid-cols-2 gap-2">
+                          <button
+                            type="button"
+                            onClick={() =>
+                              setSelectedSupportDetail(
+                                null,
+                              )
+                            }
+                            className="rounded-xl bg-white px-3 py-2 text-[9px] font-black text-gray-600"
+                          >
+                            閉じる
+                          </button>
 
-                              {meta.duration && (
-                                <span className="rounded-lg bg-white px-2 py-1">
-                                  持続：
-                                  {
-                                    meta.duration
-                                  }
-                                </span>
-                              )}
-
-                              {meta.statEffect && (
-                                <span className="rounded-lg bg-white px-2 py-1">
-                                  効果：
-                                  {
-                                    meta.statEffect
-                                  }
-                                  {meta.effectAmount
-                                    ? ` ${meta.effectAmount}`
-                                    : ''}
-                                </span>
-                              )}
-                            </div>
-
-                            <div className="mt-2 rounded-xl bg-white p-2 text-[9px] leading-5 text-gray-700 whitespace-pre-wrap">
-                              {selectedSupportDetail.description ||
-                                '説明はありません。'}
-                            </div>
-
-                            {meta.note && (
-                              <div className="mt-1 text-[8px] text-gray-500 whitespace-pre-wrap">
-                                {
-                                  meta.note
-                                }
-                              </div>
-                            )}
-                          </>
-                        );
-                      })()}
-
-                      <div className="mt-2 flex flex-wrap gap-2">
-                        <button
-                          type="button"
-                          onClick={() =>
-                            setSelectedSupportDetail(
-                              null,
-                            )
-                          }
-                          className="rounded-xl bg-white px-3 py-2 text-[9px] font-black text-gray-600"
-                        >
-                          閉じる
-                        </button>
-
-                        <button
-                          type="button"
-                          onClick={() => {
-                            handleAddSupport(
-                              selectedSupportDetail.id,
-                            );
-                            setSelectedSupportDetail(
-                              null,
-                            );
-                          }}
-                          disabled={
-                            supportIds.length >=
-                              18 ||
-                            supportIds.filter(
-                              id =>
-                                id ===
+                          <button
+                            type="button"
+                            onClick={() => {
+                              handleAddSupport(
                                 selectedSupportDetail.id,
-                            ).length >=
-                              2
-                          }
-                          className="rounded-xl bg-purple-700 px-3 py-2 text-[9px] font-black text-white disabled:bg-gray-300"
-                        >
-                          このカードを追加
-                        </button>
+                              );
+
+                              setSelectedSupportDetail(
+                                null,
+                              );
+                            }}
+                            disabled={
+                              supportIds.length >=
+                                18 ||
+                              supportIds.filter(
+                                id =>
+                                  id ===
+                                  selectedSupportDetail.id,
+                              ).length >=
+                                2
+                            }
+                            className="rounded-xl bg-purple-700 px-3 py-2 text-[9px] font-black text-white disabled:bg-gray-300"
+                          >
+                            このカードを追加
+                          </button>
+                        </div>
                       </div>
                     </div>
-                  </div>
+                  ) : (
+                    <div className="rounded-2xl border border-dashed border-gray-200 bg-white py-8 text-center text-[10px] font-bold text-gray-400">
+                      このサポートカードの詳細情報を表示できません。
+                    </div>
+                  )}
                 </div>
               )}
+
+              <div className="shrink-0 border-t border-gray-200 bg-white px-3 py-2">
+                <div className="flex items-center justify-between gap-2">
+                  <div className="text-[9px] font-black text-gray-500">
+                    現在{' '}
+                    {
+                      supportIds.length
+                    }
+                    /18枚
+                  </div>
+
+                  <button
+                    type="button"
+                    onClick={
+                      handleClearAllSupports
+                    }
+                    disabled={
+                      supportIds.length ===
+                      0
+                    }
+                    className="rounded-lg bg-gray-100 px-2.5 py-1.5 text-[8px] font-black text-gray-500 disabled:opacity-40 hover:bg-red-50 hover:text-red-600"
+                  >
+                    すべて解除
+                  </button>
+                </div>
+              </div>
             </div>
           </div>
         )}
@@ -3261,6 +4373,7 @@ const characters: BattleDeckSnapshot['characters'] = [
                 <div className="text-[9px] font-black tracking-[0.16em] text-indigo-500">
                   TEAM ANALYSIS
                 </div>
+
                 <h2 className="mt-0.5 text-base font-black">
                   チーム分析
                 </h2>
@@ -3295,9 +4408,15 @@ const characters: BattleDeckSnapshot['characters'] = [
                     generalId,
                   ],
                 ] as Array<
-                  [string, string | null]
+                  [
+                    string,
+                    string | null,
+                  ]
                 >).map(
-                  ([label, cardId]) => {
+                  ([
+                    label,
+                    cardId,
+                  ]) => {
                     const card =
                       getCard(
                         cardId,
@@ -3396,7 +4515,10 @@ const characters: BattleDeckSnapshot['characters'] = [
                       number,
                     ]
                   >).map(
-                    ([label, delta]) => (
+                    ([
+                      label,
+                      delta,
+                    ]) => (
                       <div
                         key={label}
                         className="rounded-xl bg-white px-2 py-2 text-center"
@@ -3457,6 +4579,7 @@ const characters: BattleDeckSnapshot['characters'] = [
                 <div className="text-[9px] font-black tracking-[0.16em] text-gray-400">
                   OTHER
                 </div>
+
                 <h2 className="mt-0.5 text-base font-black">
                   その他
                 </h2>
@@ -3494,6 +4617,7 @@ const characters: BattleDeckSnapshot['characters'] = [
                             loadDeckToEditor(
                               deck,
                             );
+
                             setIsOtherMenuOpen(
                               false,
                             );
@@ -3522,6 +4646,7 @@ const characters: BattleDeckSnapshot['characters'] = [
                     setIsDeckDashboardOpen(
                       true,
                     );
+
                     setIsOtherMenuOpen(
                       false,
                     );
@@ -3538,6 +4663,7 @@ const characters: BattleDeckSnapshot['characters'] = [
                       setIsOtherMenuOpen(
                         false,
                       );
+
                       onGoToEntryHub();
                     }}
                     className="rounded-2xl border border-gray-200 bg-gray-50 p-3 text-left text-[10px] font-black text-gray-700"
@@ -3550,6 +4676,7 @@ const characters: BattleDeckSnapshot['characters'] = [
                   type="button"
                   onClick={() => {
                     handleDuplicateDeck();
+
                     setIsOtherMenuOpen(
                       false,
                     );
@@ -3563,6 +4690,7 @@ const characters: BattleDeckSnapshot['characters'] = [
                   type="button"
                   onClick={() => {
                     handleOpenSaveAs();
+
                     setIsOtherMenuOpen(
                       false,
                     );
@@ -3576,6 +4704,7 @@ const characters: BattleDeckSnapshot['characters'] = [
                   type="button"
                   onClick={() => {
                     handleExportDeck();
+
                     setIsOtherMenuOpen(
                       false,
                     );
@@ -3595,6 +4724,7 @@ const characters: BattleDeckSnapshot['characters'] = [
                       handleImportDeck(
                         e,
                       );
+
                       setIsOtherMenuOpen(
                         false,
                       );
@@ -3623,6 +4753,7 @@ const characters: BattleDeckSnapshot['characters'] = [
                       handleDeleteDeck(
                         selectedDeckId,
                       );
+
                       setIsOtherMenuOpen(
                         false,
                       );
@@ -3637,6 +4768,7 @@ const characters: BattleDeckSnapshot['characters'] = [
                   type="button"
                   onClick={() => {
                     resetToNewDeck();
+
                     setIsOtherMenuOpen(
                       false,
                     );
@@ -3691,6 +4823,7 @@ const characters: BattleDeckSnapshot['characters'] = [
                   setIsSaveAsOpen(
                     false,
                   );
+
                   setSaveAsConflictName(
                     null,
                   );
@@ -3725,14 +4858,6 @@ const characters: BattleDeckSnapshot['characters'] = [
           </div>
         </div>
       )}
-
-      {selectedCharacterDetail &&
-        !selectedTargetRole &&
-        null}
-
-      {selectedSupportDetail &&
-        !isSupportFilterOpen &&
-        null}
     </div>
   );
 }
