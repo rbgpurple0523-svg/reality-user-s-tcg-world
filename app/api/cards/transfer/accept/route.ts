@@ -11,7 +11,7 @@ import {
 export const runtime = 'nodejs';
 
 const TRANSFER_CODE_PATTERN =
-  /^[A-HJ-NP-Z2-9]{16}$/;
+  /^[A-HJ-NP-Z2-9]{4}(?:-[A-HJ-NP-Z2-9]{4}){3}$/;
 
 function errorResponse(error: unknown) {
   const code =
@@ -50,10 +50,25 @@ function normalizeTransferCode(
     throw new Error('INVALID_TRANSFER_CODE');
   }
 
-  const code = value
+  const compactCode = value
     .trim()
     .replace(/[\s-]+/g, '')
     .toUpperCase();
+
+  if (
+    !/^[A-HJ-NP-Z2-9]{16}$/.test(
+      compactCode,
+    )
+  ) {
+    throw new Error('INVALID_TRANSFER_CODE');
+  }
+
+  const code = [
+    compactCode.slice(0, 4),
+    compactCode.slice(4, 8),
+    compactCode.slice(8, 12),
+    compactCode.slice(12, 16),
+  ].join('-');
 
   if (!TRANSFER_CODE_PATTERN.test(code)) {
     throw new Error('INVALID_TRANSFER_CODE');
