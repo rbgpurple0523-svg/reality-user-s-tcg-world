@@ -1,9 +1,10 @@
 import { NextResponse } from 'next/server';
 import { FieldValue } from 'firebase-admin/firestore';
-import { timingSafeEqual, createHash } from 'node:crypto';
+import { timingSafeEqual } from 'node:crypto';
 import { adminDb } from '@/lib/firebaseAdmin';
 import {
   getOwnerData,
+  hashTransferCode,
   verifyBearerToken,
 } from '@/lib/cardServer';
 
@@ -59,15 +60,6 @@ function normalizeTransferCode(
   }
 
   return code;
-}
-
-function hashTransferCode(
-  code: string,
-  salt: string,
-) {
-  return createHash('sha256')
-    .update(`${salt}:${code}`)
-    .digest('hex');
 }
 
 function isSameHash(
