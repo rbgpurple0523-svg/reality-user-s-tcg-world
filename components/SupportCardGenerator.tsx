@@ -212,10 +212,18 @@ function normalizeProfileUrl(value: string): string {
 }
 
 function sanitizeStoredEntry(entry: EntryRecord): EntryRecord {
-  const sanitized = { ...entry } as EntryRecord & { ownerToken?: string };
-  sanitized.passwordHash = '';
-  delete sanitized.ownerToken;
-  return sanitized;
+  const stored = entry as EntryRecord & {
+    passwordHash?: unknown;
+    ownerToken?: unknown;
+  };
+
+  const {
+    passwordHash: _passwordHash,
+    ownerToken: _ownerToken,
+    ...safeEntry
+  } = stored;
+
+  return safeEntry;
 }
 
 function getStoredEntries(): EntryRecord[] {
@@ -320,7 +328,7 @@ function getCardApiErrorMessage(
 }
 
 function toCachedEntry(card: PublicCardResponse): EntryRecord {
-  return sanitizeStoredEntry({ ...card, passwordHash: '' });
+  return sanitizeStoredEntry(card);
 }
 
 async function loadImageFromSource(source: string): Promise<HTMLImageElement> {

@@ -1340,19 +1340,19 @@ service cloud.firestore {
             isStaleClosedRoomCleanup()
           );
       }
+    }
 
-      match /cards/{cardId} {
-        allow read: if request.auth != null;
-        allow create, update, delete: if false;
-      }
+    match /cards/{cardId} {
+      allow read: if request.auth != null;
+      allow create, update, delete: if false;
+    }
 
-      match /cardOwners/{cardId} {
-        allow read, create, update, delete: if false;
-      }
+    match /cardOwners/{cardId} {
+      allow read, create, update, delete: if false;
+    }
 
-      match /characterProfileIndex/{profileHash} {
-        allow read, create, update, delete: if false;
-      }
+    match /characterProfileIndex/{profileHash} {
+      allow read, create, update, delete: if false;
     }
   }
 }

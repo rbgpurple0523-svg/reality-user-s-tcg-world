@@ -3,7 +3,6 @@ import { adminDb } from '@/lib/firebaseAdmin';
 import {
   buildPublicCardFields,
   calculateMaxEntryLimit,
-  derivePasswordHash,
   getPresetStatsReference,
   makeCardId,
   makeProfileHash,
@@ -16,89 +15,153 @@ import { EMOTION_PRESETS } from '@/components/emotionPresets';
 export const runtime = 'nodejs';
 
 function errorResponse(error: unknown) {
-  const code = error instanceof Error ? error.message : 'CARD_REGISTER_FAILED';
-  const status =
-    code === 'AUTH_REQUIRED' ? 401 :
-    code === 'PROFILE_ALREADY_REGISTERED' ? 409 :
-    code === 'CARD_LIMIT_REACHED' ? 409 :
-    400;
+  const code =
+    error instanceof Error
+      ? error.message
+      : 'CARD_REGISTER_FAILED';
 
-  return NextResponse.json({ ok: false, error: code }, { status });
+  const status =
+    code === 'AUTH_REQUIRED'
+      ? 401
+      : code === 'PROFILE_ALREADY_REGISTERED'
+        ? 409
+        : code === 'CARD_LIMIT_REACHED'
+          ? 409
+          : 400;
+
+  return NextResponse.json(
+    { ok: false, error: code },
+    { status },
+  );
 }
 
 export async function POST(request: Request) {
   try {
     const user = await verifyBearerToken(request);
     const body = await request.json();
-    const payload = parseCardWritePayload(body, true);
-    const passwordHash = await derivePasswordHash(payload.password!);
+    const payload = parseCardWritePayload(body);
+
     const now = new Date().toISOString();
     const cardId = makeCardId();
-    const profileHash = makeProfileHash(payload.normalizedProfileUrl);
+    const profileHash = makeProfileHash(
+      payload.normalizedProfileUrl,
+    );
 
-    const result = await adminDb.runTransaction(async (transaction) => {
-      const cardRef = adminDb.collection('cards').doc(cardId);
-      const ownerRef = adminDb.collection('cardOwners').doc(cardId);
-      const profileRef = adminDb.collection('characterProfileIndex').doc(profileHash);
+    const result = await adminDb.runTransaction(
+      async (transaction) => {
+        const cardRef = adminDb
+          .collection('cards')
+          .doc(cardId);
 
-      const allPresets = [...COORDINATE_PRESETS, ...EMOTION_PRESETS];
-      const statsRefs = allPresets.map((preset) => getPresetStatsReference(preset.id));
-      const profileSnapshot = await transaction.get(profileRef);
-      const statsSnapshots = [];
+        const ownerRef = adminDb
+          .collection('cardOwners')
+          .doc(cardId);
 
-      for (const statsRef of statsRefs) {
-        statsSnapshots.push(await transaction.get(statsRef));
-      }
+        const profileRef = adminDb
+          .collection('characterProfileIndex')
+          .doc(profileHash);
 
-      if (profileSnapshot.exists) {
-        throw new Error('PROFILE_ALREADY_REGISTERED');
-      }
+        const allPresets = [
+          ...COORDINATE_PRESETS,
+          ...EMOTION_PRESETS,
+        ];
 
-      const activeCounts = statsSnapshots.map((snapshot) => {
-        const count = Number(snapshot.data()?.activeCount ?? 0);
-        return Number.isFinite(count) && count >= 0 ? Math.floor(count) : 0;
-      });
-      const maxEntryLimit = calculateMaxEntryLimit(activeCounts);
-      const presetIndex = allPresets.findIndex((preset) => preset.id === payload.presetId);
-      const currentCount = activeCounts[presetIndex] ?? 0;
+        const statsRefs = allPresets.map((preset) =>
+          getPresetStatsReference(preset.id),
+        );
 
-      if (currentCount >= maxEntryLimit) {
-        throw new Error('CARD_LIMIT_REACHED');
-      }
+        const profileSnapshot =
+          await transaction.get(profileRef);
 
-      const publicCard = {
-        ...buildPublicCardFields(payload),
-        id: cardId,
-        firstUser: payload.userName,
-        status: 'active' as const,
-        createdAt: now,
-        updatedAt: now,
-      };
+        const statsSnapshots = [];
 
-      transaction.create(cardRef, publicCard);
-      transaction.create(ownerRef, {
-        ownerUid: user.uid,
-        passwordHash,
-        createdAt: now,
-        updatedAt: now,
-      });
-      transaction.create(profileRef, {
-        cardId,
-        createdAt: now,
-      });
+        for (const statsRef of statsRefs) {
+          statsSnapshots.push(
+            await transaction.get(statsRef),
+          );
+        }
 
-      const statsRef = getPresetStatsReference(payload.presetId);
-      transaction.set(statsRef, {
-        activeCount: currentCount + 1,
-        updatedAt: now,
-      }, { merge: true });
+        if (profileSnapshot.exists) {
+          throw new Error(
+            'PROFILE_ALREADY_REGISTERED',
+          );
+        }
 
-      return publicCard;
+        const activeCounts = statsSnapshots.map(
+          (snapshot) => {
+            const count = Number(
+              snapshot.data()?.activeCount ?? 0,
+            );
+
+            return Number.isFinite(count) && count >= 0
+              ? Math.floor(count)
+              : 0;
+          },
+        );
+
+        const maxEntryLimit =
+          calculateMaxEntryLimit(activeCounts);
+
+        const presetIndex = allPresets.findIndex(
+          (preset) => preset.id === payload.presetId,
+        );
+
+        const currentCount =
+          activeCounts[presetIndex] ?? 0;
+
+        if (currentCount >= maxEntryLimit) {
+          throw new Error('CARD_LIMIT_REACHED');
+        }
+
+        const publicCard = {
+          ...buildPublicCardFields(payload),
+          id: cardId,
+          firstUser: payload.userName,
+          status: 'active' as const,
+          createdAt: now,
+          updatedAt: now,
+        };
+
+        transaction.create(cardRef, publicCard);
+
+        transaction.create(ownerRef, {
+          ownerUid: user.uid,
+          createdAt: now,
+          updatedAt: now,
+        });
+
+        transaction.create(profileRef, {
+          cardId,
+          createdAt: now,
+        });
+
+        const statsRef = getPresetStatsReference(
+          payload.presetId,
+        );
+
+        transaction.set(
+          statsRef,
+          {
+            activeCount: currentCount + 1,
+            updatedAt: now,
+          },
+          { merge: true },
+        );
+
+        return publicCard;
+      },
+    );
+
+    return NextResponse.json({
+      ok: true,
+      card: result,
     });
-
-    return NextResponse.json({ ok: true, card: result });
   } catch (error) {
-    console.error('Card register API error:', error);
+    console.error(
+      'Card register API error:',
+      error,
+    );
+
     return errorResponse(error);
   }
 }

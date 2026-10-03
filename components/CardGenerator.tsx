@@ -3,7 +3,6 @@
 import React, { ChangeEvent, FormEvent, useEffect, useMemo, useState } from 'react';
 import { ensureAnonymousAuth } from '@/lib/firebase';
 import { CoordinatePreset, COORDINATE_PRESETS, EntryRecord } from './EntryHub';
-import { EMOTION_PRESETS } from './emotionPresets';
 import {
   COLOR_PALETTE,
   getColorTypeFromHex,
@@ -37,7 +36,7 @@ type DraftData = {
   showProfileUrl?: boolean;
 };
 
-type PublicCardResponse = Omit<EntryRecord, 'passwordHash'>;
+type PublicCardResponse = EntryRecord;
 
 type CardApiCardResponse = {
   ok: true;
@@ -70,7 +69,9 @@ function getDefaultSkillVoice(skillName: string): string {
   return normalized ? `${normalized}！` : '';
 }
 
-function getDefaultSkillVoices(skills: [string, string, string, string]): [string, string, string, string] {
+function getDefaultSkillVoices(
+  skills: [string, string, string, string],
+): [string, string, string, string] {
   return [
     getDefaultSkillVoice(skills[0]),
     getDefaultSkillVoice(skills[1]),
@@ -97,7 +98,10 @@ async function compressImageFile(file: File): Promise<string> {
 
   try {
     const image = await loadImageFromSource(objectUrl);
-    const scale = Math.min(1, IMAGE_MAX_SIZE / Math.max(image.naturalWidth, image.naturalHeight));
+    const scale = Math.min(
+      1,
+      IMAGE_MAX_SIZE / Math.max(image.naturalWidth, image.naturalHeight),
+    );
     const width = Math.max(1, Math.round(image.naturalWidth * scale));
     const height = Math.max(1, Math.round(image.naturalHeight * scale));
     const canvas = document.createElement('canvas');
@@ -131,7 +135,10 @@ async function compressImageDataUrlIfNeeded(dataUrl: string): Promise<string> {
   if (isJpeg && dataUrl.length <= IMAGE_DATA_URL_MAX_LENGTH) return dataUrl;
 
   const image = await loadImageFromSource(dataUrl);
-  const scale = Math.min(1, IMAGE_MAX_SIZE / Math.max(image.naturalWidth, image.naturalHeight));
+  const scale = Math.min(
+    1,
+    IMAGE_MAX_SIZE / Math.max(image.naturalWidth, image.naturalHeight),
+  );
   const width = Math.max(1, Math.round(image.naturalWidth * scale));
   const height = Math.max(1, Math.round(image.naturalHeight * scale));
   const canvas = document.createElement('canvas');
@@ -156,10 +163,18 @@ async function compressImageDataUrlIfNeeded(dataUrl: string): Promise<string> {
 }
 
 function sanitizeStoredEntry(entry: EntryRecord): EntryRecord {
-  return {
-    ...entry,
-    passwordHash: '',
+  const stored = entry as EntryRecord & {
+    passwordHash?: unknown;
+    ownerToken?: unknown;
   };
+
+  const {
+    passwordHash: _passwordHash,
+    ownerToken: _ownerToken,
+    ...safeEntry
+  } = stored;
+
+  return safeEntry;
 }
 
 function getStoredEntries(): EntryRecord[] {
@@ -212,7 +227,9 @@ async function moderateCardTexts(texts: string[]): Promise<ModerationResult> {
   } catch {
     return {
       allowed: false,
-      code: response.ok ? 'MODERATION_INVALID_RESPONSE' : 'MODERATION_SERVICE_ERROR',
+      code: response.ok
+        ? 'MODERATION_INVALID_RESPONSE'
+        : 'MODERATION_SERVICE_ERROR',
     };
   }
 }
@@ -258,15 +275,19 @@ async function requestCardApi(
 
   return {
     ok: false,
-    error: typeof data.error === 'string'
-      ? data.error
-      : response.ok
-        ? 'CARD_API_INVALID_RESPONSE'
-        : 'CARD_API_REQUEST_FAILED',
+    error:
+      typeof data.error === 'string'
+        ? data.error
+        : response.ok
+          ? 'CARD_API_INVALID_RESPONSE'
+          : 'CARD_API_REQUEST_FAILED',
   };
 }
 
-function getCardApiErrorMessage(code: string, action: 'register' | 'update' | 'delete'): string {
+function getCardApiErrorMessage(
+  code: string,
+  action: 'register' | 'update' | 'delete',
+): string {
   switch (code) {
     case 'AUTH_REQUIRED':
       return '認証の準備に失敗しました。ページを再読み込みして、もう一度お試しください。';
@@ -277,7 +298,7 @@ function getCardApiErrorMessage(code: string, action: 'register' | 'update' | 'd
     case 'CARD_NOT_FOUND':
       return '対象のカードが見つかりません。一覧を開き直してください。';
     case 'PERMISSION_DENIED':
-      return 'このカードの所有者として認証できませんでした。同じ端末でない場合は、登録時の合言葉を入力してもう一度お試しください。';
+      return 'このカードを編集・削除する権限を確認できませんでした。カードの所有者として認証されている端末でお試しください。';
     case 'CARD_DELETED':
       return 'このカードはすでに削除されています。';
     case 'CARD_TYPE_OR_PRESET_IMMUTABLE':
@@ -300,43 +321,85 @@ function getCardApiErrorMessage(code: string, action: 'register' | 'update' | 'd
 }
 
 function toCachedEntry(card: PublicCardResponse): EntryRecord {
-  return {
-    ...card,
-    passwordHash: '',
-  };
+  return sanitizeStoredEntry(card);
 }
 
 function MiniRadarChart({ stats }: { stats: CoordinatePreset['stats'] }) {
   const size = 96;
   const center = size / 2;
   const radius = 34;
-  const values = [stats.hp, stats.intellect, stats.dexterity, stats.charm].map((value) => Math.min(100, Math.max(0, value)));
+  const values = [
+    stats.hp,
+    stats.intellect,
+    stats.dexterity,
+    stats.charm,
+  ].map((value) => Math.min(100, Math.max(0, value)));
+
   const points = [
     `${center},${center - (values[0] / 100) * radius}`,
     `${center + (values[1] / 100) * radius},${center}`,
     `${center},${center + (values[2] / 100) * radius}`,
     `${center - (values[3] / 100) * radius},${center}`,
   ].join(' ');
+
   const outerPoints = [
     `${center},${center - radius}`,
     `${center + radius},${center}`,
     `${center},${center + radius}`,
     `${center - radius},${center}`,
   ].join(' ');
+
   const middleRadius = radius * 0.5;
+
   const middlePoints = [
     `${center},${center - middleRadius}`,
     `${center + middleRadius},${center}`,
     `${center},${center + middleRadius}`,
     `${center - middleRadius},${center}`,
   ].join(' ');
+
   return (
-    <svg width={size} height={size} viewBox={`0 0 ${size} ${size}`} aria-label="ステータスレーダー">
-      <polygon points={outerPoints} fill="none" stroke="currentColor" strokeOpacity="0.18" />
-      <polygon points={middlePoints} fill="none" stroke="currentColor" strokeOpacity="0.12" />
-      <line x1={center} y1={center - radius} x2={center} y2={center + radius} stroke="currentColor" strokeOpacity="0.12" />
-      <line x1={center - radius} y1={center} x2={center + radius} y2={center} stroke="currentColor" strokeOpacity="0.12" />
-      <polygon points={points} fill="currentColor" fillOpacity="0.15" stroke="currentColor" strokeWidth="2" />
+    <svg
+      width={size}
+      height={size}
+      viewBox={`0 0 ${size} ${size}`}
+      aria-label="ステータスレーダー"
+    >
+      <polygon
+        points={outerPoints}
+        fill="none"
+        stroke="currentColor"
+        strokeOpacity="0.18"
+      />
+      <polygon
+        points={middlePoints}
+        fill="none"
+        stroke="currentColor"
+        strokeOpacity="0.12"
+      />
+      <line
+        x1={center}
+        y1={center - radius}
+        x2={center}
+        y2={center + radius}
+        stroke="currentColor"
+        strokeOpacity="0.12"
+      />
+      <line
+        x1={center - radius}
+        y1={center}
+        x2={center + radius}
+        y2={center}
+        stroke="currentColor"
+        strokeOpacity="0.12"
+      />
+      <polygon
+        points={points}
+        fill="currentColor"
+        fillOpacity="0.15"
+        stroke="currentColor"
+        strokeWidth="2"
+      />
     </svg>
   );
 }
@@ -349,7 +412,8 @@ export default function CardGenerator({
   openEntryId,
   onOpenEntryList,
 }: CardGeneratorProps) {
-  const [currentCoordinate, setCurrentCoordinate] = useState<CoordinatePreset | null>(selectedCoordinate ?? null);
+  const [currentCoordinate, setCurrentCoordinate] =
+    useState<CoordinatePreset | null>(selectedCoordinate ?? null);
 
   useEffect(() => {
     setCurrentCoordinate(selectedCoordinate ?? null);
@@ -365,12 +429,16 @@ export default function CardGenerator({
         selectedCoordinate.defaultSkills[2],
         selectedCoordinate.defaultSkills[3],
       ]);
-      setSkillVoices(getDefaultSkillVoices([
-        selectedCoordinate.defaultSkills[0],
-        selectedCoordinate.defaultSkills[1],
-        selectedCoordinate.defaultSkills[2],
-        selectedCoordinate.defaultSkills[3],
-      ]));
+
+      setSkillVoices(
+        getDefaultSkillVoices([
+          selectedCoordinate.defaultSkills[0],
+          selectedCoordinate.defaultSkills[1],
+          selectedCoordinate.defaultSkills[2],
+          selectedCoordinate.defaultSkills[3],
+        ]),
+      );
+
       setFlavorText('');
       setIsColorTouched(false);
     }
@@ -379,9 +447,10 @@ export default function CardGenerator({
   const [profileUrl, setProfileUrl] = useState('');
   const [userName, setUserName] = useState('');
   const [imageDataUrl, setImageDataUrl] = useState('');
-  const [password, setPassword] = useState('');
-  const [customSkills, setCustomSkills] = useState<[string, string, string, string]>(emptySkills);
-  const [skillVoices, setSkillVoices] = useState<[string, string, string, string]>(emptySkillVoices);
+  const [customSkills, setCustomSkills] =
+    useState<[string, string, string, string]>(emptySkills);
+  const [skillVoices, setSkillVoices] =
+    useState<[string, string, string, string]>(emptySkillVoices);
   const [flavorText, setFlavorText] = useState('');
   const [selectedColorHex, setSelectedColorHex] = useState('#22D3EE');
   const [showProfileUrl, setShowProfileUrl] = useState(true);
@@ -399,7 +468,9 @@ export default function CardGenerator({
   const [draftChecked, setDraftChecked] = useState(false);
   const [isModerating, setIsModerating] = useState(false);
 
-  const [activeEditor, setActiveEditor] = useState<'basic' | 'skills' | 'color' | 'flavor' | 'saved' | null>(null);
+  const [activeEditor, setActiveEditor] = useState<
+    'basic' | 'skills' | 'color' | 'flavor' | 'saved' | null
+  >(null);
 
   useEffect(() => {
     if (openSaved) {
@@ -430,6 +501,7 @@ export default function CardGenerator({
     } catch {
       setDraftAvailable(false);
     }
+
     setDraftChecked(true);
   }, []);
 
@@ -464,51 +536,89 @@ export default function CardGenerator({
         colorType: selectedColorType,
         showProfileUrl,
       };
+
       localStorage.setItem(DRAFT_KEY, JSON.stringify(draft));
       setDraftAvailable(true);
     } catch {}
-  }, [profileUrl, userName, imageDataUrl, currentCoordinate, customSkills, skillVoices, flavorText, selectedColorHex, selectedColorType, showProfileUrl, draftChecked]);
+  }, [
+    profileUrl,
+    userName,
+    imageDataUrl,
+    currentCoordinate,
+    customSkills,
+    skillVoices,
+    flavorText,
+    selectedColorHex,
+    selectedColorType,
+    showProfileUrl,
+    draftChecked,
+  ]);
 
   const restoreDraft = () => {
     try {
       const raw = localStorage.getItem(DRAFT_KEY);
       if (!raw) return;
+
       const draft = JSON.parse(raw) as DraftData;
+
       const preset = draft.selectedCoordinateId
-        ? COORDINATE_PRESETS.find((item) => item.id === draft.selectedCoordinateId) ?? null
+        ? COORDINATE_PRESETS.find(
+            (item) => item.id === draft.selectedCoordinateId,
+          ) ?? null
         : null;
 
       setProfileUrl(normalizeProfileUrl(draft.profileUrl ?? ''));
       setUserName(draft.userName ?? '');
       setImageDataUrl(draft.imageDataUrl ?? '');
-      setPassword('');
       setCurrentCoordinate(preset);
+
       const restoredSkills: [string, string, string, string] =
         draft.customSkills?.length === 4
-          ? [draft.customSkills[0], draft.customSkills[1], draft.customSkills[2], draft.customSkills[3]]
+          ? [
+              draft.customSkills[0],
+              draft.customSkills[1],
+              draft.customSkills[2],
+              draft.customSkills[3],
+            ]
           : preset?.defaultSkills ?? emptySkills;
+
       setCustomSkills(restoredSkills);
+
       const restoredVoices: [string, string, string, string] =
         draft.skillVoices?.length === 4
           ? [
-              draft.skillVoices[0] || getDefaultSkillVoice(restoredSkills[0]),
-              draft.skillVoices[1] || getDefaultSkillVoice(restoredSkills[1]),
-              draft.skillVoices[2] || getDefaultSkillVoice(restoredSkills[2]),
-              draft.skillVoices[3] || getDefaultSkillVoice(restoredSkills[3]),
+              draft.skillVoices[0] ||
+                getDefaultSkillVoice(restoredSkills[0]),
+              draft.skillVoices[1] ||
+                getDefaultSkillVoice(restoredSkills[1]),
+              draft.skillVoices[2] ||
+                getDefaultSkillVoice(restoredSkills[2]),
+              draft.skillVoices[3] ||
+                getDefaultSkillVoice(restoredSkills[3]),
             ]
           : getDefaultSkillVoices(restoredSkills);
+
       setSkillVoices(restoredVoices);
       setFlavorText(draft.flavorText ?? '');
+
       setSelectedColorHex(
         draft.colorHex && /^#[0-9a-fA-F]{6}$/.test(draft.colorHex)
           ? draft.colorHex.toUpperCase()
           : getLegacyColorHex(undefined),
       );
-      setIsColorTouched(Boolean(draft.colorHex && /^#[0-9a-fA-F]{6}$/.test(draft.colorHex)));
+
+      setIsColorTouched(
+        Boolean(
+          draft.colorHex &&
+            /^#[0-9a-fA-F]{6}$/.test(draft.colorHex),
+        ),
+      );
+
       setShowProfileUrl(draft.showProfileUrl !== false);
       setIsCompleted(false);
       setDraftAvailable(false);
       setSuccessMessage('前回の続きから復元しました。');
+
       setTimeout(() => setSuccessMessage(''), 2000);
     } catch {
       setErrorMessage('下書きを復元できませんでした。');
@@ -519,6 +629,7 @@ export default function CardGenerator({
     try {
       localStorage.removeItem(DRAFT_KEY);
     } catch {}
+
     setDraftAvailable(false);
   };
 
@@ -540,12 +651,14 @@ export default function CardGenerator({
 
   const selectCoordinatePreset = (preset: CoordinatePreset) => {
     setCurrentCoordinate(preset);
+
     const nextSkills: [string, string, string, string] = [
       preset.defaultSkills[0],
       preset.defaultSkills[1],
       preset.defaultSkills[2],
       preset.defaultSkills[3],
     ];
+
     setCustomSkills(nextSkills);
     setSkillVoices(getDefaultSkillVoices(nextSkills));
     setErrorMessage('');
@@ -556,7 +669,9 @@ export default function CardGenerator({
     setErrorMessage('');
   };
 
-  const handleImageUpload = async (e: ChangeEvent<HTMLInputElement>) => {
+  const handleImageUpload = async (
+    e: ChangeEvent<HTMLInputElement>,
+  ) => {
     const file = e.target.files?.[0];
     if (!file) return;
 
@@ -565,13 +680,16 @@ export default function CardGenerator({
       setImageDataUrl(compressed);
       setErrorMessage('');
     } catch {
-      setErrorMessage('画像を読み込めませんでした。別の画像をお試しください。');
+      setErrorMessage(
+        '画像を読み込めませんでした。別の画像をお試しください。',
+      );
     }
   };
 
   const handleColorChange = (hex: string) => {
     const normalized = hex.toUpperCase();
     if (!/^#[0-9A-F]{6}$/.test(normalized)) return;
+
     setSelectedColorHex(normalized);
     setIsColorTouched(true);
     setErrorMessage('');
@@ -582,14 +700,27 @@ export default function CardGenerator({
     const previousVoice = skillVoices[index];
 
     setCustomSkills((prev) => {
-      const next = [...prev] as [string, string, string, string];
+      const next = [...prev] as [
+        string,
+        string,
+        string,
+        string,
+      ];
       next[index] = value;
       return next;
     });
 
-    if (!previousVoice.trim() || previousVoice.trim() === getDefaultSkillVoice(previousSkill)) {
+    if (
+      !previousVoice.trim() ||
+      previousVoice.trim() === getDefaultSkillVoice(previousSkill)
+    ) {
       setSkillVoices((prev) => {
-        const next = [...prev] as [string, string, string, string];
+        const next = [...prev] as [
+          string,
+          string,
+          string,
+          string,
+        ];
         next[index] = getDefaultSkillVoice(value);
         return next;
       });
@@ -598,7 +729,12 @@ export default function CardGenerator({
 
   const handleSkillVoiceChange = (index: number, value: string) => {
     setSkillVoices((prev) => {
-      const next = [...prev] as [string, string, string, string];
+      const next = [...prev] as [
+        string,
+        string,
+        string,
+        string,
+      ];
       next[index] = value;
       return next;
     });
@@ -617,26 +753,39 @@ export default function CardGenerator({
       return;
     }
 
-    if (!normalizedCurrentProfileUrl.startsWith('https://reality.app/profile/')) {
-      setErrorMessage('有効なREALITYプロフURLを入力してください。');
+    if (
+      !normalizedCurrentProfileUrl.startsWith(
+        'https://reality.app/profile/',
+      )
+    ) {
+      setErrorMessage(
+        '有効なREALITYプロフURLを入力してください。',
+      );
       setActiveEditor('basic');
       return;
     }
 
-    const requiresPasswordForRegistration = !editingId && !password.trim();
+    if (
+      !userName.trim() ||
+      !imageDataUrl ||
+      customSkills.some((skill) => !skill.trim())
+    ) {
+      setErrorMessage(
+        '基本情報と4つのスキルをすべて入力してください。',
+      );
 
-    if (!userName.trim() || !imageDataUrl || requiresPasswordForRegistration || customSkills.some((skill) => !skill.trim())) {
-      setErrorMessage('基本情報と4つのスキルをすべて入力してください。');
       if (
         !userName.trim() ||
-        !normalizedCurrentProfileUrl.startsWith('https://reality.app/profile/') ||
-        !imageDataUrl ||
-        requiresPasswordForRegistration
+        !normalizedCurrentProfileUrl.startsWith(
+          'https://reality.app/profile/',
+        ) ||
+        !imageDataUrl
       ) {
         setActiveEditor('basic');
       } else {
         setActiveEditor('skills');
       }
+
       return;
     }
 
@@ -648,12 +797,30 @@ export default function CardGenerator({
       return;
     }
 
-    const normalizedSkillVoices: [string, string, string, string] = [
-      (skillVoices[0].trim() || getDefaultSkillVoice(customSkills[0])).trim(),
-      (skillVoices[1].trim() || getDefaultSkillVoice(customSkills[1])).trim(),
-      (skillVoices[2].trim() || getDefaultSkillVoice(customSkills[2])).trim(),
-      (skillVoices[3].trim() || getDefaultSkillVoice(customSkills[3])).trim(),
+    const normalizedSkillVoices: [
+      string,
+      string,
+      string,
+      string,
+    ] = [
+      (
+        skillVoices[0].trim() ||
+        getDefaultSkillVoice(customSkills[0])
+      ).trim(),
+      (
+        skillVoices[1].trim() ||
+        getDefaultSkillVoice(customSkills[1])
+      ).trim(),
+      (
+        skillVoices[2].trim() ||
+        getDefaultSkillVoice(customSkills[2])
+      ).trim(),
+      (
+        skillVoices[3].trim() ||
+        getDefaultSkillVoice(customSkills[3])
+      ).trim(),
     ];
+
     setSkillVoices(normalizedSkillVoices);
 
     const moderationTexts = [
@@ -666,28 +833,44 @@ export default function CardGenerator({
     setIsModerating(true);
 
     try {
-      const moderationResult = await moderateCardTexts(moderationTexts);
+      const moderationResult =
+        await moderateCardTexts(moderationTexts);
 
       if (!moderationResult.allowed) {
         if (
           moderationResult.code === 'CUSTOM_RULE' ||
           moderationResult.code === 'PROFANITY_FILTERED'
         ) {
-          setErrorMessage('入力内容に安全上の問題があるため、保存できませんでした。');
+          setErrorMessage(
+            '入力内容に安全上の問題があるため、保存できませんでした。',
+          );
         } else {
-          setErrorMessage('入力内容を安全確認できなかったため、保存していません。もう一度お試しください。');
+          setErrorMessage(
+            '入力内容を安全確認できなかったため、保存していません。もう一度お試しください。',
+          );
         }
+
         return;
       }
     } catch {
-      setErrorMessage('入力内容を安全確認できなかったため、保存していません。もう一度お試しください。');
+      setErrorMessage(
+        '入力内容を安全確認できなかったため、保存していません。もう一度お試しください。',
+      );
       return;
     } finally {
       setIsModerating(false);
     }
 
-    const normalizedProfileUrl = normalizeProfileUrl(normalizedCurrentProfileUrl);
-    const normalizedCustomSkills: [string, string, string, string] = [
+    const normalizedProfileUrl = normalizeProfileUrl(
+      normalizedCurrentProfileUrl,
+    );
+
+    const normalizedCustomSkills: [
+      string,
+      string,
+      string,
+      string,
+    ] = [
       customSkills[0].trim(),
       customSkills[1].trim(),
       customSkills[2].trim(),
@@ -697,12 +880,16 @@ export default function CardGenerator({
     let normalizedImageDataUrl = imageDataUrl;
 
     try {
-      normalizedImageDataUrl = await compressImageDataUrlIfNeeded(imageDataUrl);
+      normalizedImageDataUrl =
+        await compressImageDataUrlIfNeeded(imageDataUrl);
+
       if (normalizedImageDataUrl !== imageDataUrl) {
         setImageDataUrl(normalizedImageDataUrl);
       }
     } catch {
-      setErrorMessage('画像の圧縮に失敗したため、保存できませんでした。別の画像をお試しください。');
+      setErrorMessage(
+        '画像の圧縮に失敗したため、保存できませんでした。別の画像をお試しください。',
+      );
       return;
     }
 
@@ -721,51 +908,74 @@ export default function CardGenerator({
 
     if (editingId) {
       requestBody.cardId = editingId;
-      if (password.trim()) {
-        requestBody.password = password.trim();
-      }
-    } else {
-      requestBody.password = password.trim();
     }
 
     try {
       const result = await requestCardApi(
-        editingId ? '/api/cards/update' : '/api/cards/register',
+        editingId
+          ? '/api/cards/update'
+          : '/api/cards/register',
         requestBody,
       );
 
       if (!result.ok) {
-        setErrorMessage(getCardApiErrorMessage(result.error ?? 'CARD_API_REQUEST_FAILED', editingId ? 'update' : 'register'));
-        if (result.error === 'PROFILE_ALREADY_REGISTERED' || result.error === 'CARD_LIMIT_REACHED') {
+        setErrorMessage(
+          getCardApiErrorMessage(
+            result.error ?? 'CARD_API_REQUEST_FAILED',
+            editingId ? 'update' : 'register',
+          ),
+        );
+
+        if (
+          result.error === 'PROFILE_ALREADY_REGISTERED' ||
+          result.error === 'CARD_LIMIT_REACHED'
+        ) {
           setRegistrationStep(2);
         }
+
         if (result.error === 'PERMISSION_DENIED') {
           setActiveEditor('basic');
         }
+
         return;
       }
 
       if (!('card' in result)) {
-        setErrorMessage('カード情報を受け取れませんでした。もう一度お試しください。');
+        setErrorMessage(
+          'カード情報を受け取れませんでした。もう一度お試しください。',
+        );
         return;
       }
 
       const cachedEntry = toCachedEntry(result.card);
       const currentEntries = getStoredEntries();
+
       const nextEntries = editingId
-        ? currentEntries.some((entry) => entry.id === cachedEntry.id)
-          ? currentEntries.map((entry) => (entry.id === cachedEntry.id ? cachedEntry : entry))
+        ? currentEntries.some(
+            (entry) => entry.id === cachedEntry.id,
+          )
+          ? currentEntries.map((entry) =>
+              entry.id === cachedEntry.id
+                ? cachedEntry
+                : entry,
+            )
           : [cachedEntry, ...currentEntries]
-        : [cachedEntry, ...currentEntries.filter((entry) => entry.id !== cachedEntry.id)];
+        : [
+            cachedEntry,
+            ...currentEntries.filter(
+              (entry) => entry.id !== cachedEntry.id,
+            ),
+          ];
 
       try {
         const savedEntries = saveCachedEntries(nextEntries);
         setEntries(savedEntries);
       } catch {
-        setErrorMessage('カードはサーバーに保存されましたが、一覧のキャッシュ更新に失敗しました。');
+        setErrorMessage(
+          'カードはサーバーに保存されましたが、一覧のキャッシュ更新に失敗しました。',
+        );
         setEditingId(cachedEntry.id);
         setIsCompleted(true);
-        setPassword('');
         setRegistrationStep(3);
         setActiveEditor(null);
         return;
@@ -773,53 +983,88 @@ export default function CardGenerator({
 
       setEditingId(cachedEntry.id);
       setIsCompleted(true);
-      setPassword('');
+
       setSuccessMessage(
-        editingId ? '✨ キャラカードを更新しました！' : '✨ キャラカードを登録しました！',
+        editingId
+          ? '✨ キャラカードを更新しました！'
+          : '✨ キャラカードを登録しました！',
       );
+
       setRegistrationStep(3);
       setActiveEditor(null);
 
       try {
         localStorage.removeItem(DRAFT_KEY);
       } catch {}
+
       setDraftAvailable(false);
     } catch (error) {
-      const code = error instanceof Error ? error.message : 'CARD_API_REQUEST_FAILED';
-      setErrorMessage(getCardApiErrorMessage(code, editingId ? 'update' : 'register'));
+      const code =
+        error instanceof Error
+          ? error.message
+          : 'CARD_API_REQUEST_FAILED';
+
+      setErrorMessage(
+        getCardApiErrorMessage(
+          code,
+          editingId ? 'update' : 'register',
+        ),
+      );
     }
   };
 
   const handleEdit = (entry: EntryRecord) => {
-    const preset = COORDINATE_PRESETS.find((item) => item.id === entry.presetId) ?? null;
+    const preset =
+      COORDINATE_PRESETS.find(
+        (item) => item.id === entry.presetId,
+      ) ?? null;
+
     setCurrentCoordinate(preset);
     setProfileUrl(normalizeProfileUrl(entry.profileUrl || ''));
     setUserName(entry.userName);
     setImageDataUrl(entry.imageDataUrl);
-    setPassword('');
 
-    const restoredSkills: [string, string, string, string] =
+    const restoredSkills: [
+      string,
+      string,
+      string,
+      string,
+    ] =
       entry.customSkills?.length === 4
-        ? [entry.customSkills[0], entry.customSkills[1], entry.customSkills[2], entry.customSkills[3]]
+        ? [
+            entry.customSkills[0],
+            entry.customSkills[1],
+            entry.customSkills[2],
+            entry.customSkills[3],
+          ]
         : preset?.defaultSkills ?? emptySkills;
 
     setCustomSkills(restoredSkills);
+
     setSkillVoices(
       entry.skillVoices?.length === 4
         ? [
-            entry.skillVoices[0] || getDefaultSkillVoice(restoredSkills[0]),
-            entry.skillVoices[1] || getDefaultSkillVoice(restoredSkills[1]),
-            entry.skillVoices[2] || getDefaultSkillVoice(restoredSkills[2]),
-            entry.skillVoices[3] || getDefaultSkillVoice(restoredSkills[3]),
+            entry.skillVoices[0] ||
+              getDefaultSkillVoice(restoredSkills[0]),
+            entry.skillVoices[1] ||
+              getDefaultSkillVoice(restoredSkills[1]),
+            entry.skillVoices[2] ||
+              getDefaultSkillVoice(restoredSkills[2]),
+            entry.skillVoices[3] ||
+              getDefaultSkillVoice(restoredSkills[3]),
           ]
         : getDefaultSkillVoices(restoredSkills),
     );
+
     setFlavorText(entry.flavorText ?? '');
+
     setSelectedColorHex(
-      entry.colorHex && /^#[0-9a-fA-F]{6}$/.test(entry.colorHex)
+      entry.colorHex &&
+        /^#[0-9a-fA-F]{6}$/.test(entry.colorHex)
         ? entry.colorHex.toUpperCase()
         : getLegacyColorHex(entry.color),
     );
+
     setIsColorTouched(true);
     setShowProfileUrl(entry.showProfileUrl !== false);
     setIsCompleted(false);
@@ -833,10 +1078,16 @@ export default function CardGenerator({
   useEffect(() => {
     if (!openEntryId || editingId) return;
 
-    const entry = entries.find((item) => item.id === openEntryId);
+    const entry = entries.find(
+      (item) => item.id === openEntryId,
+    );
+
     if (!entry) return;
 
-    const preset = COORDINATE_PRESETS.find((item) => item.id === entry.presetId);
+    const preset = COORDINATE_PRESETS.find(
+      (item) => item.id === entry.presetId,
+    );
+
     if (preset) {
       setCurrentCoordinate(preset);
     }
@@ -844,8 +1095,13 @@ export default function CardGenerator({
     setProfileUrl(entry.profileUrl || '');
     setUserName(entry.userName || '');
     setImageDataUrl(entry.imageDataUrl || '');
-    setPassword('');
-    const restoredSkills: [string, string, string, string] =
+
+    const restoredSkills: [
+      string,
+      string,
+      string,
+      string,
+    ] =
       entry.customSkills?.length === 4
         ? [
             entry.customSkills[0],
@@ -854,23 +1110,33 @@ export default function CardGenerator({
             entry.customSkills[3],
           ]
         : preset?.defaultSkills ?? emptySkills;
+
     setCustomSkills(restoredSkills);
+
     setSkillVoices(
       entry.skillVoices?.length === 4
         ? [
-            entry.skillVoices[0] || getDefaultSkillVoice(restoredSkills[0]),
-            entry.skillVoices[1] || getDefaultSkillVoice(restoredSkills[1]),
-            entry.skillVoices[2] || getDefaultSkillVoice(restoredSkills[2]),
-            entry.skillVoices[3] || getDefaultSkillVoice(restoredSkills[3]),
+            entry.skillVoices[0] ||
+              getDefaultSkillVoice(restoredSkills[0]),
+            entry.skillVoices[1] ||
+              getDefaultSkillVoice(restoredSkills[1]),
+            entry.skillVoices[2] ||
+              getDefaultSkillVoice(restoredSkills[2]),
+            entry.skillVoices[3] ||
+              getDefaultSkillVoice(restoredSkills[3]),
           ]
         : getDefaultSkillVoices(restoredSkills),
     );
+
     setFlavorText(entry.flavorText || '');
+
     setSelectedColorHex(
-      entry.colorHex && /^#[0-9a-fA-F]{6}$/.test(entry.colorHex)
+      entry.colorHex &&
+        /^#[0-9a-fA-F]{6}$/.test(entry.colorHex)
         ? entry.colorHex.toUpperCase()
         : getLegacyColorHex(entry.color),
     );
+
     setIsColorTouched(true);
     setIsCompleted(false);
     setEditingId(entry.id);
@@ -894,27 +1160,37 @@ export default function CardGenerator({
         cardId: entry.id,
       };
 
-      if (password.trim()) {
-        body.password = password.trim();
-      }
-
-      const result = await requestCardApi('/api/cards/delete', body);
+      const result = await requestCardApi(
+        '/api/cards/delete',
+        body,
+      );
 
       if (!result.ok) {
-        setErrorMessage(getCardApiErrorMessage(result.error ?? 'CARD_API_REQUEST_FAILED', 'delete'));
+        setErrorMessage(
+          getCardApiErrorMessage(
+            result.error ?? 'CARD_API_REQUEST_FAILED',
+            'delete',
+          ),
+        );
+
         if (result.error === 'PERMISSION_DENIED') {
           setActiveEditor('basic');
         }
+
         return;
       }
 
       if (!('result' in result)) {
-        setErrorMessage('削除結果を受け取れませんでした。もう一度お試しください。');
+        setErrorMessage(
+          '削除結果を受け取れませんでした。もう一度お試しください。',
+        );
         return;
       }
 
       const currentEntries = getStoredEntries();
-      const nextEntries = currentEntries.filter((item) => item.id !== entry.id);
+      const nextEntries = currentEntries.filter(
+        (item) => item.id !== entry.id,
+      );
 
       try {
         const savedEntries = saveCachedEntries(nextEntries);
@@ -923,7 +1199,6 @@ export default function CardGenerator({
         setEntries(nextEntries);
       }
 
-      setPassword('');
       if (editingId === entry.id) {
         setEditingId(null);
         setIsCompleted(false);
@@ -933,81 +1208,161 @@ export default function CardGenerator({
       } else {
         setSuccessMessage('✨ キャラカードを削除しました。');
       }
+
       setErrorMessage('');
     } catch (error) {
-      const code = error instanceof Error ? error.message : 'CARD_API_REQUEST_FAILED';
-      setErrorMessage(getCardApiErrorMessage(code, 'delete'));
+      const code =
+        error instanceof Error
+          ? error.message
+          : 'CARD_API_REQUEST_FAILED';
+
+      setErrorMessage(
+        getCardApiErrorMessage(code, 'delete'),
+      );
     }
   };
 
   const normalizedProfileUrlForValidation = (value: string) =>
-    normalizeProfileUrl(value).startsWith('https://reality.app/profile/');
+    normalizeProfileUrl(value).startsWith(
+      'https://reality.app/profile/',
+    );
 
   const basicInfoComplete = Boolean(
     userName.trim() &&
       normalizedProfileUrlForValidation(profileUrl) &&
-      imageDataUrl &&
-      (editingId || password.trim()),
+      imageDataUrl,
   );
 
-  const skillsComplete = customSkills.every((skill) => skill.trim().length > 0);
+  const skillsComplete = customSkills.every(
+    (skill) => skill.trim().length > 0,
+  );
 
   return (
     <div className="mx-auto flex h-full min-h-0 w-full max-w-5xl flex-col text-gray-900">
       <div className="shrink-0 border-b border-gray-200 px-3 py-2 sm:px-5">
         <div className="flex items-center justify-between gap-3">
           <div className="min-w-0">
-            <div className="text-[9px] font-black tracking-[0.22em] text-pink-500">CHARACTER CARD</div>
-            <h2 className="truncate text-lg font-black">キャラカードを作る</h2>
+            <div className="text-[9px] font-black tracking-[0.22em] text-pink-500">
+              CHARACTER CARD
+            </div>
+            <h2 className="truncate text-lg font-black">
+              キャラカードを作る
+            </h2>
           </div>
+
           <div className="flex shrink-0 items-center gap-1.5">
             {onBackToHub && (
-              <button type="button" onClick={handleBackButton} className="rounded-xl bg-gray-100 px-3 py-2 text-[10px] font-black text-gray-700">← 戻る</button>
+              <button
+                type="button"
+                onClick={handleBackButton}
+                className="rounded-xl bg-gray-100 px-3 py-2 text-[10px] font-black text-gray-700"
+              >
+                ← 戻る
+              </button>
             )}
           </div>
         </div>
 
         <div className="mt-2 grid grid-cols-[1fr_auto_1fr_auto_1fr] items-center gap-1.5 text-[9px] font-black">
-          <span className="rounded-full bg-pink-100 px-2 py-1 text-center text-pink-800">① コーデ</span>
+          <span className="rounded-full bg-pink-100 px-2 py-1 text-center text-pink-800">
+            ① コーデ
+          </span>
           <span className="h-px bg-pink-200" />
-          <span className={`rounded-full px-2 py-1 text-center ${registrationStep === 2 ? 'bg-pink-600 text-white' : 'bg-pink-100 text-pink-800'}`}>② カード編集</span>
+
+          <span
+            className={`rounded-full px-2 py-1 text-center ${
+              registrationStep === 2
+                ? 'bg-pink-600 text-white'
+                : 'bg-pink-100 text-pink-800'
+            }`}
+          >
+            ② カード編集
+          </span>
+
           <span className="h-px bg-pink-200" />
-          <span className={`rounded-full px-2 py-1 text-center ${registrationStep === 3 ? 'bg-pink-600 text-white' : 'bg-gray-100 text-gray-400'}`}>③ 登録</span>
+
+          <span
+            className={`rounded-full px-2 py-1 text-center ${
+              registrationStep === 3
+                ? 'bg-pink-600 text-white'
+                : 'bg-gray-100 text-gray-400'
+            }`}
+          >
+            ③ 登録
+          </span>
         </div>
       </div>
 
       {draftAvailable && !editingId && !openEntryId && (
         <div className="mx-3 mt-2 shrink-0 rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-[10px] sm:mx-5">
           <div className="flex items-center justify-between gap-2">
-            <div className="font-bold text-amber-900">前回の続きがあります</div>
+            <div className="font-bold text-amber-900">
+              前回の続きがあります
+            </div>
+
             <div className="flex gap-1.5">
-              <button type="button" onClick={restoreDraft} className="rounded-lg bg-amber-600 px-2.5 py-1.5 font-black text-white">復元</button>
-              <button type="button" onClick={discardDraft} className="rounded-lg border border-amber-300 bg-white px-2.5 py-1.5 font-black text-amber-900">破棄</button>
+              <button
+                type="button"
+                onClick={restoreDraft}
+                className="rounded-lg bg-amber-600 px-2.5 py-1.5 font-black text-white"
+              >
+                復元
+              </button>
+
+              <button
+                type="button"
+                onClick={discardDraft}
+                className="rounded-lg border border-amber-300 bg-white px-2.5 py-1.5 font-black text-amber-900"
+              >
+                破棄
+              </button>
             </div>
           </div>
         </div>
       )}
 
       {(errorMessage || successMessage) && (
-        <div className={`mx-3 mt-2 shrink-0 rounded-xl border px-3 py-2 text-[10px] font-bold sm:mx-5 ${errorMessage ? 'border-red-200 bg-red-50 text-red-700' : 'border-green-200 bg-green-50 text-green-700'}`} role={errorMessage ? 'alert' : 'status'}>
+        <div
+          className={`mx-3 mt-2 shrink-0 rounded-xl border px-3 py-2 text-[10px] font-bold sm:mx-5 ${
+            errorMessage
+              ? 'border-red-200 bg-red-50 text-red-700'
+              : 'border-green-200 bg-green-50 text-green-700'
+          }`}
+          role={errorMessage ? 'alert' : 'status'}
+        >
           {errorMessage || successMessage}
         </div>
       )}
 
-      <form onSubmit={handleSubmit} className="flex min-h-0 flex-1 flex-col">
+      <form
+        onSubmit={handleSubmit}
+        className="flex min-h-0 flex-1 flex-col"
+      >
         <div className="min-h-0 flex-1 overflow-hidden px-3 py-3 sm:px-5">
           {registrationStep === 2 ? (
             <div className="flex h-full min-h-0 flex-col gap-3">
               <div className="shrink-0 rounded-2xl border border-indigo-100 bg-indigo-50/60 p-3">
                 <div className="flex items-center gap-3">
                   <div className="min-w-0 flex-1">
-                    <div className="text-[9px] font-black tracking-[0.16em] text-indigo-500">SELECTED COORDINATE</div>
-                    <div className="mt-1 flex items-center gap-2">
-                      <span className="rounded-md bg-indigo-600 px-2 py-1 text-[9px] font-black text-white">{currentCoordinate?.code.toUpperCase()}</span>
-                      <span className="truncate text-sm font-black text-indigo-950">{currentCoordinate?.name || '未選択'}</span>
+                    <div className="text-[9px] font-black tracking-[0.16em] text-indigo-500">
+                      SELECTED COORDINATE
                     </div>
-                    <p className="mt-1 text-[9px] font-bold leading-4 text-indigo-800">コーデは、4つのステータスの得意・不得意を決めるキャラの性能タイプです。</p>
+
+                    <div className="mt-1 flex items-center gap-2">
+                      <span className="rounded-md bg-indigo-600 px-2 py-1 text-[9px] font-black text-white">
+                        {currentCoordinate?.code.toUpperCase()}
+                      </span>
+
+                      <span className="truncate text-sm font-black text-indigo-950">
+                        {currentCoordinate?.name || '未選択'}
+                      </span>
+                    </div>
+
+                    <p className="mt-1 text-[9px] font-bold leading-4 text-indigo-800">
+                      コーデは、4つのステータスの得意・不得意を決めるキャラの性能タイプです。
+                    </p>
                   </div>
+
                   {currentCoordinate && (
                     <div className="shrink-0 rounded-xl border border-indigo-100 bg-white p-1">
                       <MiniRadarChart stats={currentCoordinate.stats} />
@@ -1019,31 +1374,145 @@ export default function CardGenerator({
               <div className="min-h-0 flex-1 rounded-2xl border border-gray-200 bg-white p-3">
                 <div className="flex items-end justify-between gap-2">
                   <div>
-                    <div className="text-[9px] font-black tracking-[0.16em] text-gray-400">EDIT</div>
-                    <h3 className="mt-0.5 text-sm font-black">カードの設定</h3>
+                    <div className="text-[9px] font-black tracking-[0.16em] text-gray-400">
+                      EDIT
+                    </div>
+
+                    <h3 className="mt-0.5 text-sm font-black">
+                      カードの設定
+                    </h3>
                   </div>
-                  <div className="text-[8px] font-bold text-gray-400">未設定の項目を開いて編集</div>
+
+                  <div className="text-[8px] font-bold text-gray-400">
+                    未設定の項目を開いて編集
+                  </div>
                 </div>
 
                 <div className="mt-3 grid grid-cols-2 gap-2">
-                  <button type="button" onClick={() => setActiveEditor('basic')} className="rounded-2xl border-2 border-indigo-100 bg-indigo-50/60 p-3 text-left">
-                    <div className="flex items-center justify-between gap-2"><span className="text-[10px] font-black text-indigo-900">基本情報</span><span className={`rounded-full px-1.5 py-0.5 text-[8px] font-black ${basicInfoComplete ? 'bg-emerald-100 text-emerald-700' : 'bg-white text-indigo-600'}`}>{basicInfoComplete ? '入力済み' : '必須・未設定'}</span></div>
-                    <div className="mt-1 text-[8px] font-bold text-indigo-700">反映：名前・画像・プロフィール</div>
+                  <button
+                    type="button"
+                    onClick={() => setActiveEditor('basic')}
+                    className="rounded-2xl border-2 border-indigo-100 bg-indigo-50/60 p-3 text-left"
+                  >
+                    <div className="flex items-center justify-between gap-2">
+                      <span className="text-[10px] font-black text-indigo-900">
+                        基本情報
+                      </span>
+
+                      <span
+                        className={`rounded-full px-1.5 py-0.5 text-[8px] font-black ${
+                          basicInfoComplete
+                            ? 'bg-emerald-100 text-emerald-700'
+                            : 'bg-white text-indigo-600'
+                        }`}
+                      >
+                        {basicInfoComplete
+                          ? '入力済み'
+                          : '必須・未設定'}
+                      </span>
+                    </div>
+
+                    <div className="mt-1 text-[8px] font-bold text-indigo-700">
+                      反映：名前・画像・プロフィール
+                    </div>
                   </button>
 
-                  <button type="button" onClick={() => setActiveEditor('skills')} className="rounded-2xl border-2 border-pink-100 bg-pink-50/60 p-3 text-left">
-                    <div className="flex items-center justify-between gap-2"><span className="text-[10px] font-black text-pink-900">スキル</span><span className={`rounded-full px-1.5 py-0.5 text-[8px] font-black ${skillsComplete ? 'bg-emerald-100 text-emerald-700' : 'bg-white text-pink-600'}`}>{skillsComplete ? '4つ入力済み' : '必須・未設定'}</span></div>
-                    <div className="mt-1 text-[8px] font-bold text-pink-700">反映：カードのスキル欄</div>
+                  <button
+                    type="button"
+                    onClick={() => setActiveEditor('skills')}
+                    className="rounded-2xl border-2 border-pink-100 bg-pink-50/60 p-3 text-left"
+                  >
+                    <div className="flex items-center justify-between gap-2">
+                      <span className="text-[10px] font-black text-pink-900">
+                        スキル
+                      </span>
+
+                      <span
+                        className={`rounded-full px-1.5 py-0.5 text-[8px] font-black ${
+                          skillsComplete
+                            ? 'bg-emerald-100 text-emerald-700'
+                            : 'bg-white text-pink-600'
+                        }`}
+                      >
+                        {skillsComplete
+                          ? '4つ入力済み'
+                          : '必須・未設定'}
+                      </span>
+                    </div>
+
+                    <div className="mt-1 text-[8px] font-bold text-pink-700">
+                      反映：カードのスキル欄
+                    </div>
                   </button>
 
-                  <button type="button" onClick={() => setActiveEditor('color')} style={!isColorTouched ? undefined : { borderColor: selectedColorHex, backgroundColor: `${selectedColorHex}14` }} className="rounded-2xl border-2 border-cyan-100 bg-cyan-50/60 p-3 text-left">
-                    <div className="flex items-center justify-between gap-2"><span className="text-[10px] font-black text-cyan-950">カラー</span><span className={`rounded-full px-1.5 py-0.5 text-[8px] font-black ${isColorTouched ? 'bg-emerald-100 text-emerald-700' : 'bg-white text-cyan-700'}`}>{isColorTouched ? '設定済み' : '未設定'}</span></div>
-                    <div className="mt-1 flex items-center gap-1.5 text-[8px] font-bold text-cyan-800"><span className="h-2.5 w-2.5 rounded-full border border-white shadow-sm" style={{ backgroundColor: selectedColorHex }} />反映：カードの枠・色</div>
+                  <button
+                    type="button"
+                    onClick={() => setActiveEditor('color')}
+                    style={
+                      !isColorTouched
+                        ? undefined
+                        : {
+                            borderColor: selectedColorHex,
+                            backgroundColor: `${selectedColorHex}14`,
+                          }
+                    }
+                    className="rounded-2xl border-2 border-cyan-100 bg-cyan-50/60 p-3 text-left"
+                  >
+                    <div className="flex items-center justify-between gap-2">
+                      <span className="text-[10px] font-black text-cyan-950">
+                        カラー
+                      </span>
+
+                      <span
+                        className={`rounded-full px-1.5 py-0.5 text-[8px] font-black ${
+                          isColorTouched
+                            ? 'bg-emerald-100 text-emerald-700'
+                            : 'bg-white text-cyan-700'
+                        }`}
+                      >
+                        {isColorTouched
+                          ? '設定済み'
+                          : '未設定'}
+                      </span>
+                    </div>
+
+                    <div className="mt-1 flex items-center gap-1.5 text-[8px] font-bold text-cyan-800">
+                      <span
+                        className="h-2.5 w-2.5 rounded-full border border-white shadow-sm"
+                        style={{
+                          backgroundColor: selectedColorHex,
+                        }}
+                      />
+                      反映：カードの枠・色
+                    </div>
                   </button>
 
-                  <button type="button" onClick={() => setActiveEditor('flavor')} className="rounded-2xl border-2 border-amber-100 bg-amber-50/60 p-3 text-left">
-                    <div className="flex items-center justify-between gap-2"><span className="text-[10px] font-black text-amber-950">一言</span><span className={`rounded-full px-1.5 py-0.5 text-[8px] font-black ${flavorText.trim() ? 'bg-emerald-100 text-emerald-700' : 'bg-white text-amber-700'}`}>{flavorText.trim() ? '入力済み' : '未設定'}</span></div>
-                    <div className="mt-1 text-[8px] font-bold text-amber-800">反映：カードの一言</div>
+                  <button
+                    type="button"
+                    onClick={() => setActiveEditor('flavor')}
+                    className="rounded-2xl border-2 border-amber-100 bg-amber-50/60 p-3 text-left"
+                  >
+                    <div className="flex items-center justify-between gap-2">
+                      <span className="text-[10px] font-black text-amber-950">
+                        一言
+                      </span>
+
+                      <span
+                        className={`rounded-full px-1.5 py-0.5 text-[8px] font-black ${
+                          flavorText.trim()
+                            ? 'bg-emerald-100 text-emerald-700'
+                            : 'bg-white text-amber-700'
+                        }`}
+                      >
+                        {flavorText.trim()
+                          ? '入力済み'
+                          : '未設定'}
+                      </span>
+                    </div>
+
+                    <div className="mt-1 text-[8px] font-bold text-amber-800">
+                      反映：カードの一言
+                    </div>
                   </button>
                 </div>
               </div>
@@ -1051,43 +1520,99 @@ export default function CardGenerator({
           ) : (
             <div className="flex h-full min-h-0 flex-col gap-3">
               <div className="shrink-0 rounded-2xl border border-pink-100 bg-pink-50/60 p-3">
-                <div className="text-[9px] font-black tracking-[0.16em] text-pink-500">STEP 3</div>
-                <h3 className="mt-1 text-base font-black text-pink-950">登録内容を確認</h3>
-                <p className="mt-1 text-[9px] font-bold leading-4 text-pink-800">内容を確認してから「このカードで参加する」を押してください。</p>
+                <div className="text-[9px] font-black tracking-[0.16em] text-pink-500">
+                  STEP 3
+                </div>
+
+                <h3 className="mt-1 text-base font-black text-pink-950">
+                  登録内容を確認
+                </h3>
+
+                <p className="mt-1 text-[9px] font-bold leading-4 text-pink-800">
+                  内容を確認してから「このカードで参加する」を押してください。
+                </p>
               </div>
 
               <div className="min-h-0 flex-1 overflow-y-auto rounded-2xl border border-gray-200 bg-gray-50 p-3">
-                <div className="mx-auto w-full max-w-sm overflow-hidden rounded-[1.65rem] border-[5px] bg-white shadow-lg" style={{ borderColor: selectedColorHex }}>
+                <div
+                  className="mx-auto w-full max-w-sm overflow-hidden rounded-[1.65rem] border-[5px] bg-white shadow-lg"
+                  style={{ borderColor: selectedColorHex }}
+                >
                   <div className="border-b border-gray-100 px-4 pb-3 pt-4">
                     <div className="flex items-start justify-between gap-3">
                       <div className="min-w-0">
-                        <div className="text-[8px] font-black tracking-[0.18em] text-pink-500">CHARACTER CARD</div>
-                        <div className="mt-1 truncate text-xl font-black text-gray-950">{userName || '名前未設定'}</div>
+                        <div className="text-[8px] font-black tracking-[0.18em] text-pink-500">
+                          CHARACTER CARD
+                        </div>
+
+                        <div className="mt-1 truncate text-xl font-black text-gray-950">
+                          {userName || '名前未設定'}
+                        </div>
+
                         <div className="mt-1 flex items-center gap-1.5">
-                          <span className="rounded-md bg-gray-900 px-1.5 py-1 text-[8px] font-black text-white">{currentCoordinate?.code.toUpperCase()}</span>
-                          <span className="truncate text-[9px] font-black text-gray-600">{currentCoordinate?.name}</span>
+                          <span className="rounded-md bg-gray-900 px-1.5 py-1 text-[8px] font-black text-white">
+                            {currentCoordinate?.code.toUpperCase()}
+                          </span>
+
+                          <span className="truncate text-[9px] font-black text-gray-600">
+                            {currentCoordinate?.name}
+                          </span>
                         </div>
                       </div>
-                      <div className="shrink-0 rounded-xl border border-gray-200 bg-gray-50 px-2 py-1 text-[8px] font-black text-gray-500">PREVIEW</div>
+
+                      <div className="shrink-0 rounded-xl border border-gray-200 bg-gray-50 px-2 py-1 text-[8px] font-black text-gray-500">
+                        PREVIEW
+                      </div>
                     </div>
                   </div>
 
                   <div className="grid grid-cols-[1.1fr_0.9fr] gap-3 p-3">
                     <div className="overflow-hidden rounded-2xl border border-gray-200 bg-gray-50">
                       {imageDataUrl ? (
-                        <img src={imageDataUrl} alt="" className="aspect-[4/5] w-full object-cover" />
+                        <img
+                          src={imageDataUrl}
+                          alt=""
+                          className="aspect-[4/5] w-full object-cover"
+                        />
                       ) : (
-                        <div className="flex aspect-[4/5] items-center justify-center text-xs font-black text-gray-400">画像未設定</div>
+                        <div className="flex aspect-[4/5] items-center justify-center text-xs font-black text-gray-400">
+                          画像未設定
+                        </div>
                       )}
                     </div>
+
                     {currentCoordinate && (
                       <div className="flex min-w-0 flex-col items-center">
-                        <MiniRadarChart stats={currentCoordinate.stats} />
+                        <MiniRadarChart
+                          stats={currentCoordinate.stats}
+                        />
+
                         <div className="mt-1 grid w-full grid-cols-1 gap-1 text-[8px] font-black text-gray-600">
-                          <div className="flex items-center justify-between"><span>🔥 情熱</span><span>{currentCoordinate.stats.hp}</span></div>
-                          <div className="flex items-center justify-between"><span>▽ 知性</span><span>{currentCoordinate.stats.intellect}</span></div>
-                          <div className="flex items-center justify-between"><span>⬡ 技能</span><span>{currentCoordinate.stats.dexterity}</span></div>
-                          <div className="flex items-center justify-between"><span>♥ 愛嬌</span><span>{currentCoordinate.stats.charm}</span></div>
+                          <div className="flex items-center justify-between">
+                            <span>🔥 情熱</span>
+                            <span>{currentCoordinate.stats.hp}</span>
+                          </div>
+
+                          <div className="flex items-center justify-between">
+                            <span>▽ 知性</span>
+                            <span>
+                              {currentCoordinate.stats.intellect}
+                            </span>
+                          </div>
+
+                          <div className="flex items-center justify-between">
+                            <span>⬡ 技能</span>
+                            <span>
+                              {currentCoordinate.stats.dexterity}
+                            </span>
+                          </div>
+
+                          <div className="flex items-center justify-between">
+                            <span>♥ 愛嬌</span>
+                            <span>
+                              {currentCoordinate.stats.charm}
+                            </span>
+                          </div>
                         </div>
                       </div>
                     )}
@@ -1095,12 +1620,23 @@ export default function CardGenerator({
 
                   <div className="px-3 pb-3">
                     <div className="rounded-2xl border border-pink-100 bg-pink-50/60 p-3">
-                      <div className="text-[9px] font-black tracking-[0.12em] text-pink-600">SKILLS</div>
+                      <div className="text-[9px] font-black tracking-[0.12em] text-pink-600">
+                        SKILLS
+                      </div>
+
                       <div className="mt-2 grid grid-cols-2 gap-2">
                         {customSkills.map((skill, index) => (
-                          <div key={`${skill}-${index}`} className="rounded-xl border border-white bg-white px-2.5 py-2 shadow-sm">
-                            <div className="text-[7px] font-black text-pink-500">SKILL {index + 1}</div>
-                            <div className="mt-0.5 line-clamp-2 text-[9px] font-black text-gray-800">{skill}</div>
+                          <div
+                            key={`${skill}-${index}`}
+                            className="rounded-xl border border-white bg-white px-2.5 py-2 shadow-sm"
+                          >
+                            <div className="text-[7px] font-black text-pink-500">
+                              SKILL {index + 1}
+                            </div>
+
+                            <div className="mt-0.5 line-clamp-2 text-[9px] font-black text-gray-800">
+                              {skill}
+                            </div>
                           </div>
                         ))}
                       </div>
@@ -1108,15 +1644,27 @@ export default function CardGenerator({
                   </div>
 
                   <div className="border-t border-amber-100 bg-amber-50 px-4 py-3 text-center">
-                    <div className="text-[8px] font-black tracking-[0.12em] text-amber-700">FLAVOR</div>
-                    <div className={`mt-1 text-[10px] font-bold leading-4 ${flavorText.trim() ? 'text-amber-950' : 'text-amber-500'}`}>
+                    <div className="text-[8px] font-black tracking-[0.12em] text-amber-700">
+                      FLAVOR
+                    </div>
+
+                    <div
+                      className={`mt-1 text-[10px] font-bold leading-4 ${
+                        flavorText.trim()
+                          ? 'text-amber-950'
+                          : 'text-amber-500'
+                      }`}
+                    >
                       {flavorText.trim() || '一言未設定'}
                     </div>
                   </div>
 
                   {showProfileUrl && (
                     <div className="border-t border-gray-100 bg-white px-3 py-3">
-                      <div className="text-[8px] font-black tracking-[0.12em] text-gray-400">REALITY PROFILE</div>
+                      <div className="text-[8px] font-black tracking-[0.12em] text-gray-400">
+                        REALITY PROFILE
+                      </div>
+
                       <div className="mt-1 break-all text-[9px] font-bold text-gray-700">
                         {normalizeProfileUrl(profileUrl) || '未設定'}
                       </div>
@@ -1125,17 +1673,44 @@ export default function CardGenerator({
                 </div>
 
                 <div className="mx-auto mt-3 grid w-full max-w-sm grid-cols-2 gap-2 text-[8px] font-bold text-gray-500">
-                  <div className="rounded-xl border border-white bg-white px-2.5 py-2">カードカラー<br /><span className="font-black" style={{ color: selectedColorHex }}>{selectedColorHex.toUpperCase()}</span></div>
                   <div className="rounded-xl border border-white bg-white px-2.5 py-2">
-                    プロフURL表示<br />
-                    <span className={`font-black ${showProfileUrl ? 'text-emerald-600' : 'text-gray-400'}`}>
+                    カードカラー
+                    <br />
+                    <span
+                      className="font-black"
+                      style={{ color: selectedColorHex }}
+                    >
+                      {selectedColorHex.toUpperCase()}
+                    </span>
+                  </div>
+
+                  <div className="rounded-xl border border-white bg-white px-2.5 py-2">
+                    プロフURL表示
+                    <br />
+                    <span
+                      className={`font-black ${
+                        showProfileUrl
+                          ? 'text-emerald-600'
+                          : 'text-gray-400'
+                      }`}
+                    >
                       {showProfileUrl ? 'ON' : 'OFF'}
                     </span>
                   </div>
                 </div>
               </div>
 
-              <button type="button" onClick={() => { setRegistrationStep(2); setErrorMessage(''); setSuccessMessage(''); }} className="shrink-0 rounded-xl border border-gray-200 bg-white py-2.5 text-xs font-black text-gray-700">② 編集に戻る</button>
+              <button
+                type="button"
+                onClick={() => {
+                  setRegistrationStep(2);
+                  setErrorMessage('');
+                  setSuccessMessage('');
+                }}
+                className="shrink-0 rounded-xl border border-gray-200 bg-white py-2.5 text-xs font-black text-gray-700"
+              >
+                ② 編集に戻る
+              </button>
             </div>
           )}
         </div>
@@ -1144,14 +1719,28 @@ export default function CardGenerator({
           {registrationStep === 3 && isCompleted ? (
             <button
               type="button"
-              onClick={() => (onOpenEntryList ? onOpenEntryList() : onBackToHub?.())}
+              onClick={() =>
+                onOpenEntryList
+                  ? onOpenEntryList()
+                  : onBackToHub?.()
+              }
               className="w-full rounded-2xl bg-pink-600 px-4 py-3 text-sm font-black text-white shadow transition hover:bg-pink-700"
             >
               キャラカードの一覧画面へ
             </button>
           ) : (
-            <button type="submit" disabled={isModerating || !currentCoordinate} className="w-full rounded-2xl bg-pink-600 px-4 py-3 text-sm font-black text-white shadow disabled:cursor-not-allowed disabled:bg-pink-300">
-              {isModerating ? '安全確認中…' : registrationStep === 2 ? '③ 登録内容を確認' : editingId ? 'このカードを更新する' : 'このカードで参加する'}
+            <button
+              type="submit"
+              disabled={isModerating || !currentCoordinate}
+              className="w-full rounded-2xl bg-pink-600 px-4 py-3 text-sm font-black text-white shadow disabled:cursor-not-allowed disabled:bg-pink-300"
+            >
+              {isModerating
+                ? '安全確認中…'
+                : registrationStep === 2
+                  ? '③ 登録内容を確認'
+                  : editingId
+                    ? 'このカードを更新する'
+                    : 'このカードで参加する'}
             </button>
           )}
         </div>
@@ -1168,7 +1757,14 @@ export default function CardGenerator({
                 {activeEditor === 'flavor' && 'カードの一言を編集'}
                 {activeEditor === 'saved' && '自分のキャラカード'}
               </div>
-              <button type="button" onClick={() => setActiveEditor(null)} className="rounded-lg bg-gray-100 px-2.5 py-1.5 text-xs font-black">✕</button>
+
+              <button
+                type="button"
+                onClick={() => setActiveEditor(null)}
+                className="rounded-lg bg-gray-100 px-2.5 py-1.5 text-xs font-black"
+              >
+                ✕
+              </button>
             </div>
 
             <div className="min-h-0 overflow-y-auto p-4">
@@ -1176,125 +1772,299 @@ export default function CardGenerator({
                 <div className="space-y-4 text-xs">
                   <div>
                     <div className="mb-1 flex items-center justify-between gap-2">
-                      <label className="block font-bold">アバター名 <span className="text-red-500">*</span></label>
+                      <label className="block font-bold">
+                        アバター名{' '}
+                        <span className="text-red-500">*</span>
+                      </label>
                     </div>
-                    <input type="text" value={userName} onChange={(e) => setUserName(e.target.value)} maxLength={40} placeholder="例：キャラ太郎" className="w-full rounded-xl border px-3 py-2.5" />
+
+                    <input
+                      type="text"
+                      value={userName}
+                      onChange={(e) =>
+                        setUserName(e.target.value)
+                      }
+                      maxLength={40}
+                      placeholder="例：キャラ太郎"
+                      className="w-full rounded-xl border px-3 py-2.5"
+                    />
                   </div>
 
                   <div>
                     <div className="mb-1 flex items-center justify-between gap-2">
-                      <label className="block font-bold">REALITY プロフURL <span className="text-red-500">*</span></label>
-                      <button type="button" onClick={() => setShowProfileHelp(true)} className="rounded-lg border border-indigo-200 bg-indigo-50 px-2.5 py-1.5 text-[9px] font-black text-indigo-700">
+                      <label className="block font-bold">
+                        REALITY プロフURL{' '}
+                        <span className="text-red-500">*</span>
+                      </label>
+
+                      <button
+                        type="button"
+                        onClick={() => setShowProfileHelp(true)}
+                        className="rounded-lg border border-indigo-200 bg-indigo-50 px-2.5 py-1.5 text-[9px] font-black text-indigo-700"
+                      >
                         手順
                       </button>
                     </div>
+
                     <input
                       type="text"
                       value={profileUrl}
-                      onChange={(e) => handleProfileUrlChange(e.target.value)}
+                      onChange={(e) =>
+                        handleProfileUrlChange(
+                          e.target.value,
+                        )
+                      }
                       placeholder="https://reality.app/profile/xxxxxx"
                       className="w-full rounded-xl border px-3 py-2.5"
                     />
-                    <p className="mt-1 text-[9px] font-bold leading-4 text-gray-500">同じREALITYユーザーがキャラカードを複数登録することを防ぐために使用します。1ユーザーにつき1枚まで登録できます。</p>
+
+                    <p className="mt-1 text-[9px] font-bold leading-4 text-gray-500">
+                      同じREALITYユーザーがキャラカードを複数登録することを防ぐために使用します。1ユーザーにつき1枚まで登録できます。
+                    </p>
+
                     <label className="mt-2 flex cursor-pointer items-center justify-between gap-3 rounded-xl border border-gray-200 bg-gray-50 px-3 py-2.5">
-                      <span className="text-[10px] font-bold text-gray-700">プロフURLをカードに表示する</span>
-                      <span className={`relative inline-flex h-6 w-11 shrink-0 items-center rounded-full transition ${showProfileUrl ? 'bg-indigo-600' : 'bg-gray-300'}`}>
+                      <span className="text-[10px] font-bold text-gray-700">
+                        プロフURLをカードに表示する
+                      </span>
+
+                      <span
+                        className={`relative inline-flex h-6 w-11 shrink-0 items-center rounded-full transition ${
+                          showProfileUrl
+                            ? 'bg-indigo-600'
+                            : 'bg-gray-300'
+                        }`}
+                      >
                         <input
                           type="checkbox"
                           checked={showProfileUrl}
-                          onChange={(e) => setShowProfileUrl(e.target.checked)}
+                          onChange={(e) =>
+                            setShowProfileUrl(
+                              e.target.checked,
+                            )
+                          }
                           className="peer sr-only"
                         />
-                        <span className={`pointer-events-none h-4 w-4 rounded-full bg-white shadow transition ${showProfileUrl ? 'translate-x-6' : 'translate-x-1'}`} />
+
+                        <span
+                          className={`pointer-events-none h-4 w-4 rounded-full bg-white shadow transition ${
+                            showProfileUrl
+                              ? 'translate-x-6'
+                              : 'translate-x-1'
+                          }`}
+                        />
                       </span>
                     </label>
                   </div>
 
                   <div>
-                    <label className="mb-1 block font-bold">アバター画像 <span className="text-red-500">*</span></label>
+                    <label className="mb-1 block font-bold">
+                      アバター画像{' '}
+                      <span className="text-red-500">*</span>
+                    </label>
+
                     {imageDataUrl && (
                       <div className="mb-2 flex items-center gap-3 rounded-xl border border-emerald-200 bg-emerald-50 p-2">
-                        <img src={imageDataUrl} alt="選択したアバター画像" className="h-16 w-16 shrink-0 rounded-lg object-cover" />
+                        <img
+                          src={imageDataUrl}
+                          alt="選択したアバター画像"
+                          className="h-16 w-16 shrink-0 rounded-lg object-cover"
+                        />
+
                         <div className="min-w-0">
-                          <div className="text-[10px] font-black text-emerald-700">✓ 画像選択済み</div>
-                          <div className="mt-0.5 text-[8px] font-bold leading-4 text-emerald-600">画像は保持されています。変更する場合は下から別の画像を選択してください。</div>
+                          <div className="text-[10px] font-black text-emerald-700">
+                            ✓ 画像選択済み
+                          </div>
+
+                          <div className="mt-0.5 text-[8px] font-bold leading-4 text-emerald-600">
+                            画像は保持されています。変更する場合は下から別の画像を選択してください。
+                          </div>
                         </div>
                       </div>
                     )}
-                    <input type="file" accept="image/*" onChange={handleImageUpload} className="w-full text-xs file:mr-3 file:rounded-lg file:border-0 file:bg-rose-100 file:px-3 file:py-2 file:text-[10px] file:font-black file:text-rose-700 hover:file:bg-rose-200" />
-                  </div>
 
-                  <div>
-                    <label className="mb-1 block font-bold">編集・削除用の合言葉 {!editingId && <span className="text-red-500">*</span>}</label>
                     <input
-                      type="password"
-                      value={password}
-                      onChange={(e) => setPassword(e.target.value)}
-                      placeholder={editingId ? '別端末から編集・削除するときに入力' : '後からの編集・削除に使用します'}
-                      className="w-full rounded-xl border px-3 py-2.5"
+                      type="file"
+                      accept="image/*"
+                      onChange={handleImageUpload}
+                      className="w-full text-xs file:mr-3 file:rounded-lg file:border-0 file:bg-rose-100 file:px-3 file:py-2 file:text-[10px] file:font-black file:text-rose-700 hover:file:bg-rose-200"
                     />
-                    <p className="mt-1 text-[9px] text-gray-500">
-                      {editingId
-                        ? 'この端末の作成者認証はFirebase UIDで行うため、同じ端末では入力不要です。別端末では登録時の合言葉を入力してください。'
-                        : '新規登録時に必須です。合言葉そのものはブラウザには保存されません。'}
-                    </p>
                   </div>
                 </div>
               )}
 
-              {activeEditor === 'skills' && currentCoordinate && (
-                <div className="space-y-3 text-xs">
-                  <div className="flex items-start justify-between gap-2 rounded-xl border border-pink-100 bg-pink-50 px-3 py-2">
-                    <p className="text-[10px] font-bold leading-4 text-pink-800">4つのスキル名と、スキル使用時に表示・使用するセリフを設定できます。セリフを変更しなければ「スキル名＋！」が自動で入ります。</p>
-                    <button type="button" onClick={() => setShowSkillsHelp(true)} className="shrink-0 rounded-lg border border-pink-200 bg-white px-2 py-1 text-[9px] font-black text-pink-700">説明</button>
-                  </div>
-                  {[0, 1, 2, 3].map((index) => (
-                    <div key={index} className="rounded-2xl border border-pink-100 bg-pink-50/50 p-3">
-                      <div className="font-black text-pink-700">スキル{index + 1}</div>
-                      <div className="mt-2 rounded-xl border border-pink-100 bg-white px-3 py-2">
-                        <div className="text-[8px] font-black text-pink-500">効果説明</div>
-                        <p className="mt-0.5 text-[9px] font-bold leading-4 text-gray-600">{currentCoordinate.skillDescriptions[index]}</p>
-                      </div>
-                      <label className="mt-2 block text-[8px] font-black text-gray-500">スキル名</label>
-                      <input type="text" value={customSkills[index]} onChange={(e) => handleSkillChange(index, e.target.value)} maxLength={40} className="mt-1 w-full rounded-xl border px-3 py-2.5" />
-                      <label className="mt-2 block text-[8px] font-black text-pink-600">スキル使用時のセリフテキスト</label>
-                      <input type="text" value={skillVoices[index]} onChange={(e) => handleSkillVoiceChange(index, e.target.value)} maxLength={80} placeholder={getDefaultSkillVoice(customSkills[index])} className="mt-1 w-full rounded-xl border border-pink-200 bg-white px-3 py-2.5" />
-                      <p className="mt-1 text-[8px] font-bold text-gray-400">未編集なら「{getDefaultSkillVoice(customSkills[index]) || 'スキル名！'}」が入ります。</p>
+              {activeEditor === 'skills' &&
+                currentCoordinate && (
+                  <div className="space-y-3 text-xs">
+                    <div className="flex items-start justify-between gap-2 rounded-xl border border-pink-100 bg-pink-50 px-3 py-2">
+                      <p className="text-[10px] font-bold leading-4 text-pink-800">
+                        4つのスキル名と、スキル使用時に表示・使用するセリフを設定できます。セリフを変更しなければ「スキル名＋！」が自動で入ります。
+                      </p>
+
+                      <button
+                        type="button"
+                        onClick={() =>
+                          setShowSkillsHelp(true)
+                        }
+                        className="shrink-0 rounded-lg border border-pink-200 bg-white px-2 py-1 text-[9px] font-black text-pink-700"
+                      >
+                        説明
+                      </button>
                     </div>
-                  ))}
-                </div>
-              )}
+
+                    {[0, 1, 2, 3].map((index) => (
+                      <div
+                        key={index}
+                        className="rounded-2xl border border-pink-100 bg-pink-50/50 p-3"
+                      >
+                        <div className="font-black text-pink-700">
+                          スキル{index + 1}
+                        </div>
+
+                        <div className="mt-2 rounded-xl border border-pink-100 bg-white px-3 py-2">
+                          <div className="text-[8px] font-black text-pink-500">
+                            効果説明
+                          </div>
+
+                          <p className="mt-0.5 text-[9px] font-bold leading-4 text-gray-600">
+                            {
+                              currentCoordinate
+                                .skillDescriptions[index]
+                            }
+                          </p>
+                        </div>
+
+                        <label className="mt-2 block text-[8px] font-black text-gray-500">
+                          スキル名
+                        </label>
+
+                        <input
+                          type="text"
+                          value={customSkills[index]}
+                          onChange={(e) =>
+                            handleSkillChange(
+                              index,
+                              e.target.value,
+                            )
+                          }
+                          maxLength={40}
+                          className="mt-1 w-full rounded-xl border px-3 py-2.5"
+                        />
+
+                        <label className="mt-2 block text-[8px] font-black text-pink-600">
+                          スキル使用時のセリフテキスト
+                        </label>
+
+                        <input
+                          type="text"
+                          value={skillVoices[index]}
+                          onChange={(e) =>
+                            handleSkillVoiceChange(
+                              index,
+                              e.target.value,
+                            )
+                          }
+                          maxLength={80}
+                          placeholder={getDefaultSkillVoice(
+                            customSkills[index],
+                          )}
+                          className="mt-1 w-full rounded-xl border border-pink-200 bg-white px-3 py-2.5"
+                        />
+
+                        <p className="mt-1 text-[8px] font-bold text-gray-400">
+                          未編集なら「
+                          {getDefaultSkillVoice(
+                            customSkills[index],
+                          ) || 'スキル名！'}
+                          」が入ります。
+                        </p>
+                      </div>
+                    ))}
+                  </div>
+                )}
 
               {activeEditor === 'color' && (
                 <div className="space-y-4">
                   <div className="flex flex-wrap gap-2">
-                    {COLOR_PALETTE.map((color) => <button key={color} type="button" onClick={() => handleColorChange(color)} aria-label={`カラー ${color}`} className={`h-10 w-10 rounded-full border-2 ${selectedColorHex.toUpperCase() === color.toUpperCase() ? 'border-gray-900 ring-2 ring-offset-1 ring-gray-300' : 'border-white shadow-sm'}`} style={{ backgroundColor: color }} />)}
+                    {COLOR_PALETTE.map((color) => (
+                      <button
+                        key={color}
+                        type="button"
+                        onClick={() =>
+                          handleColorChange(color)
+                        }
+                        aria-label={`カラー ${color}`}
+                        className={`h-10 w-10 rounded-full border-2 ${
+                          selectedColorHex.toUpperCase() ===
+                          color.toUpperCase()
+                            ? 'border-gray-900 ring-2 ring-offset-1 ring-gray-300'
+                            : 'border-white shadow-sm'
+                        }`}
+                        style={{ backgroundColor: color }}
+                      />
+                    ))}
                   </div>
+
                   <div className="rounded-2xl border border-gray-200 bg-gray-50 p-3">
-                    <label className="mb-2 block text-[10px] font-black">自由な色</label>
-                    <input type="color" value={selectedColorHex} onChange={(e) => handleColorChange(e.target.value)} className="h-12 w-16 cursor-pointer rounded-lg border bg-white p-1" />
-                    <div className="mt-2 text-[10px] font-bold text-gray-600">{selectedColorHex.toUpperCase()} / {getColorTypeLabel(selectedColorType)}</div>
+                    <label className="mb-2 block text-[10px] font-black">
+                      自由な色
+                    </label>
+
+                    <input
+                      type="color"
+                      value={selectedColorHex}
+                      onChange={(e) =>
+                        handleColorChange(
+                          e.target.value,
+                        )
+                      }
+                      className="h-12 w-16 cursor-pointer rounded-lg border bg-white p-1"
+                    />
+
+                    <div className="mt-2 text-[10px] font-bold text-gray-600">
+                      {selectedColorHex.toUpperCase()} /{' '}
+                      {getColorTypeLabel(selectedColorType)}
+                    </div>
                   </div>
                 </div>
               )}
 
               {activeEditor === 'flavor' && (
                 <div>
-                  <label className="mb-1 block text-xs font-bold">カードの一言</label>
-                  <textarea value={flavorText} onChange={(e) => setFlavorText(e.target.value)} rows={6} maxLength={120} placeholder="このキャラらしい一言をどうぞ。" className="w-full resize-none rounded-2xl border px-3 py-3 text-sm" />
-                  <p className="mt-1 text-[9px] text-gray-500">最大120文字。</p>
+                  <label className="mb-1 block text-xs font-bold">
+                    カードの一言
+                  </label>
+
+                  <textarea
+                    value={flavorText}
+                    onChange={(e) =>
+                      setFlavorText(e.target.value)
+                    }
+                    rows={6}
+                    maxLength={120}
+                    placeholder="このキャラらしい一言をどうぞ。"
+                    className="w-full resize-none rounded-2xl border px-3 py-3 text-sm"
+                  />
+
+                  <p className="mt-1 text-[9px] text-gray-500">
+                    最大120文字。
+                  </p>
                 </div>
               )}
             </div>
 
             {activeEditor !== 'saved' && (
-              <div className="shrink-0 border-t border-gray-200 p-3 space-y-2">
+              <div className="shrink-0 space-y-2 border-t border-gray-200 p-3">
                 {editingId && (
                   <button
                     type="button"
                     onClick={() => {
-                      const entry = entries.find((item) => item.id === editingId);
-                      if (entry) void handleDelete(entry);
+                      const entry = entries.find(
+                        (item) => item.id === editingId,
+                      );
+
+                      if (entry) {
+                        void handleDelete(entry);
+                      }
                     }}
                     className="w-full rounded-xl border border-red-200 bg-red-50 py-2.5 text-xs font-black text-red-700 hover:bg-red-100"
                   >
@@ -1319,19 +2089,34 @@ export default function CardGenerator({
         <div className="fixed inset-0 z-[100] flex items-center justify-center bg-slate-950/70 p-3 backdrop-blur-sm">
           <div className="w-full max-w-sm overflow-hidden rounded-3xl bg-white shadow-2xl">
             <div className="flex items-center justify-between border-b border-gray-200 px-4 py-3">
-              <div className="text-sm font-black">REALITYプロフィールURLの取得手順</div>
-              <button type="button" onClick={() => setShowProfileHelp(false)} className="rounded-lg bg-gray-100 px-2.5 py-1.5 text-xs font-black">✕</button>
+              <div className="text-sm font-black">
+                REALITYプロフィールURLの取得手順
+              </div>
+
+              <button
+                type="button"
+                onClick={() => setShowProfileHelp(false)}
+                className="rounded-lg bg-gray-100 px-2.5 py-1.5 text-xs font-black"
+              >
+                ✕
+              </button>
             </div>
 
             <div className="min-h-0 max-h-[78dvh] overflow-y-auto p-4 text-[10px] leading-5 text-gray-700">
-              <div className="font-black text-indigo-800">① 自分のREALITYプロフィールを開き、共有ボタンをタップ</div>
+              <div className="font-black text-indigo-800">
+                ① 自分のREALITYプロフィールを開き、共有ボタンをタップ
+              </div>
+
               <img
                 src="/tcg_card/REALITY_USERURL_copy_1.jpg"
                 alt="REALITYプロフィール画面で共有ボタンをタップする手順"
                 className="mt-2 w-full rounded-2xl border border-gray-200 bg-gray-50 object-contain"
               />
 
-              <div className="mt-5 font-black text-indigo-800">② プロフィールURLをコピーする</div>
+              <div className="mt-5 font-black text-indigo-800">
+                ② プロフィールURLをコピーする
+              </div>
+
               <img
                 src="/tcg_card/REALITY_USERURL_copy_2.jpg"
                 alt="REALITYプロフィールURLをコピーする手順"
@@ -1340,7 +2125,13 @@ export default function CardGenerator({
             </div>
 
             <div className="border-t border-gray-200 p-3">
-              <button type="button" onClick={() => setShowProfileHelp(false)} className="w-full rounded-xl bg-gray-900 py-2.5 text-xs font-black text-white">閉じる</button>
+              <button
+                type="button"
+                onClick={() => setShowProfileHelp(false)}
+                className="w-full rounded-xl bg-gray-900 py-2.5 text-xs font-black text-white"
+              >
+                閉じる
+              </button>
             </div>
           </div>
         </div>
@@ -1350,17 +2141,45 @@ export default function CardGenerator({
         <div className="fixed inset-0 z-[100] flex items-center justify-center bg-slate-950/70 p-3 backdrop-blur-sm">
           <div className="w-full max-w-sm rounded-3xl bg-white shadow-2xl">
             <div className="flex items-center justify-between border-b border-gray-200 px-4 py-3">
-              <div className="text-sm font-black">スキルについて</div>
-              <button type="button" onClick={() => setShowSkillsHelp(false)} className="rounded-lg bg-gray-100 px-2.5 py-1.5 text-xs font-black">✕</button>
+              <div className="text-sm font-black">
+                スキルについて
+              </div>
+
+              <button
+                type="button"
+                onClick={() => setShowSkillsHelp(false)}
+                className="rounded-lg bg-gray-100 px-2.5 py-1.5 text-xs font-black"
+              >
+                ✕
+              </button>
             </div>
+
             <div className="p-4 text-[10px] leading-5 text-gray-700">
-              <div className="font-black text-pink-800">スキル名</div>
-              <p className="mt-1">4つのスキル名は、自分のキャラらしく設定できます。各スキルの下に、そのコーデでの効果説明を表示しています。</p>
-              <div className="mt-4 font-black text-pink-800">スキル使用時のセリフテキスト</div>
-              <p className="mt-1">スキルを使用するときに使うセリフを設定できます。自分で編集しなければ「スキル名＋！」が自動で入ります。</p>
+              <div className="font-black text-pink-800">
+                スキル名
+              </div>
+
+              <p className="mt-1">
+                4つのスキル名は、自分のキャラらしく設定できます。各スキルの下に、そのコーデでの効果説明を表示しています。
+              </p>
+
+              <div className="mt-4 font-black text-pink-800">
+                スキル使用時のセリフテキスト
+              </div>
+
+              <p className="mt-1">
+                スキルを使用するときに使うセリフを設定できます。自分で編集しなければ「スキル名＋！」が自動で入ります。
+              </p>
             </div>
+
             <div className="border-t border-gray-200 p-3">
-              <button type="button" onClick={() => setShowSkillsHelp(false)} className="w-full rounded-xl bg-gray-900 py-2.5 text-xs font-black text-white">閉じる</button>
+              <button
+                type="button"
+                onClick={() => setShowSkillsHelp(false)}
+                className="w-full rounded-xl bg-gray-900 py-2.5 text-xs font-black text-white"
+              >
+                閉じる
+              </button>
             </div>
           </div>
         </div>
