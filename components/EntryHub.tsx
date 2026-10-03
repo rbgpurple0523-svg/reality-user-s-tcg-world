@@ -446,6 +446,46 @@ async function issueTransferCode(
   return data.code;
 }
 
+async function acceptTransferCode(
+  cardId: string,
+  code: string,
+): Promise<void> {
+  const user =
+    await ensureAnonymousAuth();
+
+  const idToken =
+    await user.getIdToken();
+
+  const response = await fetch(
+    '/api/cards/transfer/accept',
+    {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${idToken}`,
+      },
+      body: JSON.stringify({
+        cardId,
+        code,
+      }),
+    },
+  );
+
+  const data =
+    await response.json().catch(
+      () => null,
+    );
+
+  if (!response.ok || !data?.ok) {
+    const errorCode =
+      typeof data?.error === 'string'
+        ? data.error
+        : 'CARD_TRANSFER_ACCEPT_FAILED';
+
+    throw new Error(errorCode);
+  }
+}
+
 function EmotionMap({
   emotions,
   selectedEmotionId,
@@ -701,6 +741,26 @@ export default function EntryHub({
     transferCopied,
     setTransferCopied,
   ] = useState(false);
+
+  const [
+    transferAcceptTarget,
+    setTransferAcceptTarget,
+  ] = useState<EntryRecord | null>(null);
+
+  const [
+    transferAcceptCode,
+    setTransferAcceptCode,
+  ] = useState('');
+
+  const [
+    isAcceptingTransfer,
+    setIsAcceptingTransfer,
+  ] = useState(false);
+
+  const [
+    transferAcceptError,
+    setTransferAcceptError,
+  ] = useState<string | null>(null);
 
   const reloadEntries = async () => {
     const cachedEntries =
@@ -1066,6 +1126,97 @@ export default function EntryHub({
           'Failed to copy transfer code',
           error,
         );
+      }
+    };
+
+  const openTransferAcceptDialog = (
+    entry: EntryRecord,
+  ) => {
+    setTransferAcceptTarget(entry);
+    setTransferAcceptCode('');
+    setTransferAcceptError(null);
+  };
+
+  const closeTransferAcceptDialog = () => {
+    if (isAcceptingTransfer) {
+      return;
+    }
+
+    setTransferAcceptTarget(null);
+    setTransferAcceptCode('');
+    setTransferAcceptError(null);
+  };
+
+  const handleAcceptTransfer =
+    async () => {
+      if (!transferAcceptTarget) {
+        return;
+      }
+
+      const code =
+        transferAcceptCode
+          .replace(/\s+/g, '')
+          .toUpperCase();
+
+      if (!code) {
+        setTransferAcceptError(
+          '引き継ぎコードを入力してください。',
+        );
+        return;
+      }
+
+      setIsAcceptingTransfer(true);
+      setTransferAcceptError(null);
+
+      try {
+        await acceptTransferCode(
+          transferAcceptTarget.id,
+          code,
+        );
+
+        await reloadEntries();
+
+        setTransferAcceptTarget(null);
+        setTransferAcceptCode('');
+      } catch (error) {
+        console.error(
+          'Failed to accept transfer code',
+          error,
+        );
+
+        const errorCode =
+          error instanceof Error
+            ? error.message
+            : 'CARD_TRANSFER_ACCEPT_FAILED';
+
+        if (
+          errorCode ===
+          'INVALID_TRANSFER_CODE'
+        ) {
+          setTransferAcceptError(
+            '引き継ぎコードが正しくありません。',
+          );
+        } else if (
+          errorCode ===
+          'CARD_TRANSFER_NOT_PENDING'
+        ) {
+          setTransferAcceptError(
+            'このカードは現在、引き継ぎ中ではありません。',
+          );
+        } else if (
+          errorCode ===
+          'CARD_DELETED'
+        ) {
+          setTransferAcceptError(
+            'このカードはすでに削除されています。',
+          );
+        } else {
+          setTransferAcceptError(
+            '引き継ぎに失敗しました。もう一度お試しください。',
+          );
+        }
+      } finally {
+        setIsAcceptingTransfer(false);
       }
     };
 
@@ -1956,8 +2107,22 @@ export default function EntryHub({
                       <div className="flex items-center gap-3">
                         <div className="shrink-0">
                           {isTransferring ? (
-                            <div className="rounded-xl bg-gray-200 px-3 py-2 text-[10px] font-black text-gray-500">
-                              引き継ぎ中
+                            <div className="flex flex-col items-stretch gap-1.5">
+                              <div className="rounded-xl bg-gray-200 px-3 py-2 text-center text-[10px] font-black text-gray-500">
+                                引き継ぎ中
+                              </div>
+
+                              <button
+                                type="button"
+                                onClick={() =>
+                                  openTransferAcceptDialog(
+                                    entry,
+                                  )
+                                }
+                                className="whitespace-nowrap rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-[10px] font-black text-amber-800 transition hover:bg-amber-100"
+                              >
+                                引き継ぎコードを入力
+                              </button>
                             </div>
                           ) : (
                             isOwner && (
@@ -2083,7 +2248,7 @@ export default function EntryHub({
 
                       {isTransferring && (
                         <div className="mt-3 rounded-xl border border-gray-200 bg-gray-100 px-3 py-2.5 text-[10px] font-bold leading-relaxed text-gray-600">
-                          このカードは現在、別の端末・ユーザーへの引き継ぎ中です。
+                          このカードは現在、引き継ぎコードの入力を待っています。
                         </div>
                       )}
 
@@ -2156,12 +2321,11 @@ export default function EntryHub({
 
               <div className="space-y-4 p-5">
                 <div className="rounded-2xl border border-amber-200 bg-amber-50 p-4 text-[11px] leading-relaxed text-gray-700">
-                  このカードの所有権を別の端末・ユーザーへ引き継ぎます。
-                  引き継ぎ中は、現在の所有者もカードを編集・削除できなくなります。
+                  このカードを、引き継ぎコードを使って別の端末から再び編集できる状態にします。
+                  引き継ぎ中は、現在の端末からもカードを編集・削除できなくなります。
                   <br />
                   <br />
-                  あなたが発行可能な「引き継ぎコード」を入力することで、
-                  ほかの端末等から再度編集・削除が可能になります。
+                  発行されたコードは、引き継ぎたい端末で入力してください。
                 </div>
 
                 {transferError && (
@@ -2235,7 +2399,7 @@ export default function EntryHub({
 
             <div className="space-y-4 p-5">
               <div className="rounded-2xl border border-green-200 bg-green-50 p-4 text-[11px] leading-relaxed text-gray-700">
-                このコードを、カードを引き継ぐ端末・ユーザーへ伝えてください。
+                このコードを、引き継ぎたい端末で入力してください。
                 <br />
                 このコードは今回だけ表示されます。
               </div>
@@ -2273,6 +2437,103 @@ export default function EntryHub({
               >
                 閉じる
               </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {transferAcceptTarget && (
+        <div
+          className="fixed inset-0 z-[65] flex items-end justify-center bg-black/50 p-0 sm:items-center sm:p-4"
+          role="dialog"
+          aria-modal="true"
+        >
+          <div className="w-full max-w-md rounded-t-3xl bg-white shadow-2xl sm:rounded-3xl">
+            <div className="border-b border-gray-200 px-5 py-4">
+              <div className="text-[9px] font-black tracking-[0.16em] text-amber-600">
+                CARD TRANSFER
+              </div>
+
+              <h3 className="mt-1 text-base font-black text-gray-900">
+                引き継ぎコードを入力
+              </h3>
+            </div>
+
+            <div className="space-y-4 p-5">
+              <div className="rounded-2xl border border-amber-200 bg-amber-50 p-4 text-[11px] leading-relaxed text-gray-700">
+                このカードの引き継ぎコードを入力すると、この端末からカードを編集・削除できるようになります。
+              </div>
+
+              <div className="rounded-xl border border-gray-200 bg-gray-50 p-3">
+                <div className="text-[9px] font-black text-gray-400">
+                  対象カード
+                </div>
+
+                <div className="mt-1 text-sm font-black text-gray-900">
+                  {
+                    transferAcceptTarget.userName
+                  }
+                </div>
+              </div>
+
+              {transferAcceptError && (
+                <div className="rounded-xl border border-red-200 bg-red-50 px-3 py-2.5 text-[10px] font-bold leading-relaxed text-red-700">
+                  {transferAcceptError}
+                </div>
+              )}
+
+              <label className="block text-[10px] font-black text-gray-600">
+                引き継ぎコード
+
+                <input
+                  type="text"
+                  value={
+                    transferAcceptCode
+                  }
+                  onChange={(event) =>
+                    setTransferAcceptCode(
+                      event.target.value.toUpperCase(),
+                    )
+                  }
+                  inputMode="text"
+                  autoCapitalize="characters"
+                  autoCorrect="off"
+                  spellCheck={false}
+                  placeholder="コードを入力"
+                  className="mt-1 w-full rounded-xl border border-gray-200 bg-white px-3 py-3 text-center text-sm font-black tracking-[0.12em] outline-none focus:border-amber-400 focus:ring-2 focus:ring-amber-100"
+                />
+              </label>
+
+              <div className="flex gap-2">
+                <button
+                  type="button"
+                  disabled={
+                    isAcceptingTransfer
+                  }
+                  onClick={
+                    closeTransferAcceptDialog
+                  }
+                  className="flex-1 rounded-2xl border border-gray-200 bg-white py-3 text-xs font-black text-gray-700 hover:bg-gray-50 disabled:opacity-50"
+                >
+                  キャンセル
+                </button>
+
+                <button
+                  type="button"
+                  disabled={
+                    isAcceptingTransfer ||
+                    !transferAcceptCode.trim()
+                  }
+                  onClick={
+                    handleAcceptTransfer
+                  }
+                  className="flex-1 rounded-2xl bg-amber-600 py-3 text-xs font-black text-white hover:bg-amber-700 disabled:cursor-not-allowed disabled:bg-gray-300"
+                >
+                  {isAcceptingTransfer
+                    ? '引き継ぎ中…'
+                    : '引き継ぐ'}
+                </button>
+              </div>
             </div>
           </div>
         </div>
