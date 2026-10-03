@@ -2481,7 +2481,7 @@ export default function SupportCardGenerator({
                             imageDataUrl
                           }
                           alt=""
-                          className="aspect-[4/5] w-full object-cover"
+                          className="aspect-[4/5] w-full object-contain"
                         />
                       ) : (
                         <div className="flex aspect-[4/5] items-center justify-center text-xs font-black text-gray-400">
@@ -2709,7 +2709,7 @@ export default function SupportCardGenerator({
                             imageDataUrl
                           }
                           alt=""
-                          className="h-36 w-full object-cover"
+                          className="h-36 w-full object-contain"
                         />
                       </div>
                     )}

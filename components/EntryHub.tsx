@@ -1251,6 +1251,9 @@ export default function EntryHub({
         onBackToHub={
           handleRegisteredGeneratorClose
         }
+        openEntryId={
+          activeGenerator.editEntryId
+        }
       />
     );
   }
@@ -1879,7 +1882,7 @@ export default function EntryHub({
                     getEntryCount(
                       selectedEmotion.id,
                     ) >=
-                    maxEntryLimit
+                      maxEntryLimit
                       ? 'cursor-not-allowed bg-gray-300'
                       : 'bg-purple-700 hover:bg-purple-800'
                   }`}
