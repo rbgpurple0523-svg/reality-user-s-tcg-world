@@ -468,6 +468,10 @@ export default function CardGenerator({
   const [draftChecked, setDraftChecked] = useState(false);
   const [isModerating, setIsModerating] = useState(false);
 
+  // 新規カード登録中だけ使用するローディング状態。
+  // 更新処理には影響させない。
+  const [isRegistering, setIsRegistering] = useState(false);
+
   const [activeEditor, setActiveEditor] = useState<
     'basic' | 'skills' | 'color' | 'flavor' | 'saved' | null
   >(null);
@@ -742,6 +746,12 @@ export default function CardGenerator({
 
   const handleSubmit = async (e: FormEvent) => {
     e.preventDefault();
+
+    // 新規登録中なら、念のため二重送信を無視する。
+    if (isRegistering) {
+      return;
+    }
+
     setErrorMessage('');
     setSuccessMessage('');
 
@@ -910,6 +920,14 @@ export default function CardGenerator({
       requestBody.cardId = editingId;
     }
 
+    // この時点で editingId を固定して、
+    // API処理中に参照する「新規登録かどうか」が変わらないようにする。
+    const isNewRegistration = !editingId;
+
+    if (isNewRegistration) {
+      setIsRegistering(true);
+    }
+
     try {
       const result = await requestCardApi(
         editingId
@@ -1010,6 +1028,10 @@ export default function CardGenerator({
           editingId ? 'update' : 'register',
         ),
       );
+    } finally {
+      if (isNewRegistration) {
+        setIsRegistering(false);
+      }
     }
   };
 
@@ -1731,16 +1753,22 @@ export default function CardGenerator({
           ) : (
             <button
               type="submit"
-              disabled={isModerating || !currentCoordinate}
+              disabled={
+                isModerating ||
+                isRegistering ||
+                !currentCoordinate
+              }
               className="w-full rounded-2xl bg-pink-600 px-4 py-3 text-sm font-black text-white shadow disabled:cursor-not-allowed disabled:bg-pink-300"
             >
               {isModerating
                 ? '安全確認中…'
-                : registrationStep === 2
-                  ? '③ 登録内容を確認'
-                  : editingId
-                    ? 'このカードを更新する'
-                    : 'このカードで参加する'}
+                : isRegistering
+                  ? 'キャラカード登録中…'
+                  : registrationStep === 2
+                    ? '③ 登録内容を確認'
+                    : editingId
+                      ? 'このカードを更新する'
+                      : 'このカードで参加する'}
             </button>
           )}
         </div>
@@ -2187,3 +2215,4 @@ export default function CardGenerator({
     </div>
   );
 }
+
