@@ -1,11 +1,12 @@
 import { NextResponse } from 'next/server';
-import { FieldValue } from 'firebase-admin/firestore';
 import { adminDb } from '@/lib/firebaseAdmin';
 import {
   getOwnerData,
+  hashTransferCode,
   isOwner,
   isTransferPending,
-  makeProfileHash,
+  makeTransferCode,
+  makeTransferCodeSalt,
   verifyBearerToken,
 } from '@/lib/cardServer';
 
@@ -15,7 +16,7 @@ function errorResponse(error: unknown) {
   const code =
     error instanceof Error
       ? error.message
-      : 'CARD_DELETE_FAILED';
+      : 'CARD_TRANSFER_ISSUE_FAILED';
 
   const status =
     code === 'AUTH_REQUIRED'
@@ -24,9 +25,9 @@ function errorResponse(error: unknown) {
         ? 404
         : code === 'PERMISSION_DENIED'
           ? 403
-          : code === 'CARD_DELETED'
+          : code === 'CARD_TRANSFER_PENDING'
             ? 409
-            : code === 'CARD_TRANSFER_PENDING'
+            : code === 'CARD_DELETED'
               ? 409
               : 400;
 
@@ -65,6 +66,13 @@ export async function POST(request: Request) {
       .doc(cardId);
 
     const now = new Date().toISOString();
+
+    const code = makeTransferCode();
+    const salt = makeTransferCodeSalt();
+    const codeHash = hashTransferCode(
+      code,
+      salt,
+    );
 
     const result = await adminDb.runTransaction(
       async (transaction) => {
@@ -111,75 +119,36 @@ export async function POST(request: Request) {
           throw new Error('CARD_TRANSFER_PENDING');
         }
 
-        const presetId = String(
-          card.presetId || '',
-        );
-
-        const statsRef = adminDb
-          .collection('cardPresetStats')
-          .doc(presetId);
-
-        const profileHash = makeProfileHash(
-          String(card.profileUrl || ''),
-        );
-
-        const profileRef = adminDb
-          .collection('characterProfileIndex')
-          .doc(profileHash);
-
-        const statsSnapshot =
-          await transaction.get(statsRef);
-
-        const rawCount = Number(
-          statsSnapshot.data()?.activeCount ?? 0,
-        );
-
-        const currentCount =
-          Number.isFinite(rawCount) && rawCount >= 0
-            ? Math.floor(rawCount)
-            : 0;
-
         transaction.update(cardRef, {
-          status: 'deleted',
+          transferStatus: 'pending',
           updatedAt: now,
         });
 
         transaction.update(ownerRef, {
           updatedAt: now,
-          deletedAt: now,
-
-          // 旧仕様で存在していた場合も削除する。
-          passwordHash: FieldValue.delete(),
-        });
-
-        transaction.delete(profileRef);
-
-        transaction.set(
-          statsRef,
-          {
-            activeCount: Math.max(
-              0,
-              currentCount - 1,
-            ),
-            updatedAt: now,
+          transfer: {
+            status: 'pending',
+            codeHash,
+            codeSalt: salt,
+            issuedAt: now,
           },
-          { merge: true },
-        );
+        });
 
         return {
           cardId,
-          status: 'deleted' as const,
+          transferStatus: 'pending' as const,
         };
       },
     );
 
     return NextResponse.json({
       ok: true,
-      result,
+      code,
+      ...result,
     });
   } catch (error) {
     console.error(
-      'Card delete API error:',
+      'Card transfer issue API error:',
       error,
     );
 

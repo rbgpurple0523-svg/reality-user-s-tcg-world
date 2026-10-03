@@ -13,6 +13,15 @@ const MAX_IMAGE_DATA_URL_LENGTH = 600_000;
 
 export type CardType = 'coordinate' | 'emotion';
 
+export type TransferStatus = 'none' | 'pending';
+
+export type CardTransfer = {
+  status: 'pending';
+  codeHash: string;
+  codeSalt: string;
+  issuedAt: string;
+};
+
 export type CardWritePayload = {
   cardType: CardType;
   presetId: string;
@@ -42,6 +51,7 @@ export type PublicCard = {
   colorHex: string;
   colorType: string;
   showProfileUrl: boolean;
+  transferStatus: TransferStatus;
   status: 'active' | 'deleted';
   createdAt: string;
   updatedAt: string;
@@ -52,6 +62,7 @@ export type CardOwner = {
   createdAt: string;
   updatedAt: string;
   deletedAt?: string;
+  transfer?: CardTransfer;
 };
 
 function getAdminAuth() {
@@ -371,6 +382,46 @@ export function makeProfileHash(normalizedProfileUrl: string): string {
     .digest('hex');
 }
 
+/**
+ * 引き継ぎコードは十分なランダム性を持たせつつ、
+ * 人間が読み上げ・入力しやすい文字だけを使用する。
+ */
+const TRANSFER_CODE_ALPHABET =
+  'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
+
+export function makeTransferCode(): string {
+  const bytes = randomBytes(16);
+
+  let code = '';
+
+  for (let i = 0; i < bytes.length; i += 1) {
+    code +=
+      TRANSFER_CODE_ALPHABET[
+        bytes[i] % TRANSFER_CODE_ALPHABET.length
+      ];
+  }
+
+  return [
+    code.slice(0, 4),
+    code.slice(4, 8),
+    code.slice(8, 12),
+    code.slice(12, 16),
+  ].join('-');
+}
+
+export function makeTransferCodeSalt(): string {
+  return randomBytes(16).toString('hex');
+}
+
+export function hashTransferCode(
+  code: string,
+  salt: string,
+): string {
+  return createHash('sha256')
+    .update(`${salt}:${code.trim().toUpperCase()}`, 'utf8')
+    .digest('hex');
+}
+
 export function getPresetStatsReference(presetId: string) {
   return adminDb.collection('cardPresetStats').doc(presetId);
 }
@@ -404,9 +455,33 @@ export function isOwner(
   return owner.ownerUid !== '' && owner.ownerUid === user.uid;
 }
 
+export function isTransferPending(owner: CardOwner): boolean {
+  return owner.transfer?.status === 'pending';
+}
+
 export function getOwnerData(
   data: Record<string, unknown>,
 ): CardOwner {
+  const rawTransfer = data.transfer;
+
+  let transfer: CardTransfer | undefined;
+
+  if (isRecord(rawTransfer)) {
+    if (
+      rawTransfer.status === 'pending' &&
+      typeof rawTransfer.codeHash === 'string' &&
+      typeof rawTransfer.codeSalt === 'string' &&
+      typeof rawTransfer.issuedAt === 'string'
+    ) {
+      transfer = {
+        status: 'pending',
+        codeHash: rawTransfer.codeHash,
+        codeSalt: rawTransfer.codeSalt,
+        issuedAt: rawTransfer.issuedAt,
+      };
+    }
+  }
+
   return {
     ownerUid: String(data.ownerUid || ''),
     createdAt: String(data.createdAt || ''),
@@ -414,6 +489,7 @@ export function getOwnerData(
     ...(typeof data.deletedAt === 'string'
       ? { deletedAt: data.deletedAt }
       : {}),
+    ...(transfer ? { transfer } : {}),
   };
 }
 
@@ -424,7 +500,12 @@ export function buildPublicCardFields(
 
   const fields: Omit<
     PublicCard,
-    'id' | 'createdAt' | 'updatedAt' | 'firstUser' | 'status'
+    'id' |
+      'createdAt' |
+      'updatedAt' |
+      'firstUser' |
+      'status' |
+      'transferStatus'
   > = {
     cardType: payload.cardType,
     presetId: payload.presetId,

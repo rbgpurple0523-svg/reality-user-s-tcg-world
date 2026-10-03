@@ -117,6 +117,7 @@ export async function POST(request: Request) {
           ...buildPublicCardFields(payload),
           id: cardId,
           firstUser: payload.userName,
+          transferStatus: 'none' as const,
           status: 'active' as const,
           createdAt: now,
           updatedAt: now,

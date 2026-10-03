@@ -5,6 +5,7 @@ import {
   buildPublicCardFields,
   getOwnerData,
   isOwner,
+  isTransferPending,
   makeProfileHash,
   parseCardWritePayload,
   verifyBearerToken,
@@ -30,7 +31,9 @@ function errorResponse(error: unknown) {
             ? 409
             : code === 'CARD_DELETED'
               ? 409
-              : 400;
+              : code === 'CARD_TRANSFER_PENDING'
+                ? 409
+                : 400;
 
   return NextResponse.json(
     { ok: false, error: code },
@@ -115,6 +118,14 @@ export async function POST(request: Request) {
           throw new Error('PERMISSION_DENIED');
         }
 
+        if (isTransferPending(owner)) {
+          throw new Error('CARD_TRANSFER_PENDING');
+        }
+
+        if (existing.transferStatus === 'pending') {
+          throw new Error('CARD_TRANSFER_PENDING');
+        }
+
         if (
           existing.cardType !== payload.cardType ||
           existing.presetId !== payload.presetId
@@ -141,6 +152,8 @@ export async function POST(request: Request) {
           ...buildPublicCardFields(payload),
           id: cardId,
           firstUser: existing.firstUser,
+          transferStatus:
+            existing.transferStatus || 'none',
           status: 'active',
           createdAt: existing.createdAt,
           updatedAt: now,
