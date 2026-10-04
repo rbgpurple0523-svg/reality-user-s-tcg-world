@@ -3332,28 +3332,13 @@ export default function DeckBuilder({
                     role;
 
                   return (
-                    <button
+                    <div
                       key={role}
-                      type="button"
-                      onClick={() => {
-                        setSelectedTargetRole(
-                          role,
-                        );
-
-                        setSelectedCardId(
-                          null,
-                        );
-
-                        setSelectedCharacterDetail(
-                          null,
-                        );
-                      }}
                       className={`min-w-0 rounded-2xl border-2 p-2 text-left transition ${
                         isTargeting
                           ? 'border-indigo-500 bg-white ring-2 ring-indigo-200'
                           : 'border-white bg-white/80 hover:border-indigo-200'
                       }`}
-                      aria-label={`${label}にキャラカードを設定`}
                     >
                       <div className="text-center text-[9px] font-black text-indigo-700">
                         {label}
@@ -3390,13 +3375,37 @@ export default function DeckBuilder({
                             }
                           </div>
 
-                          <div className="mt-0.5 text-center text-[8px] font-bold text-gray-400">
+                          <button
+                            type="button"
+                            onClick={e => {
+                              e.stopPropagation();
+                              setSelectedCharacterDetail(
+                                prev =>
+                                  prev?.id === card.id
+                                    ? null
+                                    : card,
+                              );
+                              setSelectedTargetRole(null);
+                              setSelectedCardId(null);
+                            }}
+                            className={`mt-1 w-full rounded-lg py-1 text-[8px] font-black ${
+                              selectedCharacterDetail?.id === card.id
+                                ? 'bg-indigo-600 text-white'
+                                : 'bg-gray-50 text-gray-500 hover:bg-indigo-50 hover:text-indigo-700'
+                            }`}
+                          >
                             詳細を見る
-                          </div>
+                          </button>
                         </div>
                       ) : (
-                        <div
-                          className={`mt-2 flex h-36 flex-col items-center justify-center rounded-xl border-2 border-dashed ${
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setSelectedTargetRole(role);
+                            setSelectedCardId(null);
+                            setSelectedCharacterDetail(null);
+                          }}
+                          className={`mt-2 flex h-36 w-full flex-col items-center justify-center rounded-xl border-2 border-dashed ${
                             isTargeting
                               ? 'border-indigo-300 bg-indigo-50 text-indigo-700'
                               : 'border-gray-300 bg-gray-50 text-gray-400'
@@ -3409,9 +3418,22 @@ export default function DeckBuilder({
                           <span className="mt-1 text-[9px] font-black">
                             キャラを選ぶ
                           </span>
-                        </div>
+                        </button>
                       )}
-                    </button>
+
+                      {card && (
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setSelectedTargetRole(role);
+                            setSelectedCardId(null);
+                          }}
+                          className="mt-1 w-full rounded-lg bg-indigo-50 py-1 text-[8px] font-black text-indigo-700 hover:bg-indigo-100"
+                        >
+                          このクラスを変更
+                        </button>
+                      )}
+                    </div>
                   );
                 },
               )}
@@ -3521,14 +3543,15 @@ export default function DeckBuilder({
 
                           <button
                             type="button"
-                            onClick={() =>
-                              handleRemoveSingleSupport(
-                                id,
+                            onClick={e =>
+                              handleOpenSupportDetail(
+                                e,
+                                data,
                               )
                             }
-                            className="mt-1 w-full rounded-lg bg-gray-50 py-0.5 text-[7px] font-black text-gray-500 hover:bg-red-50 hover:text-red-600"
+                            className="mt-1 w-full rounded-lg bg-gray-50 py-0.5 text-[7px] font-black text-gray-500 hover:bg-purple-50 hover:text-purple-700"
                           >
-                            1枚減らす
+                            詳細を見る
                           </button>
                         </div>
                       ) : null,
@@ -4364,6 +4387,145 @@ export default function DeckBuilder({
             </div>
           </div>
         )}
+
+      {selectedSupportDetail &&
+      !isSupportFilterOpen &&
+      !selectedTargetRole && (
+        <div className="fixed inset-0 z-[52] flex items-end justify-center bg-gray-950/50 p-2 sm:items-center sm:p-5">
+          <div className="flex max-h-[92dvh] w-full max-w-md min-h-0 flex-col overflow-hidden rounded-3xl bg-white shadow-2xl">
+            <div className="shrink-0 flex items-center justify-between gap-3 border-b border-gray-200 px-4 py-3">
+              <div>
+                <div className="text-[9px] font-black tracking-[0.16em] text-purple-500">
+                  SUPPORT CARD DETAIL
+                </div>
+                <h2 className="mt-0.5 text-base font-black text-gray-950">
+                  サポートカード詳細
+                </h2>
+              </div>
+
+              <button
+                type="button"
+                onClick={() =>
+                  setSelectedSupportDetail(null)
+                }
+                className="rounded-xl bg-gray-100 px-3 py-2 text-[10px] font-black text-gray-700"
+              >
+                閉じる
+              </button>
+            </div>
+
+            <div className="min-h-0 overflow-y-auto bg-gray-50 p-3">
+              {selectedSupportEmotion ? (
+                <div className="mx-auto flex w-full max-w-sm flex-col items-center">
+                  <CardDetailView
+                    type="support"
+                    userName={
+                      selectedSupportDetail.userName ||
+                      '登録ユーザー'
+                    }
+                    imageDataUrl={
+                      selectedSupportDetail.imageDataUrl ||
+                      ''
+                    }
+                    emotion={selectedSupportEmotion}
+                    effectName={selectedSupportDetail.name}
+                    flavorText={
+                      selectedSupportDetail.flavorText ||
+                      ''
+                    }
+                    selectedColorHex={
+                      selectedSupportDetail.colorHex ||
+                      '#9333EA'
+                    }
+                    profileUrl={
+                      selectedSupportDetail.profileUrl ||
+                      ''
+                    }
+                    showProfileUrl={
+                      selectedSupportDetail.showProfileUrl ??
+                      false
+                    }
+                  />
+
+                  <div className="mt-3 w-full rounded-xl border border-purple-100 bg-white px-3 py-2 text-[9px] font-bold leading-5 text-gray-600">
+                    {selectedSupportDetail.description ||
+                      '説明はありません。'}
+                  </div>
+                </div>
+              ) : (
+                <div className="rounded-2xl border border-dashed border-gray-200 bg-white py-8 text-center text-[10px] font-bold text-gray-400">
+                  このサポートカードの詳細情報を表示できません。
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {selectedCharacterDetail &&
+      !selectedTargetRole && (
+        <div className="fixed inset-0 z-[52] flex items-end justify-center bg-gray-950/50 p-2 sm:items-center sm:p-5">
+          <div className="flex max-h-[92dvh] w-full max-w-md min-h-0 flex-col overflow-hidden rounded-3xl bg-white shadow-2xl">
+            <div className="shrink-0 flex items-center justify-between gap-3 border-b border-gray-200 px-4 py-3">
+              <div>
+                <div className="text-[9px] font-black tracking-[0.16em] text-indigo-500">
+                  CHARACTER CARD DETAIL
+                </div>
+                <h2 className="mt-0.5 text-base font-black text-gray-950">
+                  キャラカード詳細
+                </h2>
+              </div>
+
+              <button
+                type="button"
+                onClick={() =>
+                  setSelectedCharacterDetail(null)
+                }
+                className="rounded-xl bg-gray-100 px-3 py-2 text-[10px] font-black text-gray-700"
+              >
+                閉じる
+              </button>
+            </div>
+
+            <div className="min-h-0 overflow-y-auto bg-gray-50 p-3">
+              {selectedCharacterCoordinate ? (
+                <div className="mx-auto flex w-full max-w-sm flex-col items-center">
+                  <CardDetailView
+                    type="character"
+                    userName={selectedCharacterDetail.userName}
+                    imageDataUrl={
+                      selectedCharacterDetail.imageDataUrl ||
+                      ''
+                    }
+                    coordinate={selectedCharacterCoordinate}
+                    customSkills={selectedCharacterSkillNames}
+                    flavorText={
+                      selectedCharacterDetail.flavorText ||
+                      ''
+                    }
+                    selectedColorHex={
+                      selectedCharacterDetail.colorHex ||
+                      '#6366F1'
+                    }
+                    profileUrl={
+                      selectedCharacterDetail.profileUrl ||
+                      ''
+                    }
+                    showProfileUrl={
+                      selectedCharacterDetail.showProfileUrl ??
+                      false
+                    }
+                  />
+                </div>
+              ) : (
+                <div className="rounded-2xl border border-dashed border-gray-200 bg-white py-8 text-center text-[10px] font-bold text-gray-400">
+                  このキャラカードの詳細情報を表示できません。
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
 
       {isDeckDashboardOpen && (
         <div className="fixed inset-0 z-[55] flex items-end justify-center bg-gray-950/50 p-2 sm:items-center sm:p-5">

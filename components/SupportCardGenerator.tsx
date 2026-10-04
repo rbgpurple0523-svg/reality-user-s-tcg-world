@@ -1057,8 +1057,6 @@ export default function SupportCardGenerator({
 
     setEntries(loadedEntries);
 
-    // 旧仕様の認証情報が残っている場合に備え、
-    // 今後使わない旧トークン保存領域を掃除する。
     try {
       localStorage.removeItem(
         MY_TOKENS_KEY,
@@ -2541,10 +2539,10 @@ export default function SupportCardGenerator({
               </button>
             </div>
 
-            <div className="min-h-0 overflow-y-auto p-4">
+            <div className="min-h-0 flex-1 overflow-y-auto p-4">
               {activeEditor ===
                 'basic' && (
-                <div className="space-y-4 text-xs">
+                <div className="space-y-4">
                   <div>
                     <label className="mb-1 block font-bold">
                       カード画像{' '}
@@ -2553,14 +2551,17 @@ export default function SupportCardGenerator({
                       </span>
                     </label>
 
-                    <input
-                      type="file"
-                      accept="image/*"
-                      onChange={
-                        handleImageUpload
-                      }
-                      className="w-full text-xs"
-                    />
+                    <label className="inline-flex cursor-pointer items-center rounded-xl bg-red-500 px-3 py-2 text-[10px] font-black text-white shadow-sm transition hover:bg-red-600 active:bg-red-700">
+                      ファイルを選択
+                      <input
+                        type="file"
+                        accept="image/*"
+                        onChange={
+                          handleImageUpload
+                        }
+                        className="hidden"
+                      />
+                    </label>
 
                     {imageDataUrl && (
                       <div className="mt-2 overflow-hidden rounded-xl border border-gray-200 bg-gray-50">
@@ -2604,8 +2605,7 @@ export default function SupportCardGenerator({
                       }
                       onChange={(e) =>
                         handleProfileUrlChange(
-                          e.target
-                            .value,
+                          e.target.value,
                         )
                       }
                       placeholder="https://reality.app/profile/xxxxxx"
@@ -2631,8 +2631,7 @@ export default function SupportCardGenerator({
                           }
                           onChange={(e) =>
                             setShowProfileUrl(
-                              e.target
-                                .checked,
+                              e.target.checked,
                             )
                           }
                           className="peer sr-only"
@@ -2668,8 +2667,7 @@ export default function SupportCardGenerator({
                       }
                       onChange={(e) =>
                         setUserName(
-                          e.target
-                            .value,
+                          e.target.value,
                         )
                       }
                       maxLength={40}
@@ -2726,8 +2724,7 @@ export default function SupportCardGenerator({
                       }
                       onChange={(e) =>
                         setEffectName(
-                          e.target
-                            .value,
+                          e.target.value,
                         )
                       }
                       maxLength={40}
@@ -2783,8 +2780,7 @@ export default function SupportCardGenerator({
                       }
                       onChange={(e) =>
                         handleColorChange(
-                          e.target
-                            .value,
+                          e.target.value,
                         )
                       }
                       className="h-12 w-16 cursor-pointer rounded-lg border bg-white p-1"
@@ -2814,8 +2810,7 @@ export default function SupportCardGenerator({
                     }
                     onChange={(e) =>
                       setFlavorText(
-                        e.target
-                          .value,
+                        e.target.value,
                       )
                     }
                     rows={6}
@@ -2966,8 +2961,7 @@ export default function SupportCardGenerator({
                     }
                     onChange={(e) =>
                       setPickerSearch(
-                        e.target
-                          .value,
+                        e.target.value,
                       )
                     }
                     placeholder={
@@ -2989,8 +2983,7 @@ export default function SupportCardGenerator({
                       }
                       onChange={(e) =>
                         setPickerTarget(
-                          e.target
-                            .value,
+                          e.target.value,
                         )
                       }
                       className="w-full rounded-lg border border-gray-200 bg-white px-2.5 py-2 text-[10px] font-bold text-purple-900"
@@ -3015,8 +3008,7 @@ export default function SupportCardGenerator({
                       }
                       onChange={(e) =>
                         setPickerEffect(
-                          e.target
-                            .value,
+                          e.target.value,
                         )
                       }
                       className="w-full rounded-lg border border-gray-200 bg-white px-2.5 py-2 text-[10px] font-bold text-purple-900"
@@ -3060,8 +3052,7 @@ export default function SupportCardGenerator({
                       }
                       onChange={(e) =>
                         setPickerDuration(
-                          e.target
-                            .value,
+                          e.target.value,
                         )
                       }
                       className="w-full rounded-lg border border-gray-200 bg-white px-2.5 py-2 text-[10px] font-bold text-purple-900"
