@@ -1340,6 +1340,12 @@ export default function GameBoard({
     useState<number | null>(null);
 
   const [
+    selectedSetupSupportCard,
+    setSelectedSetupSupportCard,
+  ] =
+    useState<SupportCard | null>(null);
+
+  const [
     showBattleLog,
     setShowBattleLog,
   ] =
@@ -1923,10 +1929,18 @@ export default function GameBoard({
               | '青'
               | '黄') ||
             '赤',
-          colorHex:
-            entry.colorHex,
-          colorType:
-            entry.colorType,
+          ...(entry.colorHex
+            ? {
+                colorHex:
+                  entry.colorHex,
+              }
+            : {}),
+          ...(entry.colorType
+            ? {
+                colorType:
+                  entry.colorType,
+              }
+            : {}),
           flavorText:
             entry.flavorText ||
             '',
@@ -11267,15 +11281,16 @@ export default function GameBoard({
             entries,
           );
 
-        const grouped =
-          new Map<
-            string,
-            {
-              name: string;
-              count: number;
-              category: string;
-            }
-          >();
+const grouped =
+  new Map<
+    string,
+    {
+      id: string;
+      name: string;
+      count: number;
+      category: string;
+    }
+  >();
 
         for (
           const id of resolvedIds
@@ -11309,16 +11324,17 @@ export default function GameBoard({
                   )
                 : undefined;
 
-            grouped.set(
-              name,
-              {
-                name,
-                count: 1,
-                category:
-                  preset?.effectCategory ||
-                  'その他',
-              },
-            );
+grouped.set(
+  name,
+  {
+    id,
+    name,
+    count: 1,
+    category:
+      preset?.effectCategory ||
+      'その他',
+  },
+);
           }
         }
 
@@ -11575,10 +11591,15 @@ export default function GameBoard({
         ]
       : undefined;
 
+  const supportDetailCard =
+    selectedSupportCard ??
+    selectedSetupSupportCard ??
+    undefined;
+
   const selectedSupportPreset =
-    selectedSupportCard
+    supportDetailCard
       ? getEmotionPresetForCard(
-          selectedSupportCard,
+          supportDetailCard,
         )
       : undefined;
 
@@ -11904,60 +11925,77 @@ export default function GameBoard({
                     </div>
                   </div>
 
-                  <div className="mt-auto grid shrink-0 grid-cols-2 gap-2">
-                    <button
-                      type="button"
-                      onClick={() => {
-                        if (
-                          activeDeckId &&
-                          onEditDeck
-                        ) {
-                          onEditDeck(
-                            activeDeckId,
-                          );
+<div className="mt-auto grid shrink-0 grid-cols-2 gap-2">
+  <button
+    type="button"
+    onClick={() => {
+      if (activeDeckId) {
+        setSelectedDeckPreviewId(
+          activeDeckId,
+        );
+      }
 
-                          return;
-                        }
+      setIsDeckSelectOpen(true);
+    }}
+    disabled={!activeDeckId}
+    className="rounded-2xl bg-white px-4 py-3 text-xs font-black text-slate-700 shadow-sm ring-1 ring-slate-200 transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-35"
+  >
+    チーム詳細・分析
+  </button>
 
-                        setIsDeckSelectOpen(
-                          true,
-                        );
-                      }}
-                      disabled={
-                        currentYear !==
-                          1 ||
-                        deckConfirmed ||
-                        (
-                          isOnline &&
-                          (
-                            playerRole ===
-                            'host'
-                              ? readyHost
-                              : readyGuest
-                          )
-                        )
-                      }
-                      className="rounded-2xl bg-white px-4 py-3 text-xs font-black text-slate-700 shadow-sm ring-1 ring-slate-200 transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-35"
-                    >
-                      チームを変更
-                    </button>
+  <button
+    type="button"
+    onClick={() => {
+      if (
+        activeDeckId &&
+        onEditDeck
+      ) {
+        onEditDeck(
+          activeDeckId,
+        );
 
-                    <button
-                      type="button"
-                      onClick={() =>
-                        void startBattleWithDeck()
-                      }
-                      disabled={
-                        !myDeckReady ||
-                        deckConfirmed ||
-                        currentYear !==
-                          1
-                      }
-                      className="rounded-2xl bg-indigo-600 px-4 py-3 text-xs font-black text-white shadow-lg shadow-indigo-200 transition hover:bg-indigo-700 disabled:cursor-not-allowed disabled:opacity-35"
-                    >
-                      このチームではじめる
-                    </button>
-                  </div>
+        return;
+      }
+
+      setIsDeckSelectOpen(
+        true,
+      );
+    }}
+    disabled={
+      currentYear !==
+        1 ||
+      deckConfirmed ||
+      (
+        isOnline &&
+        (
+          playerRole ===
+          'host'
+            ? readyHost
+            : readyGuest
+        )
+      )
+    }
+    className="rounded-2xl bg-white px-4 py-3 text-xs font-black text-slate-700 shadow-sm ring-1 ring-slate-200 transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-35"
+  >
+    チームを変更
+  </button>
+
+  <button
+    type="button"
+    onClick={() =>
+      void startBattleWithDeck()
+    }
+    disabled={
+      !myDeckReady ||
+      deckConfirmed ||
+      currentYear !==
+        1
+    }
+    className="col-span-2 rounded-2xl bg-indigo-600 px-4 py-3 text-xs font-black text-white shadow-lg shadow-indigo-200 transition hover:bg-indigo-700 disabled:cursor-not-allowed disabled:opacity-35"
+  >
+    このチームではじめる
+  </button>
+</div>
                 </>
               ) : (
                 <div className="flex min-h-0 flex-1 items-center justify-center">
@@ -13038,34 +13076,59 @@ export default function GameBoard({
                                         SUPPORT CARDS
                                       </div>
 
-                                      <div className="mt-2 flex flex-wrap gap-1.5">
-                                        {preview.supports.length ? (
-                                          preview.supports.map(
-                                            (
-                                              support,
-                                            ) => (
-                                              <span
-                                                key={
-                                                  support.name
-                                                }
-                                                className="rounded-lg border border-purple-100 bg-purple-50 px-2 py-1 text-[8px] font-black text-purple-900"
-                                              >
-                                                {
-                                                  support.name
-                                                }
-                                                {support.count >
-                                                1
-                                                  ? ` ×${support.count}`
-                                                  : ''}
-                                              </span>
-                                            ),
-                                          )
-                                        ) : (
-                                          <span className="text-[9px] font-bold text-slate-400">
-                                            サポートなし
-                                          </span>
-                                        )}
-                                      </div>
+<div className="mt-2 flex flex-wrap gap-1.5">
+  {preview.supports.length ? (
+    preview.supports.map((support) => (
+      <button
+        key={support.name}
+        type="button"
+        onClick={() => {
+          try {
+            const entriesRaw =
+              localStorage.getItem(
+                'reality_world_entries',
+              );
+
+            const entriesRawParsed: unknown =
+              entriesRaw
+                ? JSON.parse(entriesRaw)
+                : [];
+
+            const entries =
+              Array.isArray(entriesRawParsed)
+                ? entriesRawParsed
+                : [];
+
+            const supportCard =
+              getSupportPool(entries).find(
+                (card) =>
+                  card.name ===
+                  support.name,
+              );
+
+            if (supportCard) {
+              setSelectedSetupSupportCard(
+                supportCard,
+              );
+            }
+          } catch {
+            // 詳細表示できない場合は何もしない
+          }
+        }}
+        className="rounded-lg border border-purple-100 bg-purple-50 px-2 py-1 text-left text-[8px] font-black text-purple-900 transition hover:bg-purple-100"
+      >
+        {support.name}
+        {support.count > 1
+          ? ` ×${support.count}`
+          : ''}
+      </button>
+    ))
+  ) : (
+    <span className="text-[9px] font-bold text-slate-400">
+      サポートなし
+    </span>
+  )}
+</div>
 
                                       <div className="mt-2 rounded-xl border border-purple-100 bg-purple-50/60 p-2">
                                         <div className="text-[8px] font-black text-purple-700">
@@ -13132,7 +13195,7 @@ export default function GameBoard({
             </div>
           )}
 
-        {selectedSupportCard && (
+{supportDetailCard && (
           <div className="fixed inset-0 z-[75] flex items-end justify-center bg-slate-950/60 px-3 py-3 backdrop-blur-sm sm:items-center sm:px-4">
             <div className="max-h-[78dvh] w-full max-w-md overflow-y-auto rounded-[2rem] bg-white p-4 shadow-2xl sm:p-5">
               <div className="flex items-start justify-between gap-3">
@@ -13143,18 +13206,21 @@ export default function GameBoard({
 
                   <h3 className="mt-0.5 text-xl font-black text-slate-950">
                     {
-                      selectedSupportCard.name
+                      supportDetailCard.name
                     }
                   </h3>
                 </div>
 
                 <button
                   type="button"
-                  onClick={() =>
-                    setSelectedSupportCardIndex(
-                      null,
-                    )
-                  }
+onClick={() => {
+  setSelectedSupportCardIndex(
+    null,
+  );
+  setSelectedSetupSupportCard(
+    null,
+  );
+}}
                   className="rounded-xl bg-slate-100 px-3 py-2 text-xs font-black text-slate-600"
                 >
                   閉じる
@@ -13178,7 +13244,7 @@ export default function GameBoard({
                   className="mx-auto"
                   colorHex={
                     getSupportColorHex(
-                      selectedSupportCard,
+                      supportDetailCard,
                     ) ||
                     getBattleVisualColorHex(
                       myActiveAvatar.card,
@@ -13186,11 +13252,11 @@ export default function GameBoard({
                   }
                 >
                   {getSupportImage(
-                    selectedSupportCard,
+                    supportDetailCard,
                   ) ? (
                     <img
                       src={getSupportImage(
-                        selectedSupportCard,
+                        supportDetailCard,
                       )}
                       alt=""
                       className="h-full w-full rounded-2xl bg-white object-contain p-1"
@@ -13242,7 +13308,7 @@ export default function GameBoard({
               </div>
 
               {getSupportFlavorText(
-                selectedSupportCard,
+                supportDetailCard,
               ) && (
                 <div className="mt-4 rounded-2xl border border-purple-100 bg-purple-50/70 p-3">
                   <div className="text-[9px] font-black text-purple-700">
@@ -13251,49 +13317,51 @@ export default function GameBoard({
 
                   <div className="mt-1 whitespace-pre-wrap text-xs font-bold leading-relaxed text-slate-700">
                     {getSupportFlavorText(
-                      selectedSupportCard,
+                      supportDetailCard,
                     )}
                   </div>
                 </div>
               )}
 
-              <button
-                type="button"
-                disabled={
-                  !myTurn ||
-                  supportSubmittingCardIndex !==
-                    null ||
-                  selectedSupportLimitReached
-                }
-                onClick={() => {
-                  if (
-                    selectedSupportCardIndex ===
-                      null ||
-                    !selectedSupportCard
-                  ) {
-                    return;
-                  }
+{selectedSupportCard && (
+  <button
+    type="button"
+    disabled={
+      !myTurn ||
+      supportSubmittingCardIndex !==
+        null ||
+      selectedSupportLimitReached
+    }
+    onClick={() => {
+      if (
+        selectedSupportCardIndex ===
+          null ||
+        !selectedSupportCard
+      ) {
+        return;
+      }
 
-                  const index =
-                    selectedSupportCardIndex;
+      const index =
+        selectedSupportCardIndex;
 
-                  setSelectedSupportCardIndex(
-                    null,
-                  );
+      setSelectedSupportCardIndex(
+        null,
+      );
 
-                  void handleUseSupportCard(
-                    selectedSupportCard,
-                    index,
-                  );
-                }}
-                className="mt-5 w-full rounded-2xl bg-indigo-600 px-4 py-3.5 text-sm font-black text-white shadow-lg shadow-indigo-200 transition hover:bg-indigo-700 disabled:cursor-not-allowed disabled:opacity-40"
-              >
-                {!myTurn
-                  ? '自分のターンではありません'
-                  : selectedSupportLimitReached
-                    ? 'このターンの枚数制限に達しました'
-                    : 'このサポートカードを使用する'}
-              </button>
+      void handleUseSupportCard(
+        selectedSupportCard,
+        index,
+      );
+    }}
+    className="mt-5 w-full rounded-2xl bg-indigo-600 px-4 py-3.5 text-sm font-black text-white shadow-lg shadow-indigo-200 transition hover:bg-indigo-700 disabled:cursor-not-allowed disabled:opacity-40"
+  >
+    {!myTurn
+      ? '自分のターンではありません'
+      : selectedSupportLimitReached
+        ? 'このターンの枚数制限に達しました'
+        : 'このサポートカードを使用する'}
+  </button>
+)}
             </div>
           </div>
         )}

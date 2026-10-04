@@ -480,7 +480,7 @@ const getCanonicalSkill = (
     'combo_score_and_debuff',
   ];
 
-  return {
+  const skill: Skill = {
     id: skillId,
     name,
     description,
@@ -495,16 +495,22 @@ const getCanonicalSkill = (
       index === 1
         ? rank[1]
         : rank[0],
-    secondaryStat:
-      index === 1 ||
-      index === 3
-        ? rank[2]
-        : undefined,
-    tertiaryStat:
-      index === 3
-        ? rank[3]
-        : undefined,
   };
+
+  if (
+    index === 1 ||
+    index === 3
+  ) {
+    skill.secondaryStat =
+      rank[2];
+  }
+
+  if (index === 3) {
+    skill.tertiaryStat =
+      rank[3];
+  }
+
+  return skill;
 };
 
 const getEffectiveStats = (
