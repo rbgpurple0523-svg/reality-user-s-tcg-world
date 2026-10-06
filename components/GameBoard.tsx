@@ -6156,12 +6156,20 @@ setMyDeckReady(
             },
           );
         }
-      } else {
-        resetLocalSupportDeck(
-          nextDeckDefinition,
-        );
-      }
+} else {
+  addLog(
+    `🔎 CLASS DEBUG: 年${targetYear} クラス開始・resetLocalSupportDeck実行前`,
+  );
 
+  const resetResult =
+    resetLocalSupportDeck(
+      nextDeckDefinition,
+    );
+
+  addLog(
+    `🔎 CLASS DEBUG: 年${targetYear} resetLocalSupportDeck完了 → 手札${resetResult.hand.length}枚 / 山札${resetResult.deck.length}枚`,
+  );
+}
       setUsedSkillsByClass(
         (prev) => {
           const next = {
