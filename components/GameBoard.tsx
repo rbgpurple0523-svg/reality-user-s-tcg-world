@@ -9626,6 +9626,10 @@ if (
             const next =
               getNextTurnState();
 
+addLog(
+  `🔎 CLASS DEBUG: CPU next判定 / 現在 年${currentYear}・${turnIndex + 1}ターン → next 年${next.currentYear}・${next.turnIndex + 1}ターン / phase=${next.nextPhase}`,
+);
+
             const finalMyScore =
               next.nextPhase ===
                 'setup' ||
@@ -9635,7 +9639,6 @@ if (
                     activeIndex
                   ] || 0
                 : 0;
-
             const finalOpponentScore =
               next.nextPhase ===
                 'setup' ||
@@ -9656,6 +9659,9 @@ if (
               next.nextPhase ===
                 'finished'
             ) {
+addLog(
+  `🔎 CLASS DEBUG: CPUクラス終了判定TRUE / 年${currentYear}`,
+);
               const resolvedMyTotal =
                 myClassScores.reduce(
                   (
