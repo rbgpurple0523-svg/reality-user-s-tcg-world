@@ -4553,15 +4553,12 @@ export default function GameBoard({
       return;
     }
 
-    if (
-      isOnline &&
-      turnIndex === 0 &&
-      myHand.length === 0 &&
-      myDeck.length === 0
-    ) {
-      return;
-    }
-
+if (
+  turnIndex === 0
+) {
+  previousTurnRef.current = key;
+  return;
+}
     const turnOrdinal =
       getBattleTurnOrdinal(
         currentYear,
