@@ -6235,19 +6235,36 @@ setMyDeckReady(
       }
     };
 
-  const continueAfterClassResult =
-    async () => {
-      if (
-        !classResult ||
-        (
-          isOnline &&
-          !authReady
-        ) ||
+const continueAfterClassResult =
+  async () => {
+    addLog(
+      `🔎 CLASS DEBUG: continueAfterClassResult呼び出し / classResult=${
+        classResult
+          ? `年${classResult.completedYear}終了`
+          : 'null'
+      } / transitionLock=${
         classTransitionInProgressRef.current
-      ) {
-        return;
-      }
+      }`,
+    );
 
+    if (
+      !classResult ||
+      (
+        isOnline &&
+        !authReady
+      ) ||
+        classTransitionInProgressRef.current
+    ) {
+      addLog(
+        `🔎 CLASS DEBUG: continueAfterClassResult中断 / transitionLock=${
+          classTransitionInProgressRef.current
+        }`,
+      );
+
+      return;
+    }
+
+    // 以下そのまま
       classTransitionInProgressRef.current =
         true;
 
@@ -6300,17 +6317,27 @@ setMyDeckReady(
       return;
     }
 
-    const timer =
-      window.setTimeout(
-        () => {
-          if (
-            !classTransitionInProgressRef.current
-          ) {
-            void continueAfterClassResult();
-          }
-        },
-        1800,
+const timer =
+  window.setTimeout(
+    () => {
+      addLog(
+        `🔎 CLASS DEBUG: クラス切替タイマー発火 / transitionLock=${
+          classTransitionInProgressRef.current
+        }`,
       );
+
+      if (
+        !classTransitionInProgressRef.current
+      ) {
+        void continueAfterClassResult();
+      } else {
+        addLog(
+          '🔎 CLASS DEBUG: タイマー発火時点でtransitionLock=true → 切替実行せず',
+        );
+      }
+    },
+    1800,
+  );
 
     return () =>
       window.clearTimeout(
