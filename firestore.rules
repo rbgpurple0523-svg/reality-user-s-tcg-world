@@ -330,6 +330,37 @@ service cloud.firestore {
       allow read: if request.auth != null;
 
       allow create: if request.auth != null
+&& request.resource.data.keys().hasOnly([
+  'hostUid',
+  'guestUid',
+  'hostJoined',
+  'guestJoined',
+  'battlePhase',
+  'currentYear',
+  'turnIndex',
+  'firstPlayer',
+  'startSeasonIdx',
+  'hostTotalScore',
+  'guestTotalScore',
+  'hostClassScores',
+  'guestClassScores',
+  'hostUsedSkills',
+  'guestUsedSkills',
+  'rematchHost',
+  'rematchGuest',
+  'rematchPlayerResetHost',
+  'rematchPlayerResetGuest',
+  'exitHost',
+  'exitGuest',
+  'readyHost',
+  'readyGuest',
+  'classReadyYearHost',
+  'classReadyYearGuest',
+  'roomClosed',
+  'createdAt',
+  'hostLastSeenAt',
+  'guestLastSeenAt'
+])
         && request.resource.data.hostUid == request.auth.uid
         && request.resource.data.roomClosed == false
         && request.resource.data.exitHost == false
@@ -746,6 +777,7 @@ service cloud.firestore {
 
           (
             resource.data.guestUid == null
+            && resource.data.roomClosed != true
             && request.resource.data.guestUid == request.auth.uid
             && request.resource.data.hostUid == resource.data.hostUid
             && request.resource.data.diff(resource.data).affectedKeys().hasOnly([
@@ -775,9 +807,23 @@ service cloud.firestore {
         );
 
       match /players/{playerRole} {
+
         allow read: if request.auth != null;
 
         allow create: if request.auth != null
+          && request.resource.data.keys().hasOnly([
+            'uid',
+            'role',
+            'joined',
+            'ready',
+            'createdAt',
+            'lastSeenAt',
+            'avatars',
+            'handCount',
+            'deckCount',
+            'usedSkills',
+            'lastProcessedIncomingActionId'
+          ])
           && request.resource.data.uid == request.auth.uid
           && request.resource.data.role == playerRole
           && request.resource.data.avatars is list
@@ -786,7 +832,11 @@ service cloud.firestore {
           && request.resource.data.deckCount == 0
           && request.resource.data.usedSkills is map
           && request.resource.data.usedSkills.keys().size() == 0
-          && !request.resource.data.keys().hasAny(['hand', 'deck', 'pendingAction'])
+          && !request.resource.data.keys().hasAny([
+            'hand',
+            'deck',
+            'pendingAction'
+          ])
           && (
             (
               playerRole == 'host'
@@ -805,13 +855,16 @@ service cloud.firestore {
 
         function isRematchPlayerReset() {
           let room =
-            get(/databases/$(database)/documents/rooms/$(roomId)).data;
+            get(
+              /databases/$(database)/documents/rooms/$(roomId)
+            ).data;
 
           return
-            room.rematchHost == true
+            room.battlePhase == 'finished'
+            && room.rematchHost == true
             && room.rematchGuest == true
-            && request.resource.data.handCount == 4
-            && request.resource.data.deckCount == 14
+            && request.resource.data.handCount == 0
+            && request.resource.data.deckCount == 0
             && request.resource.data.usedSkills is map
             && request.resource.data.usedSkills.keys().size() == 0
             && request.resource.data.avatars is list
@@ -830,19 +883,7 @@ service cloud.firestore {
             && !request.resource.data.keys().hasAny([
               'hand',
               'deck'
-            ])
-            && request.resource.data.diff(resource.data)
-              .affectedKeys()
-              .hasAny([
-                'pendingAction',
-                'lastSkillActionId',
-                'lastSkillAction',
-                'lastSupportActionId',
-                'lastSupportCardId',
-                'lastSupportCardCountBefore',
-                'lastSupportCardCountAfter',
-                'lastSupportActionAt'
-              ]);
+            ]);
         }
 
         allow update: if request.auth != null
@@ -875,7 +916,9 @@ service cloud.firestore {
           && (
             !request.resource.data.diff(resource.data)
               .affectedKeys()
-              .hasAny(['lastSkillAction'])
+              .hasAny([
+                'lastSkillAction'
+              ])
             ||
             isRematchPlayerReset()
           )
@@ -888,9 +931,28 @@ service cloud.firestore {
           && (
             !request.resource.data.diff(resource.data)
               .affectedKeys()
-              .hasAny(['avatars'])
+              .hasAny([
+                'avatars'
+              ])
             ||
-            getAfter(/databases/$(database)/documents/rooms/$(roomId)).data.battlePhase == 'setup'
+            getAfter(
+              /databases/$(database)/documents/rooms/$(roomId)
+            ).data.battlePhase == 'setup'
+            ||
+            isRematchPlayerReset()
+          )
+
+          && (
+            !request.resource.data.diff(resource.data)
+              .affectedKeys()
+              .hasAny([
+                'handCount',
+                'deckCount'
+              ])
+            ||
+            getAfter(
+              /databases/$(database)/documents/rooms/$(roomId)
+            ).data.battlePhase == 'setup'
             ||
             isRematchPlayerReset()
           )
@@ -918,7 +980,9 @@ service cloud.firestore {
             ||
             !request.resource.data.diff(resource.data)
               .affectedKeys()
-              .hasAny(['pendingAction'])
+              .hasAny([
+                'pendingAction'
+              ])
             ||
             (
               request.resource.data.pendingAction is map
@@ -958,22 +1022,38 @@ service cloud.firestore {
               && request.resource.data.pendingAction.playerRole == playerRole
               && request.resource.data.pendingAction.uid == request.auth.uid
               && request.resource.data.pendingAction.year
-                == get(/databases/$(database)/documents/rooms/$(roomId)).data.currentYear
+                == get(
+                  /databases/$(database)/documents/rooms/$(roomId)
+                ).data.currentYear
               && request.resource.data.pendingAction.turnIndex
-                == get(/databases/$(database)/documents/rooms/$(roomId)).data.turnIndex
-              && get(/databases/$(database)/documents/rooms/$(roomId)).data.battlePhase == 'battle'
+                == get(
+                  /databases/$(database)/documents/rooms/$(roomId)
+                ).data.turnIndex
+              && get(
+                /databases/$(database)/documents/rooms/$(roomId)
+              ).data.battlePhase == 'battle'
               && request.resource.data.pendingAction.avatarIndex
-                == (get(/databases/$(database)/documents/rooms/$(roomId)).data.currentYear - 1)
+                == (
+                  get(
+                    /databases/$(database)/documents/rooms/$(roomId)
+                  ).data.currentYear - 1
+                )
               && request.resource.data.pendingAction.avatarIndex >= 0
               && request.resource.data.pendingAction.avatarIndex <= 2
               && request.resource.data.pendingAction.playerRole
                 == (
-                  get(/databases/$(database)/documents/rooms/$(roomId)).data.turnIndex % 2 == 0
+                  get(
+                    /databases/$(database)/documents/rooms/$(roomId)
+                  ).data.turnIndex % 2 == 0
                   ?
-                    get(/databases/$(database)/documents/rooms/$(roomId)).data.firstPlayer
+                    get(
+                      /databases/$(database)/documents/rooms/$(roomId)
+                    ).data.firstPlayer
                   :
                     (
-                      get(/databases/$(database)/documents/rooms/$(roomId)).data.firstPlayer == 'host'
+                      get(
+                        /databases/$(database)/documents/rooms/$(roomId)
+                      ).data.firstPlayer == 'host'
                       ? 'guest'
                       : 'host'
                     )
@@ -981,7 +1061,9 @@ service cloud.firestore {
               && (
                 (
                   request.resource.data.pendingAction.type == 'USE_SKILL'
-                  && request.resource.data.pendingAction.keys().hasAll(['skillId'])
+                  && request.resource.data.pendingAction.keys().hasAll([
+                    'skillId'
+                  ])
                   && request.resource.data.pendingAction.skillId is string
                   && request.resource.data.pendingAction.skillId != ''
                   && !request.resource.data.pendingAction.keys().hasAny([
@@ -991,7 +1073,9 @@ service cloud.firestore {
                     'supportCardCountAfter'
                   ])
                   && (
-                    !request.resource.data.pendingAction.keys().hasAny(['selectedBoostStat'])
+                    !request.resource.data.pendingAction.keys().hasAny([
+                      'selectedBoostStat'
+                    ])
                     ||
                     request.resource.data.pendingAction.selectedBoostStat == 'hp'
                     ||
@@ -1031,7 +1115,9 @@ service cloud.firestore {
             ||
             !request.resource.data.diff(resource.data)
               .affectedKeys()
-              .hasAny(['lastSkillActionId'])
+              .hasAny([
+                'lastSkillActionId'
+              ])
             ||
             (
               request.resource.data.lastSkillActionId is string
@@ -1048,7 +1134,9 @@ service cloud.firestore {
             ||
             !request.resource.data.diff(resource.data)
               .affectedKeys()
-              .hasAny(['lastSupportActionId'])
+              .hasAny([
+                'lastSupportActionId'
+              ])
             ||
             (
               request.resource.data.lastSupportActionId is string
@@ -1091,13 +1179,28 @@ service cloud.firestore {
 
         allow create: if
           request.auth != null
+          && request.resource.data.keys().hasOnly([
+            'uid',
+            'role',
+            'lastSeenAt'
+          ])
           && (playerRole == 'host' || playerRole == 'guest')
           && (
-            (playerRole == 'host' &&
-              getAfter(/databases/$(database)/documents/rooms/$(roomId)).data.hostUid == request.auth.uid)
+            (
+              playerRole == 'host'
+              &&
+              getAfter(
+                /databases/$(database)/documents/rooms/$(roomId)
+              ).data.hostUid == request.auth.uid
+            )
             ||
-            (playerRole == 'guest' &&
-              getAfter(/databases/$(database)/documents/rooms/$(roomId)).data.guestUid == request.auth.uid)
+            (
+              playerRole == 'guest'
+              &&
+              getAfter(
+                /databases/$(database)/documents/rooms/$(roomId)
+              ).data.guestUid == request.auth.uid
+            )
           )
           && request.resource.data.uid == request.auth.uid
           && request.resource.data.role == playerRole;
@@ -1109,15 +1212,21 @@ service cloud.firestore {
             (
               (playerRole == 'host' || playerRole == 'guest')
               && (
-                (playerRole == 'host' &&
+                (
+                  playerRole == 'host'
+                  &&
                   get(
                     /databases/$(database)/documents/rooms/$(roomId)
-                  ).data.hostUid == request.auth.uid)
+                  ).data.hostUid == request.auth.uid
+                )
                 ||
-                (playerRole == 'guest' &&
+                (
+                  playerRole == 'guest'
+                  &&
                   get(
                     /databases/$(database)/documents/rooms/$(roomId)
-                  ).data.guestUid == request.auth.uid)
+                  ).data.guestUid == request.auth.uid
+                )
               )
               && resource.data.uid == request.auth.uid
               && request.resource.data.uid == resource.data.uid
@@ -1158,7 +1267,9 @@ service cloud.firestore {
       match /privatePlayers/{playerRole} {
 
         allow create: if request.auth != null
-          && get(/databases/$(database)/documents/rooms/$(roomId)).data.battlePhase == 'setup'
+          && get(
+            /databases/$(database)/documents/rooms/$(roomId)
+          ).data.battlePhase == 'setup'
           && request.resource.data.uid == request.auth.uid
           && request.resource.data.keys().hasOnly([
             'uid',
@@ -1180,14 +1291,16 @@ service cloud.firestore {
           && (
             (
               playerRole == 'host'
-              && get(
+              &&
+              get(
                 /databases/$(database)/documents/rooms/$(roomId)
               ).data.hostUid == request.auth.uid
             )
             ||
             (
               playerRole == 'guest'
-              && get(
+              &&
+              get(
                 /databases/$(database)/documents/rooms/$(roomId)
               ).data.guestUid == request.auth.uid
             )
@@ -1197,14 +1310,16 @@ service cloud.firestore {
           && (
             (
               playerRole == 'host'
-              && get(
+              &&
+              get(
                 /databases/$(database)/documents/rooms/$(roomId)
               ).data.hostUid == request.auth.uid
             )
             ||
             (
               playerRole == 'guest'
-              && get(
+              &&
+              get(
                 /databases/$(database)/documents/rooms/$(roomId)
               ).data.guestUid == request.auth.uid
             )
@@ -1286,9 +1401,9 @@ service cloud.firestore {
                   && get(
                     /databases/$(database)/documents/rooms/$(roomId)
                   ).data.rematchHost == true
-                  && get(
-                    /databases/$(database)/documents/rooms/$(roomId)
-                  ).data.rematchGuest == true
+                    && get(
+                      /databases/$(database)/documents/rooms/$(roomId)
+                    ).data.rematchGuest == true
                 )
               )
               && (

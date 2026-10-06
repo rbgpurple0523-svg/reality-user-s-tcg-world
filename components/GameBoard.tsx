@@ -54,10 +54,10 @@ type SkillRule =
   | 'product_score'
   | 'difference_score'
   | 'combo_score_and_debuff'
-  | 'y_total_score'
-  | 'y_response_score'
-  | 'y_burst'
-  | 'y_crash';
+  | 'total_score'
+  | 'response_score'
+  | 'burst'
+  | 'crash';
 
 type StatKey = 'hp' | 'intellect' | 'dexterity' | 'charm';
 type SkillType = 'score' | 'debuff_clear' | 'draw_score' | 'debuff_attack';
@@ -151,6 +151,36 @@ function getPresetForCard(
   );
 }
 
+function getStatRankFromPreset(
+  preset: (typeof COORDINATE_PRESETS)[number],
+): StatKey[] {
+  return STAT_KEYS.slice().sort(
+    (a, b) => preset.stats[b] - preset.stats[a],
+  );
+}
+
+function getLowEffectiveStatRank(
+  stats: Record<StatKey, number>,
+  tieRank: StatKey[],
+): StatKey[] {
+  const tieOrder = new Map(
+    tieRank.map((stat, index) => [stat, index]),
+  );
+
+  return STAT_KEYS.slice().sort((a, b) => {
+    const valueDiff = stats[a] - stats[b];
+
+    if (valueDiff !== 0) {
+      return valueDiff;
+    }
+
+    return (
+      (tieOrder.get(a) ?? STAT_KEYS.indexOf(a)) -
+      (tieOrder.get(b) ?? STAT_KEYS.indexOf(b))
+    );
+  });
+}
+
 function buildPresetSkills(
   preset: (typeof COORDINATE_PRESETS)[number],
   customNames?: string[],
@@ -159,7 +189,10 @@ function buildPresetSkills(
     ? customNames
     : preset.defaultSkills;
 
-  if (preset.code === 'a1') {
+  const isNeutralPreset =
+    preset.battleEffects[0] === 'skill-total';
+
+  if (isNeutralPreset) {
     return [
       {
         id: 'skill_1',
@@ -167,7 +200,7 @@ function buildPresetSkills(
         description: preset.skillDescriptions[0],
         maxUsesPerClass: 0,
         type: 'score',
-        rule: 'y_total_score',
+        rule: 'total_score',
       },
       {
         id: 'skill_2',
@@ -175,7 +208,7 @@ function buildPresetSkills(
         description: preset.skillDescriptions[1],
         maxUsesPerClass: 0,
         type: 'score',
-        rule: 'y_response_score',
+        rule: 'response_score',
       },
       {
         id: 'skill_3',
@@ -183,7 +216,7 @@ function buildPresetSkills(
         description: preset.skillDescriptions[2],
         maxUsesPerClass: 2,
         type: 'score',
-        rule: 'y_burst',
+        rule: 'burst',
       },
       {
         id: 'skill_4',
@@ -191,7 +224,7 @@ function buildPresetSkills(
         description: preset.skillDescriptions[3],
         maxUsesPerClass: 1,
         type: 'debuff_attack',
-        rule: 'y_crash',
+        rule: 'crash',
       },
     ];
   }
@@ -239,36 +272,6 @@ function buildPresetSkills(
       tertiaryStat: rank[3],
     },
   ];
-}
-
-function getStatRankFromPreset(
-  preset: (typeof COORDINATE_PRESETS)[number],
-): StatKey[] {
-  return STAT_KEYS.slice().sort(
-    (a, b) => preset.stats[b] - preset.stats[a],
-  );
-}
-
-function getLowEffectiveStatRank(
-  stats: Record<StatKey, number>,
-  tieRank: StatKey[],
-): StatKey[] {
-  const tieOrder = new Map(
-    tieRank.map((stat, index) => [stat, index]),
-  );
-
-  return STAT_KEYS.slice().sort((a, b) => {
-    const valueDiff = stats[a] - stats[b];
-
-    if (valueDiff !== 0) {
-      return valueDiff;
-    }
-
-    return (
-      (tieOrder.get(a) ?? STAT_KEYS.indexOf(a)) -
-      (tieOrder.get(b) ?? STAT_KEYS.indexOf(b))
-    );
-  });
 }
 
 function buildSkills(
@@ -6417,29 +6420,26 @@ export default function GameBoard({
         return;
       }
 
-      if (
-        (
-          skill.rule ===
-            'y_response_score' ||
-          skill.rule ===
-            'y_burst'
-        ) &&
-        !selectedStatOverride
-      ) {
-        setSkillStatSelection(
-          {
-            skillId:
-              skill.id,
-            mode:
-              skill.rule ===
-              'y_response_score'
-                ? 'response'
-                : 'burst',
-          },
-        );
+if (
+  (
+    skill.rule ===
+      'response_score' ||
+    skill.rule ===
+      'burst'
+  ) &&
+  !selectedStatOverride
+) {
+  setSkillStatSelection({
+    skillId: skill.id,
+    mode:
+      skill.rule ===
+      'response_score'
+        ? 'response'
+        : 'burst',
+  });
 
-        return;
-      }
+  return;
+}
 
       const usedKey =
         `${currentYear}`;
@@ -6796,7 +6796,7 @@ export default function GameBoard({
         }
       } else if (
         skill.rule ===
-        'y_total_score'
+        'total_score'
       ) {
         gainedScore =
           Object.values(
@@ -6814,7 +6814,7 @@ export default function GameBoard({
           ) * 10;
       } else if (
         skill.rule ===
-        'y_response_score'
+        'response_score'
       ) {
         selectedBoostStat =
           selectedStatOverride ||
@@ -6840,7 +6840,7 @@ export default function GameBoard({
           ) * 40;
       } else if (
         skill.rule ===
-        'y_burst'
+        'burst'
       ) {
         selectedBoostStat =
           selectedStatOverride ||
@@ -6902,7 +6902,7 @@ export default function GameBoard({
           );
       } else if (
         skill.rule ===
-        'y_crash'
+        'crash'
       ) {
         const baseRank =
           STAT_KEYS.slice().sort(
@@ -9292,7 +9292,7 @@ export default function GameBoard({
                 );
             } else if (
               skill.rule ===
-              'y_total_score'
+              'total_score'
             ) {
               gainedScore =
                 Object.values(
@@ -9311,7 +9311,7 @@ export default function GameBoard({
                 ) * 10;
             } else if (
               skill.rule ===
-              'y_response_score'
+              'response_score'
             ) {
               const responseStat =
                 cpuRank[0] ||
@@ -9329,7 +9329,7 @@ export default function GameBoard({
                 ) * 40;
             } else if (
               skill.rule ===
-              'y_burst'
+              'burst'
             ) {
               const boostStat =
                 cpuRank[0] ||
@@ -9370,7 +9370,7 @@ export default function GameBoard({
                 };
             } else if (
               skill.rule ===
-              'y_crash'
+              'crash'
             ) {
               const cpuLowRank =
                 getLowEffectiveStatRank(
