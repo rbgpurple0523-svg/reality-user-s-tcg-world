@@ -7117,10 +7117,6 @@ if (
       const next =
         getNextTurnState();
 
-addLog(
-  `🔎 CLASS DEBUG: CPU next判定B / 現在 年${currentYear}・${turnIndex + 1}ターン → next 年${next.currentYear}・${next.turnIndex + 1}ターン / phase=${next.nextPhase}`,
-);
-
       playSe(
         skillIndex === 3
           ? 'skill4'
@@ -7243,7 +7239,46 @@ addLog(
           `相手へのデバフ：${detail}`,
         );
       }
+if (
+  next.nextPhase ===
+    'setup' ||
+  next.nextPhase ===
+    'finished'
+) {
+  const resolvedMyTotal =
+    nextScores.reduce(
+      (
+        sum,
+        score,
+      ) =>
+        sum +
+        score,
+      0,
+    );
 
+  const resolvedOpponentTotal =
+    oppClassScores.reduce(
+      (
+        sum,
+        score,
+      ) =>
+        sum +
+        score,
+      0,
+    );
+
+  showClassResult(
+    currentYear,
+    nextScores[
+      activeIndex
+    ] || 0,
+    oppClassScores[
+      activeIndex
+    ] || 0,
+    resolvedMyTotal,
+    resolvedOpponentTotal,
+  );
+}
       setCurrentYear(
         next.currentYear,
       );
