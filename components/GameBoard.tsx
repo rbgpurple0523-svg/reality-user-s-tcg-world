@@ -6004,28 +6004,32 @@ addLog(
       );
     };
 
-  const showClassResult =
-    (
-      completedYear: number,
-      finalMyScore: number,
-      finalOpponentScore: number,
-      finalMyTotal: number,
-      finalOpponentTotal: number,
-    ) => {
-      setClassResult(
-        {
-          completedYear,
-          myScore:
-            finalMyScore,
-          opponentScore:
-            finalOpponentScore,
-          myTotal:
-            finalMyTotal,
-          opponentTotal:
-            finalOpponentTotal,
-        },
-      );
-    };
+const showClassResult =
+  (
+    completedYear: number,
+    finalMyScore: number,
+    finalOpponentScore: number,
+    finalMyTotal: number,
+    finalOpponentTotal: number,
+  ) => {
+    addLog(
+      `🔎 CLASS DEBUG: showClassResult実行 / 年${completedYear} / 自分${finalMyScore} / 相手${finalOpponentScore}`,
+    );
+
+    setClassResult(
+      {
+        completedYear,
+        myScore:
+          finalMyScore,
+        opponentScore:
+          finalOpponentScore,
+        myTotal:
+          finalMyTotal,
+        opponentTotal:
+          finalOpponentTotal,
+      },
+    );
+  };
 
   const loadDeckDefinition =
     (
