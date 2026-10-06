@@ -4583,6 +4583,13 @@ export default function GameBoard({
         myDeck.length,
       );
 
+addLog(
+  `🔎 DRAW DEBUG: 年${currentYear}・${turnIndex + 1}ターン / 手札${myHand.length}枚 / 山札${myDeck.length}枚 / 追加ドロー${getAdditionalDrawFromEffects(
+    myActiveAvatar.supportControlEffects,
+    turnOrdinal,
+  )}枚 / 今回ドロー${drawCount}枚`,
+);
+
     if (
       drawCount <= 0
     ) {
