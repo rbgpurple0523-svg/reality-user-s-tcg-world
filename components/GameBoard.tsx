@@ -7117,6 +7117,10 @@ if (
       const next =
         getNextTurnState();
 
+addLog(
+  `🔎 CLASS DEBUG: CPU next判定B / 現在 年${currentYear}・${turnIndex + 1}ターン → next 年${next.currentYear}・${next.turnIndex + 1}ターン / phase=${next.nextPhase}`,
+);
+
       playSe(
         skillIndex === 3
           ? 'skill4'
