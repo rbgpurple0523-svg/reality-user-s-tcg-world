@@ -6076,14 +6076,21 @@ export default function GameBoard({
         null,
       );
 
-      setBattlePhase(
-        'setup',
-      );
+setBattlePhase(
+  'setup',
+);
 
-      setMyDeckReady(
-        true,
-      );
+setMyAvatars((prev) =>
+  clearSupportEffectsFromAvatars(prev),
+);
 
+setOppAvatars((prev) =>
+  clearSupportEffectsFromAvatars(prev),
+);
+
+setMyDeckReady(
+  true,
+);
       setDeckConfirmed(
         targetYear > 1
           ? true
