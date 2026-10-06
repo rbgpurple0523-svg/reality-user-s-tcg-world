@@ -7203,13 +7203,6 @@ if (
         next.nextPhase ===
         'battle'
       ) {
-        setFirstPlayer(
-          'host',
-        );
-
-        setStartSeasonIdx(
-          0,
-        );
       } else if (
         next.nextPhase ===
         'setup'
