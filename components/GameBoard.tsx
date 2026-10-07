@@ -588,6 +588,7 @@ type GameBoardProps = {
   roomId?: string;
   isHost?: boolean;
   onEditDeck?: (deckId: string) => void;
+  onExitCpuBattle?: () => void;
 };
 
 const createDefaultAvatar = (
@@ -1057,14 +1058,21 @@ function OutdoorStageBackground({
 
       <div className="absolute inset-x-0 bottom-[32%] h-px bg-white/50" />
     </div>
+
   );
 }
+
 
 export default function GameBoard({
   roomId = '',
   isHost = true,
   onEditDeck,
+  onExitCpuBattle,
 }: GameBoardProps) {
+
+const [isCpuExitConfirmOpen, setIsCpuExitConfirmOpen] =
+  useState(false);
+
   const isOnline =
     Boolean(roomId);
 
@@ -4583,12 +4591,6 @@ export default function GameBoard({
         myDeck.length,
       );
 
-addLog(
-  `🔎 DRAW DEBUG: 年${currentYear}・${turnIndex + 1}ターン / 手札${myHand.length}枚 / 山札${myDeck.length}枚 / 追加ドロー${getAdditionalDrawFromEffects(
-    myActiveAvatar.supportControlEffects,
-    turnOrdinal,
-  )}枚 / 今回ドロー${drawCount}枚`,
-);
 
     if (
       drawCount <= 0
@@ -6324,25 +6326,14 @@ const continueAfterClassResult =
 const timer =
   window.setTimeout(
     () => {
-      addLog(
-        `🔎 CLASS DEBUG: クラス切替タイマー発火 / transitionLock=${
-          classTransitionInProgressRef.current
-        }`,
-      );
-
       if (
         !classTransitionInProgressRef.current
       ) {
         void continueAfterClassResult();
-      } else {
-        addLog(
-          '🔎 CLASS DEBUG: タイマー発火時点でtransitionLock=true → 切替実行せず',
-        );
       }
     },
     1800,
   );
-
     return () =>
       window.clearTimeout(
         timer,
@@ -9665,9 +9656,6 @@ if (
             const next =
               getNextTurnState();
 
-addLog(
-  `🔎 CLASS DEBUG: CPU next判定 / 現在 年${currentYear}・${turnIndex + 1}ターン → next 年${next.currentYear}・${next.turnIndex + 1}ターン / phase=${next.nextPhase}`,
-);
 
             const finalMyScore =
               next.nextPhase ===
@@ -9698,9 +9686,6 @@ addLog(
               next.nextPhase ===
                 'finished'
             ) {
-addLog(
-  `🔎 CLASS DEBUG: CPUクラス終了判定TRUE / 年${currentYear}`,
-);
               const resolvedMyTotal =
                 myClassScores.reduce(
                   (
@@ -11752,11 +11737,24 @@ grouped.set(
     };
 
   return (
+
     <div className="relative h-full min-h-0 w-full overflow-hidden text-slate-900">
       <BattleEffectLayer />
       <OutdoorStageBackground
         season={currentSeason}
       />
+
+{!isOnline && (
+  <button
+    type="button"
+    onClick={() =>
+      setIsCpuExitConfirmOpen(true)
+    }
+    className="w-full rounded-2xl bg-white px-4 py-3 text-xs font-black text-slate-700 shadow-sm ring-1 ring-slate-200 transition hover:bg-slate-50"
+  >
+    CPU対戦を終了
+  </button>
+)}
 
       <div className="relative z-10 mx-auto flex h-full min-h-0 w-full max-w-7xl flex-col p-2 sm:p-3 md:p-4">
         <header className="shrink-0 rounded-2xl border border-white/60 bg-white/75 p-2.5 shadow-lg backdrop-blur-md sm:p-3">
@@ -13970,6 +13968,69 @@ onClick={() => {
             </div>
           )}
       </div>
+
+    {!isOnline && isCpuExitConfirmOpen && (
+      <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/40 px-4">
+        <div
+          className="w-full max-w-sm rounded-3xl bg-white p-5 shadow-2xl"
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="cpu-exit-confirm-title"
+        >
+          <h2
+            id="cpu-exit-confirm-title"
+            className="text-center text-base font-black text-gray-950"
+          >
+            CPU対戦を終了しますか？
+          </h2>
+
+          <div className="mt-5 space-y-2">
+            <button
+              type="button"
+              onClick={() => {
+                setIsCpuExitConfirmOpen(false);
+                onExitCpuBattle?.();
+              }}
+              className="w-full rounded-2xl bg-indigo-600 px-4 py-3 text-xs font-black text-white shadow-sm transition hover:bg-indigo-700"
+            >
+              ホームに戻る
+            </button>
+
+            <button
+              type="button"
+              onClick={() => {
+                setIsCpuExitConfirmOpen(false);
+
+                if (
+                  activeDeckId &&
+                  onEditDeck
+                ) {
+                  onEditDeck(activeDeckId);
+                }
+              }}
+              disabled={
+                !activeDeckId ||
+                !onEditDeck
+              }
+              className="w-full rounded-2xl bg-gray-100 px-4 py-3 text-xs font-black text-gray-700 transition hover:bg-gray-200 disabled:cursor-not-allowed disabled:opacity-40"
+            >
+              チーム編成に戻る
+            </button>
+
+            <button
+              type="button"
+              onClick={() =>
+                setIsCpuExitConfirmOpen(false)
+              }
+              className="w-full rounded-2xl px-4 py-3 text-xs font-black text-gray-500 transition hover:bg-gray-50"
+            >
+              キャンセル
+            </button>
+          </div>
+        </div>
+      </div>
+    )}
+
     </div>
   );
 }

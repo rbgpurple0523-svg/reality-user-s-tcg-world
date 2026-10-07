@@ -855,8 +855,12 @@ export default function Home() {
           />
         )}
 
-        {currentView === 'gameBoard' && <GameBoard onEditDeck={handleEditDeck} />}
-
+{currentView === 'gameBoard' && (
+  <GameBoard
+    onEditDeck={handleEditDeck}
+    onExitCpuBattle={handleReturnToMenu}
+  />
+)}
         {currentView === 'friendMatchSetup' && (
           <FriendMatchSetup onMatchStart={handleMatchStart} onBack={handleReturnToMenu} />
         )}
