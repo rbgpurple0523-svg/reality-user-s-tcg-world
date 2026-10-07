@@ -11744,18 +11744,6 @@ grouped.set(
         season={currentSeason}
       />
 
-{!isOnline && (
-  <button
-    type="button"
-    onClick={() =>
-      setIsCpuExitConfirmOpen(true)
-    }
-    className="w-full rounded-2xl bg-white px-4 py-3 text-xs font-black text-slate-700 shadow-sm ring-1 ring-slate-200 transition hover:bg-slate-50"
-  >
-    CPU対戦を終了
-  </button>
-)}
-
       <div className="relative z-10 mx-auto flex h-full min-h-0 w-full max-w-7xl flex-col p-2 sm:p-3 md:p-4">
         <header className="shrink-0 rounded-2xl border border-white/60 bg-white/75 p-2.5 shadow-lg backdrop-blur-md sm:p-3">
           <div className="flex items-center justify-between gap-2">
@@ -11806,6 +11794,19 @@ grouped.set(
                 </button>
               )}
             </div>
+
+{!isOnline && (
+  <button
+    type="button"
+    onClick={() =>
+      setIsCpuExitConfirmOpen(true)
+    }
+    className="w-full rounded-2xl bg-white px-4 py-3 text-xs font-black text-slate-700 shadow-sm ring-1 ring-slate-200 transition hover:bg-slate-50"
+  >
+    CPU対戦を終了
+  </button>
+)}
+
           </div>
         </header>
 
