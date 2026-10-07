@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { db, ensureAnonymousAuth } from '@/lib/firebase';
 import {
   deleteField,
@@ -98,6 +98,8 @@ export default function FriendMatchSetup({
   const [mode, setMode] =
     useState<'menu' | 'create' | 'join'>('menu');
   const [roomKey, setRoomKey] = useState<string>('');
+  const [waitingRoomId, setWaitingRoomId] =
+    useState<string>('');
   const [statusMessage, setStatusMessage] =
     useState<string>('');
   const [isLoading, setIsLoading] =
@@ -106,6 +108,72 @@ export default function FriendMatchSetup({
     useState<boolean>(false);
   const [isWaitingForGuest, setIsWaitingForGuest] =
     useState<boolean>(false);
+
+useEffect(() => {
+  if (
+    !isWaitingForGuest ||
+    !waitingRoomId
+  ) {
+    return;
+  }
+
+  let cancelled = false;
+
+  const writeHostHeartbeat = async () => {
+    if (cancelled) {
+      return;
+    }
+
+    try {
+      const currentUser =
+        await ensureAnonymousAuth();
+
+      if (cancelled) {
+        return;
+      }
+
+      await setDoc(
+        doc(
+          db,
+          'rooms',
+          waitingRoomId,
+          'presence',
+          'host',
+        ),
+        {
+          uid: currentUser.uid,
+          role: 'host',
+          lastSeenAt: Date.now(),
+        },
+        {
+          merge: true,
+        },
+      );
+    } catch (error) {
+      console.warn(
+        '待機中のPresenceハートビート保存エラー:',
+        error,
+      );
+    }
+  };
+
+  void writeHostHeartbeat();
+
+  const timer = window.setInterval(
+    () => {
+      void writeHostHeartbeat();
+    },
+    10000,
+  );
+
+  return () => {
+    cancelled = true;
+    window.clearInterval(timer);
+  };
+}, [
+  isWaitingForGuest,
+  waitingRoomId,
+]);
 
   const validateBattleDeckBeforeStart = () => {
     if (
@@ -651,6 +719,7 @@ export default function FriendMatchSetup({
       );
 
       setIsLoading(false);
+      setWaitingRoomId(roomId);
       setIsWaitingForGuest(true);
 
       setStatusMessage(
