@@ -16,6 +16,7 @@ interface FriendMatchSetupProps {
     roomId: string,
     isHost: boolean,
     battleDeckSnapshot?: BattleDeckSnapshot,
+    isRejoin?: boolean,
   ) => void;
   onBack: () => void;
   battleDeckSnapshot?: BattleDeckSnapshot | null;
@@ -752,11 +753,12 @@ useEffect(() => {
           ) {
             unsubscribe();
             setIsWaitingForGuest(false);
-            onMatchStart(
-              roomId,
-              true,
-              battleDeckSnapshot ?? undefined,
-            );
+onMatchStart(
+  roomId,
+  false,
+  battleDeckSnapshot ?? undefined,
+  result.mode === 'rejoined',
+);
           }
         },
       );

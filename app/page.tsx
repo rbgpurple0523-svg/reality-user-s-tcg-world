@@ -16,6 +16,7 @@ import type { EmotionAxisKey, EmotionPreset } from '@/components/emotionPresets'
 import FriendMatchSetup from '@/components/FriendMatchSetup';
 import CreditsContact from '@/components/CreditsContact';
 import { playBgm, playSe, stopBgm } from '@/components/audio';
+import type { BattleDeckSnapshot } from '@/components/DeckBuilder';
 
 type CurrentView =
   | 'menu'
@@ -383,6 +384,7 @@ export default function Home() {
   const [pickerMaxEntryLimit, setPickerMaxEntryLimit] = useState(1);
   const [showIntro, setShowIntro] = useState(true);
   const [openEntryHubList, setOpenEntryHubList] = useState(false);
+  const [isRejoiningRoom, setIsRejoiningRoom] = useState(false);
 
   useEffect(() => {
     try {
@@ -501,11 +503,17 @@ export default function Home() {
     setCurrentView(registrationReturnView);
   };
 
-  const handleMatchStart = (roomId: string, isHost: boolean) => {
-    setActiveRoomId(roomId);
-    setIsHostPlayer(isHost);
-    setCurrentView('friendGameBoard');
-  };
+const handleMatchStart = (
+  roomId: string,
+  isHost: boolean,
+  _battleDeckSnapshot?: BattleDeckSnapshot,
+  isRejoin = false,
+) => {
+  setActiveRoomId(roomId);
+  setIsHostPlayer(isHost);
+  setIsRejoiningRoom(isRejoin);
+  setCurrentView('friendGameBoard');
+};
 
   const handleReturnToMenu = () => {
     setOpenEntryHubList(false);
@@ -865,13 +873,14 @@ export default function Home() {
           <FriendMatchSetup onMatchStart={handleMatchStart} onBack={handleReturnToMenu} />
         )}
 
-        {currentView === 'friendGameBoard' && activeRoomId && (
-          <GameBoard
-            roomId={activeRoomId}
-            isHost={isHostPlayer}
-            onEditDeck={handleEditDeck}
-          />
-        )}
+{currentView === 'friendGameBoard' && activeRoomId && (
+  <GameBoard
+    roomId={activeRoomId}
+    isHost={isHostPlayer}
+    isRejoining={isRejoiningRoom}
+    onEditDeck={handleEditDeck}
+  />
+)}
       </div>
 
       <CreditsContact />

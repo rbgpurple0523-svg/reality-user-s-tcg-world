@@ -587,6 +587,7 @@ type EntryRecordWithSkills = {
 type GameBoardProps = {
   roomId?: string;
   isHost?: boolean;
+  isRejoining?: boolean;
   onEditDeck?: (deckId: string) => void;
   onExitCpuBattle?: () => void;
 };
@@ -1066,6 +1067,7 @@ function OutdoorStageBackground({
 export default function GameBoard({
   roomId = '',
   isHost = true,
+  isRejoining = false,
   onEditDeck,
   onExitCpuBattle,
 }: GameBoardProps) {
@@ -2657,13 +2659,13 @@ const [isCpuExitConfirmOpen, setIsCpuExitConfirmOpen] =
             selectedDeck,
           );
 
-    setMyDeckReady(
-      Boolean(selectedDeck),
-    );
 
-    setDeckConfirmed(false);
+setMyDeckReady(
+  Boolean(selectedDeck),
+);
 
-    if (!isOnline) {
+if (!isOnline) {
+  setDeckConfirmed(false);
       buildCpuDeck();
 
       setPreparationMessage(
@@ -2684,6 +2686,15 @@ const [isCpuExitConfirmOpen, setIsCpuExitConfirmOpen] =
 
       return;
     }
+
+
+if (isRejoining) {
+  // 再入室時は既存の Player / PrivatePlayer を
+  // 初期化せず、Firestore の監視による復元に任せる。
+  return;
+}
+
+setDeckConfirmed(false);
 
     if (
       !myPlayerRef ||
@@ -2761,6 +2772,7 @@ const [isCpuExitConfirmOpen, setIsCpuExitConfirmOpen] =
     playerRole,
     authReady,
     isOnline,
+    isRejoining,
     activeDeckId,
     myPlayerRef,
   ]);
