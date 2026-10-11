@@ -580,6 +580,7 @@ type EntryRecordWithSkills = {
   hp?: number;
   ap?: number;
   customSkills?: string[];
+  skillVoices?: [string, string, string, string];
   skillDescriptions?: string[];
   customEffectName?: string;
   effect?: string;
@@ -1904,17 +1905,23 @@ const [classResultCountdown, setClassResultCountdown] =
         chosen.id,
       );
 
-      const cards: Array<
-        AvatarCard & {
-          colorHex?: string;
-          colorType?: string;
-          flavorText?: string;
-          presetId?: string;
-          customSkills?: string[];
-        }
-      > = [
-        ...CHARACTER_SAMPLE_CARDS,
-      ];
+const cards: Array<
+  AvatarCard & {
+    colorHex?: string;
+    colorType?: string;
+    flavorText?: string;
+    presetId?: string;
+    customSkills?: string[];
+    skillVoices?: [
+      string,
+      string,
+      string,
+      string,
+    ];
+  }
+> = [
+  ...CHARACTER_SAMPLE_CARDS,
+];
 
       for (
         const entry of entries.filter(
@@ -2004,6 +2011,14 @@ const [classResultCountdown, setClassResultCountdown] =
                   entry.customSkills,
               } as never)
             : {}),
+
+          ...(entry.skillVoices
+            ? {
+                skillVoices:
+                  entry.skillVoices,
+              }
+            : {}),
+
           ...(entry.presetId
             ? ({
                 presetId:
@@ -2035,19 +2050,24 @@ const [classResultCountdown, setClassResultCountdown] =
               card.id,
           );
 
-        const enrichedCard =
-          card as AvatarCard & {
-            presetId?: string;
-            coordinateCode?: string;
-            code?: string;
-            customSkills?: [
-              string,
-              string,
-              string,
-              string,
-            ];
-          };
-
+const enrichedCard =
+  card as AvatarCard & {
+    presetId?: string;
+    coordinateCode?: string;
+    code?: string;
+    customSkills?: [
+      string,
+      string,
+      string,
+      string,
+    ];
+    skillVoices?: [
+      string,
+      string,
+      string,
+      string,
+    ];
+  };
         const preset =
           getPresetForCard(
             enrichedCard,
@@ -6471,11 +6491,18 @@ addLog(
       };
     };
 
-  const getSkillCutInDialogue =
-    (
-      skill: Skill,
-    ) =>
-      `「${skill.name}！」`;
+
+const getSkillCutInDialogue = (
+  skill: Skill,
+  skillIndex: number,
+) => {
+  const voice =
+    myActiveAvatar.card.skillVoices?.[
+      skillIndex
+    ]?.trim();
+
+  return voice || `「${skill.name}！」`;
+};
 
   const handleUseSkill =
     async (
@@ -6620,6 +6647,7 @@ if (
               dialogue:
                 getSkillCutInDialogue(
                   skill,
+                  skillIndex,
                 ),
               colorHex:
                 getBattleVisualColorHex(
@@ -7163,6 +7191,7 @@ if (
           dialogue:
             getSkillCutInDialogue(
               skill,
+              skillIndex,
             ),
           colorHex:
             getBattleVisualColorHex(

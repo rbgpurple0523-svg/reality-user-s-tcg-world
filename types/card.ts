@@ -23,6 +23,7 @@ export interface AvatarCard {
   passwordHash: string;
   createdAt: string;
   updatedAt: string;
+  skillVoices?: [string, string, string, string];
 }
 
 export interface SupportCard {
