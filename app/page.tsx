@@ -341,7 +341,7 @@ function loadStoredEntries(): EntryRecord[] {
 function IntroVisual({ kind }: { kind: 'battle' | 'team' | 'card' }) {
   const visual = {
     battle: {
-    imageExDataUrl: `@/public/${encodeURIComponent('REALITYUTCG_概要説明_1.png')}`,
+    imageDataUrl: `@/public/${encodeURIComponent('REALITYUTCG_概要説明_1.png')}`,
     },
     team: {
       icon: '🃏',
@@ -360,8 +360,8 @@ function IntroVisual({ kind }: { kind: 'battle' | 'team' | 'card' }) {
       <div className="absolute -right-8 -top-8 h-28 w-28 rounded-full bg-indigo-100/60" />
       <div className="absolute -bottom-10 -left-8 h-32 w-32 rounded-full bg-purple-100/50" />
       <div className="relative flex min-h-[170px] flex-col items-center justify-center text-center">
-<div className="image">{visual.imageExDataUrl}</div>
-<div className="text-6xl drop-shadow-sm">{visual.icon}</div>
+        <div className="image">{visual.imageDataUrl}</div>
+        <div className="text-6xl drop-shadow-sm">{visual.icon}</div>
         <div className="mt-3 text-2xl font-black tracking-wider text-indigo-950">{visual.label}</div>
         <div className="mt-1 text-sm font-bold text-indigo-600">{visual.sub}</div>
       </div>
