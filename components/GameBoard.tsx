@@ -11477,6 +11477,52 @@ grouped.set(
           };
         });
 
+        // 分析用：チーム内サポートカードのうち、数値ステータスを直接増減させる効果を集計する。
+        // 相手対象や、スコア・ドローなどキャラの基礎ステータスではない効果は集計しない。
+        const supportStatDelta = resolvedIds.reduce(
+          (delta, id) => {
+            const card = pool.find((item) => item.id === id);
+            const preset = card?.presetId
+              ? EMOTION_PRESETS.find((item) => item.id === card.presetId)
+              : undefined;
+
+            if (!preset || preset.target === '相手') {
+              return delta;
+            }
+
+            const amount = parseEmotionAmount(preset.effectAmount);
+            const categoryToStat: Partial<Record<EmotionPreset['effectCategory'], StatKey>> = {
+              情熱: 'hp',
+              知性: 'intellect',
+              技能: 'dexterity',
+              愛嬌: 'charm',
+            };
+
+            const statKey = categoryToStat[preset.effectCategory];
+            if (statKey) {
+              delta[statKey] += amount;
+            } else if (preset.effectCategory === '全ステータス') {
+              delta.hp += amount;
+              delta.intellect += amount;
+              delta.dexterity += amount;
+              delta.charm += amount;
+            }
+
+            return delta;
+          },
+          { hp: 0, intellect: 0, dexterity: 0, charm: 0 },
+        );
+
+        const charactersWithSupportStats = characters.map((character) => ({
+          ...character,
+          supportAdjustedStats: {
+            hp: Math.max(0, character.stats.hp + supportStatDelta.hp),
+            intellect: Math.max(0, character.stats.intellect + supportStatDelta.intellect),
+            dexterity: Math.max(0, character.stats.dexterity + supportStatDelta.dexterity),
+            charm: Math.max(0, character.stats.charm + supportStatDelta.charm),
+          },
+        }));
+
         const totalStats =
           characters.reduce(
             (
@@ -11520,17 +11566,25 @@ grouped.set(
         };
 
         return {
-          characters,
+          characters: charactersWithSupportStats,
           supports: Array.from(grouped.values()),
           supportCards,
           supportCategories,
           totalStats,
           averageStats,
+          supportStatDelta,
         };
       } catch {
         return null;
       }
     };
+
+  const activeDeckPreview = activeDeckId
+    ? (() => {
+        const activeDeck = loadDeckDefinition(activeDeckId);
+        return activeDeck ? getDeckPreviewData(activeDeck) : null;
+      })()
+    : null;
 
   const handleSelectDeck =
     async (
@@ -12054,6 +12108,48 @@ grouped.set(
                     </div>
                   </div>
 
+                  <div className="mt-2 rounded-2xl border border-purple-100 bg-purple-50/50 p-2">
+                    <div className="mb-2 flex items-center justify-between">
+                      <div className="text-[9px] font-black text-purple-800">
+                        選択中チームのサポートカード
+                      </div>
+                      <div className="text-[8px] font-bold text-purple-500">
+                        {activeDeckPreview?.supportCards.length || 0} / 18枚
+                      </div>
+                    </div>
+                    {activeDeckPreview?.supportCards.length ? (
+                      <div className="grid grid-cols-6 gap-1 sm:grid-cols-9">
+                        {activeDeckPreview.supportCards.map((support) => (
+                          <div
+                            key={support.key}
+                            title={support.name}
+                            className="min-w-0 overflow-hidden rounded-lg border border-purple-100 bg-white"
+                          >
+                            <div className="aspect-[3/4] overflow-hidden">
+                              {support.imageDataUrl ? (
+                                <img
+                                  src={support.imageDataUrl}
+                                  alt={support.name}
+                                  loading="lazy"
+                                  className="h-full w-full object-contain p-0.5"
+                                />
+                              ) : (
+                                <div className="flex h-full items-center justify-center text-sm">🃏</div>
+                              )}
+                            </div>
+                            <div className="truncate px-0.5 py-1 text-center text-[6px] font-bold text-purple-900">
+                              {support.name}
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    ) : (
+                      <div className="py-2 text-center text-[8px] font-bold text-slate-400">
+                        チーム未選択、またはサポートカードがありません
+                      </div>
+                    )}
+                  </div>
+
                   <div className="grid shrink-0 grid-cols-2 gap-2">
                     <div className="rounded-2xl border border-indigo-200 bg-indigo-50/90 p-3">
                       <div className="text-[9px] font-black tracking-wide text-indigo-500">
@@ -12106,11 +12202,7 @@ grouped.set(
   <button
     type="button"
     onClick={() => {
-      if (activeDeckId) {
-        setSelectedDeckPreviewId(activeDeckId);
-      } else {
-        setSelectedDeckPreviewId(null);
-      }
+      setSelectedDeckPreviewId(null);
       setIsDeckSelectOpen(true);
     }}
     disabled={
@@ -13241,18 +13333,45 @@ grouped.set(
                                         </div>
                                       </div>
 
-                                      <div className="mt-2 flex items-center gap-3 rounded-xl border border-indigo-100 bg-white p-2">
-                                        <RadarChart
-                                          baseStats={preview.averageStats}
-                                          currentStats={preview.averageStats}
-                                          size={132}
-                                          showLabels
-                                          showLegend={false}
-                                        />
-                                        <div className="min-w-0 text-[9px] font-bold leading-relaxed text-slate-600">
-                                          <div className="font-black text-indigo-800">チーム平均ステータス</div>
-                                          <div className="mt-1">3人のキャラ基礎値を平均したレーダーチャートです。</div>
-                                          <div className="mt-1">熱＝情熱 ／ 知＝知性 ／ 技＝技能 ／ 愛＝愛嬌</div>
+                                      <div className="mt-2 rounded-xl border border-indigo-100 bg-white p-2">
+                                        <div className="text-[9px] font-black text-indigo-800">
+                                          サポート効果反映後のキャラ別ステータス
+                                        </div>
+                                        <div className="mt-1 text-[8px] font-bold leading-relaxed text-slate-500">
+                                          デッキ内の数値ステータス増減効果を合算した参考値です。相手対象・スコア・ドロー等の効果は含みません。
+                                        </div>
+                                        <div className="mt-2 space-y-2">
+                                          {preview.characters.map((character) => (
+                                            <div
+                                              key={`support-stats-${character.role}`}
+                                              className="rounded-lg border border-slate-100 bg-slate-50 p-2"
+                                            >
+                                              <div className="text-[8px] font-black text-slate-700">
+                                                {roleDisplayNames[character.role]}：{character.name}
+                                              </div>
+                                              <div className="mt-1 grid grid-cols-4 gap-1 text-center">
+                                                {([
+                                                  ['熱', 'hp'],
+                                                  ['知', 'intellect'],
+                                                  ['技', 'dexterity'],
+                                                  ['愛', 'charm'],
+                                                ] as const).map(([label, key]) => (
+                                                  <div key={`${character.role}-${key}`} className="rounded-md bg-white px-1 py-1">
+                                                    <div className="text-[7px] font-bold text-slate-400">{label}</div>
+                                                    <div className="text-[8px] font-bold text-slate-500">
+                                                      {character.stats[key]}
+                                                    </div>
+                                                    <div className="text-[9px] font-black text-indigo-700">
+                                                      {character.supportAdjustedStats[key]}
+                                                    </div>
+                                                  </div>
+                                                ))}
+                                              </div>
+                                              <div className="mt-1 text-right text-[7px] font-bold text-slate-400">
+                                                基礎値 → 効果反映後
+                                              </div>
+                                            </div>
+                                          ))}
                                         </div>
                                       </div>
                                     </div>
@@ -14119,3 +14238,5 @@ onClick={() => {
     </div>
   );
 }
+
+// 作成日時: 202610110130
