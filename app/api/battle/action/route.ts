@@ -396,14 +396,13 @@ const getCoordinatePresetForAvatar = (
       avatar.card.presetId,
   );
 
+
 const getCanonicalSkill = (
   avatar: BattleAvatar,
   skillId: string,
 ): Skill => {
   const preset =
-    getCoordinatePresetForAvatar(
-      avatar,
-    );
+    getCoordinatePresetForAvatar(avatar);
 
   if (!preset) {
     throw new Error(
@@ -412,9 +411,7 @@ const getCanonicalSkill = (
   }
 
   const match =
-    /^skill_([1-4])$/.exec(
-      skillId,
-    );
+    /^skill_([1-4])$/.exec(skillId);
 
   if (!match) {
     throw new Error(
@@ -422,11 +419,9 @@ const getCanonicalSkill = (
     );
   }
 
-  const index =
-    Number(match[1]) - 1;
+  const index = Number(match[1]) - 1;
 
-  const rank =
-    STAT_RANKS[preset.code];
+  const rank = STAT_RANKS[preset.code];
 
   if (!rank) {
     throw new Error(
@@ -436,8 +431,7 @@ const getCanonicalSkill = (
 
   const displayedSkill =
     avatar.skills?.find(
-      (item) =>
-        item.id === skillId,
+      (item) => item.id === skillId,
     );
 
   const name =
@@ -447,7 +441,8 @@ const getCanonicalSkill = (
   const description =
     preset.skillDescriptions[index];
 
-  if (preset.code === 'a1') {
+  // N-1だけが特殊スキル仕様
+  if (preset.code === 'n1') {
     const rules: SkillRule[] = [
       'y_total_score',
       'y_response_score',
@@ -473,6 +468,7 @@ const getCanonicalSkill = (
     };
   }
 
+  // A-1〜C-6はすべて通常スキル仕様
   const rules: SkillRule[] = [
     'primary_score',
     'product_score',
@@ -497,21 +493,17 @@ const getCanonicalSkill = (
         : rank[0],
   };
 
-  if (
-    index === 1 ||
-    index === 3
-  ) {
-    skill.secondaryStat =
-      rank[2];
+  if (index === 1 || index === 3) {
+    skill.secondaryStat = rank[2];
   }
 
   if (index === 3) {
-    skill.tertiaryStat =
-      rank[3];
+    skill.tertiaryStat = rank[3];
   }
 
   return skill;
 };
+
 
 const getEffectiveStats = (
   avatar: BattleAvatar,
@@ -872,7 +864,7 @@ const calculateSkillResult = (
   ) {
     if (!selectedBoostStat) {
       throw new Error(
-        'A-1技②には対応ステータスが必要です。',
+        'N-1技②には対応ステータスが必要です。',
       );
     }
 
@@ -891,7 +883,7 @@ const calculateSkillResult = (
   ) {
     if (!selectedBoostStat) {
       throw new Error(
-        'A-1技③には強化ステータスが必要です。',
+        'N-1技③には強化ステータスが必要です。',
       );
     }
 
@@ -4472,24 +4464,21 @@ console.log(
               requestedSkillId,
             );
 
-          if (
-            (
-              skill.rule ===
-                'y_response_score' ||
-              skill.rule ===
-                'y_burst'
-            ) &&
-            (
-              !requestedBoostStat ||
-              !isStatKey(
-                requestedBoostStat,
-              )
-            )
-          ) {
-            throw new Error(
-              'このA-1技にはselectedBoostStatが必要です。',
-            );
-          }
+
+if (
+  (
+    skill.rule === 'y_response_score' ||
+    skill.rule === 'y_burst'
+  ) &&
+  (
+    !requestedBoostStat ||
+    !isStatKey(requestedBoostStat)
+  )
+) {
+  throw new Error(
+    'このN-1技にはselectedBoostStatが必要です。',
+  );
+}
 
           const usedSkills =
             actorData.usedSkills &&
