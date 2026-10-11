@@ -4088,7 +4088,7 @@ export default function DeckBuilder({
                   </div>
                 ) : (
                   <div className="grid grid-cols-4 gap-2">
-                    {paginatedSupportCards.map(
+                    {filteredSupportCards.map(
                       sup => {
                         const currentCount =
                           supportIds.filter(
