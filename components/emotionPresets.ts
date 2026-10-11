@@ -93,7 +93,7 @@ export const EMOTION_PRESETS: EmotionPreset[] = [
   {
     id: 'emo_01', name: '差し入れのドリンク', duration: '一時', target: '自分',
     emotionPhrase: '誰かを元気づけたい、というあなたに',
-    emotionAxes: { challenge: 5, compassion: 95, temptation: 0, freedom: 0, philosophy: 0 },
+    emotionAxes: { challenge: 10, compassion: 95, temptation: 0, freedom: 0, philosophy: 0 },
     effectCategory: '情熱', statEffect: '情熱増加', effectAmount: '+20',
     description: '自分の情熱を増加させる。',
   },
@@ -149,7 +149,7 @@ export const EMOTION_PRESETS: EmotionPreset[] = [
   {
     id: 'emo_09', name: '我が家のテンポ', duration: '一時', target: '相手',
     emotionPhrase: '自分たちのペースにみんなを巻き込んでいきたい、というあなたに',
-    emotionAxes: { challenge: 5, compassion: 10, temptation: 75, freedom: 20, philosophy: 0 },
+    emotionAxes: { challenge: 5, compassion: 10, temptation: 75, freedom: 30, philosophy: 0 },
     effectCategory: '愛嬌', statEffect: '愛嬌減少', effectAmount: '-20',
     description: '相手の愛嬌を減少させる。', note: '0を下回らない',
   },
@@ -177,7 +177,7 @@ export const EMOTION_PRESETS: EmotionPreset[] = [
   {
     id: 'emo_13', name: '宝物のスケッチブック', duration: '永続', target: '自分',
     emotionPhrase: 'これからも大事にしたい作品がある、というあなたに',
-    emotionAxes: { challenge: 0, compassion: 15, temptation: 0, freedom: 10, philosophy: 75 },
+    emotionAxes: { challenge: 0, compassion: 15, temptation: 30, freedom: 10, philosophy: 75 },
     effectCategory: '技能', statEffect: '技能増加', effectAmount: '+10',
     description: '自分の技能を増加させる。',
   },
@@ -198,7 +198,7 @@ export const EMOTION_PRESETS: EmotionPreset[] = [
   {
     id: 'emo_16', name: 'ヴィンテージの一品', duration: '永続', target: '相手',
     emotionPhrase: '年を重ねることも悪いことばかりじゃない、というあなたに',
-    emotionAxes: { challenge: 0, compassion: 25, temptation: 0, freedom: 15, philosophy: 60 },
+    emotionAxes: { challenge: 20, compassion: 25, temptation: 0, freedom: 15, philosophy: 60 },
     effectCategory: '情熱', statEffect: '情熱減少', effectAmount: '-10',
     description: '相手の情熱を減少させる。', note: '0を下回らない',
   },
@@ -212,14 +212,14 @@ export const EMOTION_PRESETS: EmotionPreset[] = [
   {
     id: 'emo_18', name: '不器用な折り紙', duration: '永続', target: '相手',
     emotionPhrase: '不器用でも一生懸命な姿が好き、というあなたに',
-    emotionAxes: { challenge: 25, compassion: 60, temptation: 0, freedom: 15, philosophy: 0 },
+    emotionAxes: { challenge: 25, compassion: 60, temptation: 0, freedom: 15, philosophy: 10 },
     effectCategory: '技能', statEffect: '技能減少', effectAmount: '-10',
     description: '相手の技能を減少させる。', note: '0を下回らない',
   },
   {
     id: 'emo_19', name: '未開の白地図', duration: '永続', target: '相手',
     emotionPhrase: '新しい自分探しの時間を持つのもいいね、というあなたに',
-    emotionAxes: { challenge: 5, compassion: 5, temptation: 15, freedom: 60, philosophy: 15 },
+    emotionAxes: { challenge: 5, compassion: 5, temptation: 15, freedom: 80, philosophy: 15 },
     effectCategory: '愛嬌', statEffect: '愛嬌減少', effectAmount: '-10',
     description: '相手の愛嬌を減少させる。', note: '0を下回らない',
   },
@@ -233,7 +233,7 @@ export const EMOTION_PRESETS: EmotionPreset[] = [
   {
     id: 'emo_21', name: 'ご褒美のお菓子', duration: '一時', target: '自分',
     emotionPhrase: 'がんばっている人にちょっとしたご褒美をあげたい、というあなたに',
-    emotionAxes: { challenge: 5, compassion: 85, temptation: 0, freedom: 10, philosophy: 0 },
+    emotionAxes: { challenge: 5, compassion: 85, temptation: 40, freedom: 10, philosophy: 0 },
     effectCategory: 'スコア', statEffect: 'スコアを固定値で増加', effectAmount: '+500',
     description: '使用時に自分の現在クラスのスコアを500増やす。', note: '使用時に即時反映。持続しない。',
   },
@@ -301,7 +301,7 @@ export const EMOTION_PRESETS: EmotionPreset[] = [
   {
     id: 'emo_30', name: 'ツワモノのプライド', duration: '一時', target: '相手',
     emotionPhrase: '人の弱みに付け込まないのがかっこいいじゃん、というあなたに',
-    emotionAxes: { challenge: 10, compassion: 55, temptation: 30, freedom: 0, philosophy: 5 },
+    emotionAxes: { challenge: 10, compassion: 55, temptation: 30, freedom: 0, philosophy: 20 },
     effectCategory: 'ステータスコピー・平均化', statEffect: '自身の最も低いステータスをコピーさせる',
     description: '自分の最も低いステータスを相手にコピーさせる。',
     note: '最も低いステータスが複数ある場合はいずれかを選択する。',
@@ -309,7 +309,7 @@ export const EMOTION_PRESETS: EmotionPreset[] = [
   {
     id: 'emo_31', name: '日めくりカレンダー', duration: '一時', target: '自分',
     emotionPhrase: '当たり前のことができることも素敵だ、というあなたに',
-    emotionAxes: { challenge: 0, compassion: 30, temptation: 0, freedom: 10, philosophy: 60 },
+    emotionAxes: { challenge: 0, compassion: 30, temptation: 0, freedom: 40, philosophy: 60 },
     effectCategory: 'ステータスコピー・平均化', statEffect: '自分の全ステータスを自分の全ステータスの平均値にする',
     description: '自分の全ステータスを、自分の全ステータスの平均値にする。',
   },
@@ -339,7 +339,7 @@ export const EMOTION_PRESETS: EmotionPreset[] = [
   {
     id: 'emo_35', name: 'ゴング', duration: '一時', target: '相手',
     emotionPhrase: '真っ向勝負が好き、というあなたに',
-    emotionAxes: { challenge: 90, compassion: 0, temptation: 0, freedom: 0, philosophy: 10 },
+    emotionAxes: { challenge: 83, compassion: 0, temptation: 0, freedom: 0, philosophy: 10 },
     effectCategory: '技封印', statEffect: '技④の使用を封印する',
     description: '相手の技④の使用を封印する。',
   },

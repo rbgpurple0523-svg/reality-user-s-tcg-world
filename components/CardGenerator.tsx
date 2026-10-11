@@ -2107,12 +2107,14 @@ export default function CardGenerator({
                       <span className="truncate text-sm font-black text-indigo-950">
                         {currentCoordinate?.name ||
                           '未選択'}
+
                       </span>
                     </div>
 
-                    <p className="mt-1 text-[9px] font-bold leading-4 text-indigo-800">
-                      コーデは、4つのステータスの得意・不得意を決めるキャラの性能タイプです。
+                    <p className="mt-1 text-[12px] font-bold leading-4 text-gray-700">
+                      {selectedCoordinate?.description ?? ''}
                     </p>
+
                   </div>
 
                   {currentCoordinate && (
@@ -2760,7 +2762,7 @@ export default function CardGenerator({
                         selectedColorType,
                       )}
                     </div>
-
+                  </div>
 <div className="rounded-2xl border border-pink-200 bg-pink-50/60 p-3">
   <div className="text-xs font-black text-pink-950">
     好きな季節
@@ -2797,9 +2799,6 @@ export default function CardGenerator({
     季節を未設定にする
   </button>
 </div>
-
-
-                  </div>
                 </div>
               )}
 
