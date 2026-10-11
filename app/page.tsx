@@ -344,12 +344,10 @@ function IntroVisual({ kind }: { kind: 'battle' | 'team' | 'card' }) {
       image: '/tcg_card/REALITYUTCG_概要説明_1.png',
     },
     team: {
-      image: '/REALITYUTCG_概要説明_1.png',
+      image: '/tcg_card/REALITYUTCG_概要説明_2.png',
     },
     card: {
-      icon: '✨',
-      label: 'MY CARD',
-      sub: 'オリジナルカード',
+      image: '/tcg_card/REALITYUTCG_概要説明_3.png',
     },
   }[kind];
 
@@ -367,13 +365,6 @@ function IntroVisual({ kind }: { kind: 'battle' | 'team' | 'card' }) {
           />
         ) : (
           <>
-            <div className="text-6xl drop-shadow-sm">{visual.icon}</div>
-            <div className="mt-3 text-2xl font-black tracking-wider text-indigo-950">
-              {visual.label}
-            </div>
-            <div className="mt-1 text-sm font-bold text-indigo-600">
-              {visual.sub}
-            </div>
           </>
         )}
       </div>
