@@ -1415,6 +1415,13 @@ export default function DeckBuilder({
     cardId: string,
     role: PositionRole,
   ) => {
+
+if (
+  cardId.startsWith('character_sample_')
+) {
+  return;
+}
+
     if (vanguardId === cardId)
       setVanguardId(null);
 
@@ -3781,6 +3788,9 @@ export default function DeckBuilder({
                 <div className="grid grid-cols-2 gap-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5">
                   {filteredCards.map(
                     card => {
+const isSampleCard =
+  card.id.startsWith('character_sample_');
+
                       const isAssigned =
                         [
                           vanguardId,
@@ -3809,9 +3819,7 @@ export default function DeckBuilder({
                         >
                           <button
                             type="button"
-                            disabled={
-                              isAssigned
-                            }
+                            disabled={isAssigned || isSampleCard}
                             onClick={() => {
                               assignCardToRole(
                                 card.id,
@@ -3853,11 +3861,13 @@ export default function DeckBuilder({
                               }
                             </div>
 
-                            <div className="mt-0.5 text-[8px] font-bold text-gray-400">
-                              {isAssigned
-                                ? '編成済み'
-                                : 'このクラスに入れる'}
-                            </div>
+<div className="mt-0.5 text-[8px] font-bold text-gray-400">
+  {isSampleCard
+    ? 'サンプルキャラは使用不可'
+    : isAssigned
+      ? '編成済み'
+      : 'このクラスに入れる'}
+</div>
                           </button>
 
                           <button
@@ -3939,13 +3949,18 @@ export default function DeckBuilder({
 
                       <button
                         type="button"
-                        disabled={[
-                          vanguardId,
-                          centerId,
-                          generalId,
-                        ].includes(
-                          selectedCharacterDetail.id,
-                        )}
+                        disabled={
+                          selectedCharacterDetail.id.startsWith(
+                            'character_sample_',
+                          ) ||
+                          [
+                            vanguardId,
+                            centerId,
+                            generalId,
+                          ].includes(
+                            selectedCharacterDetail.id,
+                          )
+                        }
                         onClick={() => {
                           assignCardToRole(
                             selectedCharacterDetail.id,
@@ -3958,7 +3973,9 @@ export default function DeckBuilder({
                         }}
                         className="flex-1 rounded-xl bg-indigo-600 px-3 py-2 text-[9px] font-black text-white disabled:bg-gray-300"
                       >
-                        このキャラをセットする
+                        {selectedCharacterDetail.id.startsWith('character_sample_',)
+                          ? 'サンプルキャラは使用不可'
+                          : 'このキャラをセットする'}
                       </button>
                     </div>
                   </div>
