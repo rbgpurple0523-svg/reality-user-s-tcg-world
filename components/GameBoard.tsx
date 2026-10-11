@@ -1267,6 +1267,12 @@ const [isCpuExitConfirmOpen, setIsCpuExitConfirmOpen] =
       opponentTotal: number;
     } | null>(null);
 
+const [classResultProgress, setClassResultProgress] =
+  useState(0);
+
+const [classResultCountdown, setClassResultCountdown] =
+  useState(3);
+
   const classTransitionInProgressRef =
     useRef(false);
 
@@ -6265,106 +6271,86 @@ addLog(
 
     };
 
-const continueAfterClassResult =
-  async () => {
+
+const continueAfterClassResult = async () => {
+  if (
+    !classResult ||
+    (isOnline && !authReady) ||
+    classTransitionInProgressRef.current
+  ) {
+    return;
+  }
+
+  classTransitionInProgressRef.current = true;
+
+  try {
+    const completedYear = classResult.completedYear;
+
+    if (completedYear < 3) {
+      // 次のクラスの準備が完了するまでリザルトを残す
+      await prepareClassStart(completedYear + 1);
+
+      // 準備完了後にリザルトを閉じる
+      setClassResult(null);
+    } else {
+      // 最終クラスは最終結果画面へ
+      setClassResult(null);
+      setBattlePhase('finished');
+      setPreparationMessage('');
+    }
+  } catch (error) {
+    console.error('クラス切り替え処理エラー:', error);
+
     addLog(
-      `🔎 CLASS DEBUG: continueAfterClassResult呼び出し / classResult=${
-        classResult
-          ? `年${classResult.completedYear}終了`
-          : 'null'
-      } / transitionLock=${
-        classTransitionInProgressRef.current
-      }`,
+      '⚠️ 次クラスへの切り替えに失敗しました。もう一度お試しください。',
+    );
+  } finally {
+    classTransitionInProgressRef.current = false;
+  }
+};
+
+
+useEffect(() => {
+  if (!classResult) {
+    setClassResultProgress(0);
+    setClassResultCountdown(3);
+    return;
+  }
+
+  const duration = 3000;
+  const startedAt = Date.now();
+
+  setClassResultProgress(0);
+  setClassResultCountdown(3);
+
+  const timer = window.setInterval(() => {
+    const elapsed = Date.now() - startedAt;
+    const progress = Math.min(
+      100,
+      (elapsed / duration) * 100,
     );
 
-    if (
-      !classResult ||
-      (
-        isOnline &&
-        !authReady
-      ) ||
-        classTransitionInProgressRef.current
-    ) {
-      addLog(
-        `🔎 CLASS DEBUG: continueAfterClassResult中断 / transitionLock=${
-          classTransitionInProgressRef.current
-        }`,
-      );
+    setClassResultProgress(progress);
+    setClassResultCountdown(
+      Math.max(0, Math.ceil((duration - elapsed) / 1000)),
+    );
 
-      return;
-    }
+    if (elapsed >= duration) {
+      window.clearInterval(timer);
+      setClassResultProgress(100);
+      setClassResultCountdown(0);
 
-    // 以下そのまま
-      classTransitionInProgressRef.current =
-        true;
-
-      try {
-        const completedYear =
-          classResult.completedYear;
-
-        setClassResult(
-          null,
-        );
-
-        if (
-          completedYear <
-          3
-        ) {
-          await prepareClassStart(
-            completedYear +
-              1,
-          );
-        } else {
-          setBattlePhase(
-            'finished',
-          );
-
-          setPreparationMessage(
-            '',
-          );
-        }
-      } catch (error) {
-        console.error(
-          'クラス切り替え処理エラー:',
-          error,
-        );
-
-        addLog(
-          '⚠️ 次クラスへの切り替えに失敗しました。もう一度お試しください。',
-        );
-      } finally {
-        classTransitionInProgressRef.current =
-          false;
-      }
-    };
-
-  useEffect(() => {
-    if (
-      !classResult ||
-      classResult.completedYear >=
-        3
-    ) {
-      return;
-    }
-
-const timer =
-  window.setTimeout(
-    () => {
-      if (
-        !classTransitionInProgressRef.current
-      ) {
+      if (!classTransitionInProgressRef.current) {
         void continueAfterClassResult();
       }
-    },
-    1800,
-  );
-    return () =>
-      window.clearTimeout(
-        timer,
-      );
-  }, [
-    classResult,
-  ]);
+    }
+  }, 50);
+
+  return () => {
+    window.clearInterval(timer);
+  };
+}, [classResult]);
+
 
   useEffect(() => {
     if (
@@ -11899,18 +11885,44 @@ grouped.set(
                     : 'このクラスは引き分け。'}
               </div>
 
-              <button
-                type="button"
-                onClick={() =>
-                  void continueAfterClassResult()
-                }
-                className="mt-5 w-full rounded-2xl bg-indigo-600 px-4 py-3.5 text-sm font-black text-white shadow-lg shadow-indigo-200 transition hover:bg-indigo-700"
-              >
-                {classResult.completedYear <
-                3
-                  ? '次のクラスの準備へ'
-                  : '最終結果を見る'}
-              </button>
+
+<div className="mt-5">
+  <p className="text-sm font-bold text-slate-600">
+    {classResult.completedYear < 3
+      ? '次のクラスへ自動的に進みます'
+      : '最終結果へ自動的に進みます'}
+  </p>
+
+  <div
+    className="mt-3 h-4 overflow-hidden rounded-full border border-indigo-200 bg-indigo-100"
+    role="progressbar"
+    aria-label="次の画面への移行"
+    aria-valuemin={0}
+    aria-valuemax={100}
+    aria-valuenow={Math.round(classResultProgress)}
+  >
+    <div
+      className="h-full rounded-full bg-indigo-600 transition-[width] duration-75 ease-linear"
+      style={{
+        width: `${classResultProgress}%`,
+      }}
+    />
+  </div>
+
+  <div className="mt-2 flex items-center justify-between text-xs font-bold text-slate-500">
+    <span>0%</span>
+    <span>100%</span>
+  </div>
+
+  <p
+    className="mt-3 text-sm font-black text-indigo-700"
+    aria-live="off"
+  >
+    あと {(
+      classResultCountdown
+    ).toFixed(1)} 秒
+  </p>
+</div>
             </div>
           </section>
         )}
