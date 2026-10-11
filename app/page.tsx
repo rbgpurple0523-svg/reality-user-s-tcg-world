@@ -341,7 +341,7 @@ function loadStoredEntries(): EntryRecord[] {
 function IntroVisual({ kind }: { kind: 'battle' | 'team' | 'card' }) {
   const visual = {
     battle: {
-      image: '/REALITYUTCG_概要説明_1.png',
+      image: '/tcg_card/REALITYUTCG_概要説明_1.png',
     },
     team: {
       image: '/REALITYUTCG_概要説明_1.png',
