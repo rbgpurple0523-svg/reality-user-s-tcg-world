@@ -699,26 +699,27 @@ useEffect(() => {
         result = stageResult;
       }
 
-      if (result.mode === 'created') {
-        const freshNow = Date.now();
 
-        await resetPlayerForNewStage(
-          hostPlayerRef,
-          currentUser.uid,
-          'host',
-          freshNow,
-        );
+if (result.mode === 'created') {
+  const freshNow = Date.now();
 
-        await resetPrivatePlayerForNewStage(
-          hostPrivatePlayerRef,
-          currentUser.uid,
-        );
-      }
+  await resetPlayerForNewStage(
+    hostPlayerRef,
+    currentUser.uid,
+    'host',
+    freshNow,
+  );
 
-      await saveBattleDeckSnapshot(
-        hostPrivatePlayerRef,
-      );
+  await resetPrivatePlayerForNewStage(
+    hostPrivatePlayerRef,
+    currentUser.uid,
+  );
 
+  // 新規作成時だけ、今回のデッキを保存する。
+  await saveBattleDeckSnapshot(
+    hostPrivatePlayerRef,
+  );
+}
       setIsLoading(false);
       setWaitingRoomId(roomId);
       setIsWaitingForGuest(true);
@@ -746,35 +747,42 @@ useEffect(() => {
             return;
           }
 
-          if (
-            data &&
-            data.guestJoined &&
-            data.guestUid
-          ) {
-            unsubscribe();
-            setIsWaitingForGuest(false);
-onMatchStart(
-  roomId,
-  false,
-  battleDeckSnapshot ?? undefined,
-  result.mode === 'rejoined',
-);
-          }
+
+if (
+  data &&
+  data.guestJoined &&
+  data.guestUid
+) {
+  unsubscribe();
+  setIsWaitingForGuest(false);
+
+  onMatchStart(
+    roomId,
+    true,
+    battleDeckSnapshot ?? undefined,
+    result.mode === 'rejoined',
+  );
+}
+
         },
       );
 
-      if (
-        result.mode === 'rejoined' &&
-        result.guestJoined
-      ) {
-        unsubscribe();
-        setIsWaitingForGuest(false);
-        onMatchStart(
-          roomId,
-          true,
-          battleDeckSnapshot ?? undefined,
-        );
-      }
+
+if (
+  result.mode === 'rejoined' &&
+  result.guestJoined
+) {
+  unsubscribe();
+  setIsWaitingForGuest(false);
+
+  onMatchStart(
+    roomId,
+    true,
+    battleDeckSnapshot ?? undefined,
+    true,
+  );
+}
+
     } catch (err) {
       console.error('Create Room Error:', err);
       setIsLoading(false);
@@ -1090,34 +1098,38 @@ onMatchStart(
           },
         );
 
-      if (
-        result.mode ===
-        'joined'
-      ) {
-        await resetPlayerForNewStage(
-          guestPlayerRef,
-          currentUser.uid,
-          'guest',
-          now,
-        );
 
-        await resetPrivatePlayerForNewStage(
-          guestPrivatePlayerRef,
-          currentUser.uid,
-        );
-      }
+if (
+  result.mode === 'joined'
+) {
+  await resetPlayerForNewStage(
+    guestPlayerRef,
+    currentUser.uid,
+    'guest',
+    now,
+  );
 
-      await saveBattleDeckSnapshot(
-        guestPrivatePlayerRef,
-      );
+  await resetPrivatePlayerForNewStage(
+    guestPrivatePlayerRef,
+    currentUser.uid,
+  );
 
-      setIsLoading(false);
+  // 新規参加時だけ、今回のデッキを保存する。
+  await saveBattleDeckSnapshot(
+    guestPrivatePlayerRef,
+  );
+}
 
-      onMatchStart(
-        roomId,
-        false,
-        battleDeckSnapshot ?? undefined,
-      );
+setIsLoading(false);
+
+onMatchStart(
+  roomId,
+  false,
+  battleDeckSnapshot ?? undefined,
+  result.mode === 'rejoined',
+);
+
+
     } catch (err) {
       console.error(
         'Join Room Error:',
