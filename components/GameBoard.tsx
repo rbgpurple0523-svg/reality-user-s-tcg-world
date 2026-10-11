@@ -57,7 +57,11 @@ type SkillRule =
   | 'total_score'
   | 'response_score'
   | 'burst'
-  | 'crash';
+  | 'crash'
+  | 'y_total_score'
+  | 'y_response_score'
+  | 'y_burst'
+  | 'y_crash';
 
 type StatKey = 'hp' | 'intellect' | 'dexterity' | 'charm';
 type SkillType = 'score' | 'debuff_clear' | 'draw_score' | 'debuff_attack';
@@ -6492,12 +6496,13 @@ addLog(
         return;
       }
 
+
 if (
   (
     skill.rule ===
-      'response_score' ||
+      'y_response_score' ||
     skill.rule ===
-      'burst'
+      'y_burst'
   ) &&
   !selectedStatOverride
 ) {
@@ -6505,13 +6510,14 @@ if (
     skillId: skill.id,
     mode:
       skill.rule ===
-      'response_score'
+      'y_response_score'
         ? 'response'
         : 'burst',
   });
 
   return;
 }
+
 
       const usedKey =
         `${currentYear}`;
@@ -13711,7 +13717,7 @@ onClick={() => {
               <div className="flex items-start justify-between gap-3">
                 <div>
                   <div className="text-xs font-black text-slate-400">
-                    A-1コーデ
+                    N-1コーデ専用スキル
                   </div>
 
                   <h3 className="mt-1 text-xl font-black text-slate-950">
@@ -13736,8 +13742,8 @@ onClick={() => {
               <div className="mt-3 rounded-2xl bg-slate-50 p-3 text-xs font-bold leading-relaxed text-slate-600">
                 {skillStatSelection.mode ===
                 'response'
-                  ? '選んだステータスの「自分 − 相手」×40でスコアを計算します。'
-                  : '選んだステータスを2倍にしてから、技の処理を確定します。'}
+                  ? '選んだステータスの「自分 − 相手」×40でスコアを計算します（最低0点）。'
+                  : '選んだステータスの現在値×10をスコアに加算し、元のステータス値を2倍にします。'}
               </div>
 
               <div className="mt-3 grid grid-cols-2 gap-2">
