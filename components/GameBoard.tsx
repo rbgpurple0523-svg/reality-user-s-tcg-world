@@ -10566,17 +10566,35 @@ if (
         },
       );
 
-      if (!auditResponse.ok) {
-        throw new Error('ROOM_AUDIT_SAVE_FAILED');
-      }
 
-      const auditResult = await auditResponse.json();
+if (!auditResponse.ok) {
+  const errorBody = await auditResponse.text();
 
-      if (auditResult?.ok !== true) {
-        throw new Error('ROOM_AUDIT_SAVE_FAILED');
-      }
+  console.error(
+    '[deleteRoomData] 監査ログ保存APIエラー:',
+    {
+      status: auditResponse.status,
+      body: errorBody,
+      roomId,
+      playerRole,
+    },
+  );
 
+  throw new Error(
+    `ROOM_AUDIT_SAVE_FAILED: ${auditResponse.status} ${errorBody}`,
+  );
+}
 
+const auditResult = await auditResponse.json();
+
+if (auditResult?.ok !== true) {
+  console.error(
+    '[deleteRoomData] 監査ログ保存APIの応答が不正です:',
+    auditResult,
+  );
+
+  throw new Error('ROOM_AUDIT_SAVE_FAILED');
+}
 
       await runTransaction(
         db,
