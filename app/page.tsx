@@ -341,9 +341,7 @@ function loadStoredEntries(): EntryRecord[] {
 function IntroVisual({ kind }: { kind: 'battle' | 'team' | 'card' }) {
   const visual = {
     battle: {
-      icon: '⚔️',
-      label: '3 VS 3',
-      sub: 'ライブ対戦',
+    imageDataUrl: `@/public/${encodeURIComponent('REALITYUTCG_概要説明_1.png')}`,
     },
     team: {
       icon: '🃏',
@@ -574,7 +572,7 @@ const handleMatchStart = (
               <IntroVisual kind="team" />
               <h2 className="mt-4 text-xl font-black">まずはチームを編成！</h2>
               <p className="mt-2 text-sm leading-6 text-gray-600">
-                3人のキャラ＋18枚のサポートカードで、自分だけのチームを作ろう。カード登録なしでもすぐに遊べます。
+                3人のキャラ＋18枚のサポートカードで、自分だけのチームを作ろう。カード登録なしでもすぐに遊べるよ。
               </p>
             </section>
 
