@@ -15,6 +15,12 @@ export type CardType = 'coordinate' | 'emotion';
 
 export type TransferStatus = 'none' | 'pending';
 
+export type FavoriteSeason =
+  | 'spring'
+  | 'summer'
+  | 'autumn'
+  | 'winter';
+
 export type CardTransfer = {
   status: 'pending';
   codeHash: string;
@@ -33,6 +39,7 @@ export type CardWritePayload = {
   flavorText?: string;
   customEffectName?: string;
   colorHex: string;
+  favoriteSeason?: FavoriteSeason;
   showProfileUrl: boolean;
 };
 
@@ -50,6 +57,7 @@ export type PublicCard = {
   flavorText?: string;
   colorHex: string;
   colorType: string;
+  favoriteSeason?: FavoriteSeason;
   showProfileUrl: boolean;
   transferStatus: TransferStatus;
   status: 'active' | 'deleted';
@@ -268,6 +276,33 @@ function validateColorHex(value: string | undefined): string {
   return normalized.toUpperCase();
 }
 
+
+function readFavoriteSeason(
+  body: Record<string, unknown>,
+): FavoriteSeason | undefined {
+  const value = body.favoriteSeason;
+
+  if (
+    value === undefined ||
+    value === null ||
+    value === ''
+  ) {
+    return undefined;
+  }
+
+  if (
+    value !== 'spring' &&
+    value !== 'summer' &&
+    value !== 'autumn' &&
+    value !== 'winter'
+  ) {
+    throw new Error('INVALID_FAVORITE_SEASON');
+  }
+
+  return value;
+}
+
+
 export function resolvePreset(cardType: CardType, presetId: string) {
   if (cardType === 'coordinate') {
     const preset = COORDINATE_PRESETS.find((item) => item.id === presetId);
@@ -318,6 +353,7 @@ export function parseCardWritePayload(body: unknown) {
   const customSkills = readStringArray(body, 'customSkills', 4, 80);
   const skillVoices = readStringArray(body, 'skillVoices', 4, 100);
   const flavorText = readOptionalString(body, 'flavorText', 240);
+  const favoriteSeason = readFavoriteSeason(body);
   const customEffectName = readOptionalString(
     body,
     'customEffectName',
@@ -327,6 +363,7 @@ export function parseCardWritePayload(body: unknown) {
   const colorHex = validateColorHex(
     readOptionalString(body, 'colorHex', 7),
   );
+
 
   const showProfileUrl = readBoolean(
     body,
@@ -366,6 +403,7 @@ export function parseCardWritePayload(body: unknown) {
     flavorText,
     customEffectName,
     colorHex,
+    favoriteSeason,
     showProfileUrl,
   } satisfies CardWritePayload & {
     normalizedProfileUrl: string;
@@ -519,6 +557,10 @@ export function buildPublicCardFields(
 
   if (payload.flavorText !== undefined) {
     fields.flavorText = payload.flavorText;
+  }
+
+  if (payload.favoriteSeason !== undefined) {
+    fields.favoriteSeason = payload.favoriteSeason;
   }
 
   if (payload.cardType === 'coordinate' && payload.customSkills) {

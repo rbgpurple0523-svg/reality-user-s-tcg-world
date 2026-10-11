@@ -1,11 +1,11 @@
 import type { BattlePreResultEffectKey } from './battle/battleEffectTypes';
+
 export type CardColor = '赤' | '青' | '黄';
 export type Archetype =
   | 'マッスル型'
   | '頭脳型'
   | 'ディーバ型'
   | '職人型';
-export type Season = '春' | '夏' | '秋' | '冬';
 
 export type StatKey =
   | 'hp'
@@ -19,7 +19,6 @@ export interface CoordinatePreset {
   name: string;
   color: CardColor;
   archetype: Archetype;
-  season: Season;
   stats: {
     hp: number;
     intellect: number;
@@ -244,7 +243,6 @@ export const COORDINATE_PRESETS: CoordinatePreset[] =
       name: `コーデ ${code === 'n1' ? 'N-1' : code[0].toUpperCase() + '-' + code.slice(1)}`,
       color: '赤',
       archetype: ARCHETYPE_BY_PRIMARY[STAT_RANKS[code][0]],
-      season: '春',
       stats: {
         hp,
         intellect,

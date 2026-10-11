@@ -13,7 +13,6 @@ import type {
   Archetype,
   CardColor,
   CoordinatePreset,
-  Season,
   StatKey,
 } from './coordinatePresets';
 import type { ColorType } from './colorTypes';
@@ -23,11 +22,20 @@ export type {
   Archetype,
   CardColor,
   CoordinatePreset,
-  Season,
   StatKey,
 } from './coordinatePresets';
 
 export { COORDINATE_PRESETS };
+
+/**
+ * キャラクターが好きな季節。
+ * コーデの属性やゲーム進行上の Season とは別の項目。
+ */
+export type FavoriteSeason =
+  | 'spring'
+  | 'summer'
+  | 'autumn'
+  | 'winter';
 
 export interface EntryRecord {
   id: string;
@@ -46,7 +54,7 @@ export interface EntryRecord {
   colorHex?: string;
   colorType?: ColorType;
   showProfileUrl?: boolean;
-  season?: Season;
+  favoriteSeason?: FavoriteSeason;
   archetype?: Archetype;
   hp?: number;
   ap?: number;
@@ -171,6 +179,17 @@ function readBoolean(value: unknown): boolean | undefined {
     : undefined;
 }
 
+function readFavoriteSeason(
+  value: unknown,
+): FavoriteSeason | undefined {
+  return value === 'spring' ||
+    value === 'summer' ||
+    value === 'autumn' ||
+    value === 'winter'
+    ? value
+    : undefined;
+}
+
 function readStringTuple4(
   value: unknown,
 ): [string, string, string, string] | undefined {
@@ -259,7 +278,8 @@ function parseSharedEntry(
   const color = readString(data.color);
   const colorType =
     readString(data.colorType);
-  const season = readString(data.season);
+  const favoriteSeason =
+    readFavoriteSeason(data.favoriteSeason);
   const archetype =
     readString(data.archetype);
 
@@ -299,13 +319,7 @@ function parseSharedEntry(
       colorType as ColorType | undefined,
     showProfileUrl:
       readBoolean(data.showProfileUrl),
-    season:
-      season === '春' ||
-      season === '夏' ||
-      season === '秋' ||
-      season === '冬'
-        ? season
-        : undefined,
+    favoriteSeason,
     archetype:
       archetype as Archetype | undefined,
     hp: readNumber(data.hp),

@@ -34,6 +34,34 @@ const ENTRIES_KEY = 'reality_world_entries';
 const TOKEN_KEY = 'reality_world_creator_tokens';
 const DRAFT_KEY = 'reality_world_coordinate_draft';
 
+type FavoriteSeason =
+  | 'spring'
+  | 'summer'
+  | 'autumn'
+  | 'winter';
+
+const FAVORITE_SEASONS: {
+  value: FavoriteSeason;
+  label: string;
+  emoji: string;
+}[] = [
+  { value: 'spring', label: '春', emoji: '🌸' },
+  { value: 'summer', label: '夏', emoji: '🌻' },
+  { value: 'autumn', label: '秋', emoji: '🍁' },
+  { value: 'winter', label: '冬', emoji: '❄️' },
+];
+
+function isFavoriteSeason(
+  value: unknown,
+): value is FavoriteSeason {
+  return (
+    value === 'spring' ||
+    value === 'summer' ||
+    value === 'autumn' ||
+    value === 'winter'
+  );
+}
+
 type DraftData = {
   profileUrl: string;
   userName: string;
@@ -44,6 +72,7 @@ type DraftData = {
   flavorText?: string;
   colorHex?: string;
   colorType?: import('./colorTypes').ColorType;
+  favoriteSeason?: FavoriteSeason | '';
   showProfileUrl?: boolean;
 };
 
@@ -675,6 +704,11 @@ export default function CardGenerator({
   ] = useState('#22D3EE');
 
   const [
+    favoriteSeason,
+    setFavoriteSeason,
+  ] = useState<FavoriteSeason | ''>('');
+
+  const [
     showProfileUrl,
     setShowProfileUrl,
   ] = useState(true);
@@ -807,6 +841,7 @@ export default function CardGenerator({
       Boolean(currentCoordinate) ||
       customSkills.some(Boolean) ||
       skillVoices.some(Boolean) ||
+      Boolean(favoriteSeason) ||
       Boolean(flavorText);
 
     try {
@@ -830,6 +865,7 @@ export default function CardGenerator({
         customSkills,
         skillVoices,
         flavorText,
+        favoriteSeason,
         colorHex: selectedColorHex,
         colorType: selectedColorType,
         showProfileUrl,
@@ -850,6 +886,7 @@ export default function CardGenerator({
     customSkills,
     skillVoices,
     flavorText,
+    favoriteSeason,
     selectedColorHex,
     selectedColorType,
     showProfileUrl,
@@ -950,6 +987,12 @@ export default function CardGenerator({
 
       setFlavorText(
         draft.flavorText ?? '',
+      );
+
+      setFavoriteSeason(
+       isFavoriteSeason(draft.favoriteSeason)
+         ? draft.favoriteSeason
+          : '',
       );
 
       setSelectedColorHex(
@@ -1396,6 +1439,10 @@ export default function CardGenerator({
         flavorText.trim(),
       colorHex:
         selectedColorHex,
+      colorType:
+        selectedColorType,
+      favoriteSeason:
+        favoriteSeason || null,
       showProfileUrl,
     };
 
@@ -1633,6 +1680,18 @@ export default function CardGenerator({
       entry.flavorText ?? '',
     );
 
+    setFavoriteSeason(
+      isFavoriteSeason(
+        (entry as EntryRecord & {
+          favoriteSeason?: unknown;
+        }).favoriteSeason,
+      )
+        ? (entry as EntryRecord & {
+            favoriteSeason?: FavoriteSeason;
+          }).favoriteSeason!
+        : '',
+    );
+
     setSelectedColorHex(
       entry.colorHex &&
         /^#[0-9a-fA-F]{6}$/.test(
@@ -1745,6 +1804,19 @@ export default function CardGenerator({
     setFlavorText(
       entry.flavorText || '',
     );
+
+    setFavoriteSeason(
+      isFavoriteSeason(
+        (entry as EntryRecord & {
+          favoriteSeason?: unknown;
+        }).favoriteSeason,
+      )
+        ? (entry as EntryRecord & {
+            favoriteSeason?: FavoriteSeason;
+          }).favoriteSeason!
+        : '',
+    );
+
 
     setSelectedColorHex(
       entry.colorHex &&
@@ -2185,6 +2257,49 @@ export default function CardGenerator({
 
                       反映：カードの枠・色
                     </div>
+
+<div className="rounded-2xl border border-pink-200 bg-pink-50/60 p-3">
+  <div className="text-xs font-black text-pink-950">
+    好きな季節
+  </div>
+
+  <p className="mt-1 text-[10px] leading-4 text-pink-800">
+    好きな季節を選択してください。ゲーム側で参照できるように保存します。
+  </p>
+
+  <div className="mt-3 grid grid-cols-4 gap-2">
+    {FAVORITE_SEASONS.map((season) => (
+      <button
+        key={season.value}
+        type="button"
+        onClick={() => setFavoriteSeason(season.value)}
+        aria-pressed={favoriteSeason === season.value}
+        className={`rounded-xl border-2 px-1 py-3 text-center ${
+          favoriteSeason === season.value
+            ? 'border-pink-500 bg-white shadow-sm'
+            : 'border-pink-100 bg-white/60'
+        }`}
+      >
+        <span className="block text-xl">
+          {season.emoji}
+        </span>
+        <span className="mt-1 block text-[10px] font-black">
+          {season.label}
+        </span>
+      </button>
+    ))}
+  </div>
+
+  <button
+    type="button"
+    onClick={() => setFavoriteSeason('')}
+    className="mt-2 w-full rounded-lg border border-pink-100 bg-white px-3 py-2 text-[10px] font-bold text-gray-600"
+  >
+    季節を未設定にする
+  </button>
+</div>
+
+
                   </button>
 
                   <button

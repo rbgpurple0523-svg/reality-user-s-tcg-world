@@ -1721,8 +1721,6 @@ const [classResultCountdown, setClassResultCountdown] =
                     stats,
                     archetype:
                       preset.archetype,
-                    favoredSeason:
-                      preset.season,
                   }
                 : card;
 
@@ -1746,7 +1744,7 @@ const [classResultCountdown, setClassResultCountdown] =
                 },
               debuffImmune: false,
               seasonAbilityText:
-                `${battleCard.favoredSeason}が得意`,
+                `${battleCard.favoredSeason}が好き`,
               skills:
                 buildSkills(
                   sample.customSkills,
@@ -2069,8 +2067,6 @@ const [classResultCountdown, setClassResultCountdown] =
               stats,
               archetype:
                 preset.archetype,
-              favoredSeason:
-                preset.season,
             }
           : card;
 
@@ -2093,7 +2089,7 @@ const [classResultCountdown, setClassResultCountdown] =
             },
           debuffImmune: false,
           seasonAbilityText:
-            `${battleCard.favoredSeason}が得意`,
+            `${battleCard.favoredSeason}が好き`,
           skills:
             buildSkills(
               names,
