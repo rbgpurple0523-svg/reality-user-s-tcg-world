@@ -1216,6 +1216,8 @@ const [isCpuExitConfirmOpen, setIsCpuExitConfirmOpen] =
         : null,
     );
 
+  const hasAutoOpenedTeamPreviewRef = useRef(false);
+
   const [log, setLog] =
     useState<string[]>([]);
 
@@ -2782,6 +2784,22 @@ setDeckConfirmed(false);
     activeDeckId,
     myPlayerRef,
   ]);
+
+  // 対戦準備に入ったら、現在のチームの全内容を一度だけ自動表示する。
+  useEffect(() => {
+    if (
+      hasAutoOpenedTeamPreviewRef.current ||
+      battlePhase !== 'setup' ||
+      currentYear !== 1 ||
+      !activeDeckId
+    ) {
+      return;
+    }
+
+    hasAutoOpenedTeamPreviewRef.current = true;
+    setSelectedDeckPreviewId(activeDeckId);
+    setIsDeckSelectOpen(true);
+  }, [battlePhase, currentYear, activeDeckId]);
 
   useEffect(() => {
     if (
@@ -11432,29 +11450,32 @@ grouped.set(
           Array.from(
             grouped.values(),
           ).reduce<
-            Record<
-              string,
-              number
-            >
+            Record<string, number>
           >(
-            (
-              acc,
-              item,
-            ) => {
-              acc[
-                item.category
-              ] =
-                (
-                  acc[
-                    item.category
-                  ] || 0
-                ) +
-                item.count;
-
+            (acc, item) => {
+              acc[item.category] =
+                (acc[item.category] || 0) + item.count;
               return acc;
             },
             {},
           );
+
+        // 同じカードが複数枚入っている場合も、18枚を1枚ずつ表示する。
+        const supportCards = resolvedIds.map((id, index) => {
+          const card = pool.find((item) => item.id === id) || null;
+          const preset = card?.presetId
+            ? EMOTION_PRESETS.find((item) => item.id === card.presetId)
+            : undefined;
+
+          return {
+            key: `${id}_${index}`,
+            id,
+            name: card?.name || id,
+            imageDataUrl: card ? getSupportImage(card) : undefined,
+            category: preset?.effectCategory || 'その他',
+            card,
+          };
+        });
 
         const totalStats =
           characters.reduce(
@@ -11491,14 +11512,20 @@ grouped.set(
             },
           );
 
+        const averageStats = {
+          hp: totalStats.hp / Math.max(1, characters.length),
+          intellect: totalStats.intellect / Math.max(1, characters.length),
+          dexterity: totalStats.dexterity / Math.max(1, characters.length),
+          charm: totalStats.charm / Math.max(1, characters.length),
+        };
+
         return {
           characters,
-          supports:
-            Array.from(
-              grouped.values(),
-            ),
+          supports: Array.from(grouped.values()),
+          supportCards,
           supportCategories,
           totalStats,
+          averageStats,
         };
       } catch {
         return null;
@@ -11518,19 +11545,24 @@ grouped.set(
         return;
       }
 
-      const loaded =
-        loadDeckAndAvatars(
-          deckId,
-        );
+      // 選択対象とオンライン保存先を先に検証し、失敗時に現在のチームを変えない。
+      const selectedDeck = loadDeckDefinition(deckId);
 
-      const selectedDeck =
-        loadDeckDefinition(
-          deckId,
-        );
+      if (!selectedDeck) {
+        setPreparationMessage('チームを読み込めませんでした。保存済みチームを確認してください。');
+        addLog('⚠️ 選択したチームが見つかりません。');
+        return;
+      }
 
-      setIsDeckSelectOpen(
-        false,
-      );
+      if (isOnline && !myPlayerRef) {
+        setPreparationMessage('プレイヤーデータを保存できないため、チームを変更できませんでした。');
+        addLog('⚠️ プレイヤーデータを保存できません。');
+        return;
+      }
+
+      const loaded = loadDeckAndAvatars(deckId);
+
+      setIsDeckSelectOpen(false);
 
       if (isOnline) {
         setMyHand([]);
@@ -11554,18 +11586,16 @@ grouped.set(
       if (
         isOnline
       ) {
-        if (
-          !myPlayerRef
-        ) {
-          addLog(
-            '⚠️ プレイヤーデータを保存できません。',
-          );
-
+        // 上で存在確認済みだが、TypeScriptにも null でないことを明示する。
+        const playerRef = myPlayerRef;
+        if (!playerRef) {
+          setPreparationMessage('プレイヤーデータを保存できないため、チームを変更できませんでした。');
+          addLog('⚠️ プレイヤーデータを保存できません。');
           return;
         }
 
         await updateDoc(
-          myPlayerRef,
+          playerRef,
           {
             avatars:
               loaded,
@@ -12076,20 +12106,12 @@ grouped.set(
   <button
     type="button"
     onClick={() => {
-      if (
-        activeDeckId &&
-        onEditDeck
-      ) {
-        onEditDeck(
-          activeDeckId,
-        );
-
-        return;
+      if (activeDeckId) {
+        setSelectedDeckPreviewId(activeDeckId);
+      } else {
+        setSelectedDeckPreviewId(null);
       }
-
-      setIsDeckSelectOpen(
-        true,
-      );
+      setIsDeckSelectOpen(true);
     }}
     disabled={
       currentYear !==
@@ -12963,8 +12985,11 @@ grouped.set(
                     </div>
 
                     <h3 className="mt-0.5 text-lg font-black text-slate-950">
-                      チームを選ぶ
+                      チーム一覧・詳細・分析
                     </h3>
+                    <p className="mt-1 text-[10px] font-bold text-slate-500">
+                      詳細を見るだけでは変更されません。「このチームを選ぶ」で確定します。
+                    </p>
                   </div>
 
                   <button
@@ -13025,10 +13050,15 @@ grouped.set(
                               <div className="p-3">
                                 <div className="flex items-center justify-between gap-3">
                                   <div className="min-w-0">
-                                    <div className="truncate font-black text-slate-950">
-                                      {
-                                        deck.name
-                                      }
+                                    <div className="flex min-w-0 items-center gap-1.5">
+                                      <div className="truncate font-black text-slate-950">
+                                        {deck.name}
+                                      </div>
+                                      {activeDeckId === deck.id && (
+                                        <span className="shrink-0 rounded-full bg-emerald-100 px-2 py-0.5 text-[8px] font-black text-emerald-800">
+                                          現在選択中
+                                        </span>
+                                      )}
                                     </div>
 
                                     <div className="mt-1 text-[9px] font-bold text-slate-400">
@@ -13043,36 +13073,47 @@ grouped.set(
                                     </div>
                                   </div>
 
-                                  <div className="flex shrink-0 gap-1.5">
+                                  <div className="flex shrink-0 flex-wrap justify-end gap-1.5">
                                     <button
                                       type="button"
                                       onClick={() =>
-                                        setSelectedDeckPreviewId(
-                                          (
-                                            prev,
-                                          ) =>
-                                            prev ===
-                                            deck.id
-                                              ? null
-                                              : deck.id,
+                                        setSelectedDeckPreviewId((prev) =>
+                                          prev === deck.id ? null : deck.id,
                                         )
                                       }
                                       className="rounded-xl border border-slate-200 bg-white px-2.5 py-2 text-[9px] font-black text-slate-700 shadow-sm hover:bg-slate-50"
                                     >
-                                      {selectedDeckPreviewId ===
-                                      deck.id
-                                        ? '詳細を閉じる'
-                                        : '詳細・分析'}
+                                      {selectedDeckPreviewId === deck.id ? '詳細を閉じる' : '詳細・分析'}
                                     </button>
+
+                                    {onEditDeck && (
+                                      <button
+                                        type="button"
+                                        onClick={() => {
+                                          setIsDeckSelectOpen(false);
+                                          setSelectedDeckPreviewId(null);
+                                          onEditDeck(deck.id);
+                                        }}
+                                        disabled={
+                                          currentYear !== 1 ||
+                                          deckConfirmed ||
+                                          (isOnline && (playerRole === 'host' ? readyHost : readyGuest))
+                                        }
+                                        className="rounded-xl border border-amber-200 bg-amber-50 px-2.5 py-2 text-[9px] font-black text-amber-800 shadow-sm hover:bg-amber-100 disabled:cursor-not-allowed disabled:opacity-40"
+                                      >
+                                        編集
+                                      </button>
+                                    )}
 
                                     <button
                                       type="button"
-                                      onClick={() =>
-                                        void handleSelectDeck(
-                                          deck.id,
-                                        )
+                                      onClick={() => void handleSelectDeck(deck.id)}
+                                      disabled={
+                                        currentYear !== 1 ||
+                                        deckConfirmed ||
+                                        (isOnline && (playerRole === 'host' ? readyHost : readyGuest))
                                       }
-                                      className="rounded-xl bg-indigo-600 px-3 py-2 text-[9px] font-black text-white shadow-sm hover:bg-indigo-700"
+                                      className="rounded-xl bg-indigo-600 px-3 py-2 text-[9px] font-black text-white shadow-sm hover:bg-indigo-700 disabled:cursor-not-allowed disabled:opacity-40"
                                     >
                                       このチームを選ぶ
                                     </button>
@@ -13199,64 +13240,67 @@ grouped.set(
                                           </div>
                                         </div>
                                       </div>
+
+                                      <div className="mt-2 flex items-center gap-3 rounded-xl border border-indigo-100 bg-white p-2">
+                                        <RadarChart
+                                          baseStats={preview.averageStats}
+                                          currentStats={preview.averageStats}
+                                          size={132}
+                                          showLabels
+                                          showLegend={false}
+                                        />
+                                        <div className="min-w-0 text-[9px] font-bold leading-relaxed text-slate-600">
+                                          <div className="font-black text-indigo-800">チーム平均ステータス</div>
+                                          <div className="mt-1">3人のキャラ基礎値を平均したレーダーチャートです。</div>
+                                          <div className="mt-1">熱＝情熱 ／ 知＝知性 ／ 技＝技能 ／ 愛＝愛嬌</div>
+                                        </div>
+                                      </div>
                                     </div>
 
                                     <div>
                                       <div className="text-[9px] font-black tracking-[0.12em] text-purple-500">
-                                        SUPPORT CARDS
+                                        SUPPORT CARDS · {preview.supportCards.length}枚
                                       </div>
 
-<div className="mt-2 flex flex-wrap gap-1.5">
-  {preview.supports.length ? (
-    preview.supports.map((support) => (
+<div className="mt-2 grid grid-cols-3 gap-2 sm:grid-cols-4">
+  {preview.supportCards.length ? (
+    preview.supportCards.map((support) => (
       <button
-        key={support.name}
+        key={support.key}
         type="button"
         onClick={() => {
-          try {
-            const entriesRaw =
-              localStorage.getItem(
-                'reality_world_entries',
-              );
-
-            const entriesRawParsed: unknown =
-              entriesRaw
-                ? JSON.parse(entriesRaw)
-                : [];
-
-            const entries =
-              Array.isArray(entriesRawParsed)
-                ? entriesRawParsed
-                : [];
-
-            const supportCard =
-              getSupportPool(entries).find(
-                (card) =>
-                  card.name ===
-                  support.name,
-              );
-
-            if (supportCard) {
-              setSelectedSetupSupportCard(
-                supportCard,
-              );
-            }
-          } catch {
-            // 詳細表示できない場合は何もしない
+          if (support.card) {
+            setSelectedSetupSupportCard(support.card);
           }
         }}
-        className="rounded-lg border border-purple-100 bg-purple-50 px-2 py-1 text-left text-[8px] font-black text-purple-900 transition hover:bg-purple-100"
+        disabled={!support.card}
+        title={support.name}
+        className="min-w-0 overflow-hidden rounded-xl border border-purple-100 bg-purple-50 text-left transition hover:border-purple-300 hover:bg-purple-100 disabled:cursor-default"
       >
-        {support.name}
-        {support.count > 1
-          ? ` ×${support.count}`
-          : ''}
+        <div className="aspect-[3/4] w-full overflow-hidden bg-white">
+          {support.imageDataUrl ? (
+            <img
+              src={support.imageDataUrl}
+              alt={support.name}
+              loading="lazy"
+              className="h-full w-full object-contain p-1"
+            />
+          ) : (
+            <div className="flex h-full items-center justify-center text-2xl">🃏</div>
+          )}
+        </div>
+        <div className="truncate px-1.5 py-1 text-[8px] font-black text-purple-950">
+          {support.name}
+        </div>
+        <div className="truncate px-1.5 pb-1 text-[7px] font-bold text-purple-600">
+          {support.category}
+        </div>
       </button>
     ))
   ) : (
-    <span className="text-[9px] font-bold text-slate-400">
-      サポートなし
-    </span>
+    <div className="col-span-full py-3 text-center text-[9px] font-bold text-slate-400">
+      サポートカードなし
+    </div>
   )}
 </div>
 
