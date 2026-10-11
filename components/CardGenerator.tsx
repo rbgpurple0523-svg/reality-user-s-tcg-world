@@ -2245,49 +2245,6 @@ export default function CardGenerator({
                           : '未設定'}
                       </span>
                     </div>
-
-<div className="rounded-2xl border border-pink-200 bg-pink-50/60 p-3">
-  <div className="text-xs font-black text-pink-950">
-    好きな季節
-  </div>
-
-  <p className="mt-1 text-[10px] leading-4 text-pink-800">
-    好きな季節を選択してください。ゲーム側で参照できるように保存します。
-  </p>
-
-  <div className="mt-3 grid grid-cols-4 gap-2">
-    {FAVORITE_SEASONS.map((season) => (
-      <button
-        key={season.value}
-        type="button"
-        onClick={() => setFavoriteSeason(season.value)}
-        aria-pressed={favoriteSeason === season.value}
-        className={`rounded-xl border-2 px-1 py-3 text-center ${
-          favoriteSeason === season.value
-            ? 'border-pink-500 bg-white shadow-sm'
-            : 'border-pink-100 bg-white/60'
-        }`}
-      >
-        <span className="block text-xl">
-          {season.emoji}
-        </span>
-        <span className="mt-1 block text-[10px] font-black">
-          {season.label}
-        </span>
-      </button>
-    ))}
-  </div>
-
-  <button
-    type="button"
-    onClick={() => setFavoriteSeason('')}
-    className="mt-2 w-full rounded-lg border border-pink-100 bg-white px-3 py-2 text-[10px] font-bold text-gray-600"
-  >
-    季節を未設定にする
-  </button>
-</div>
-
-
                     <div className="mt-1 flex items-center gap-1.5 text-[8px] font-bold text-cyan-800">
                       <span
                         className="h-2.5 w-2.5 rounded-full border border-white shadow-sm"
@@ -2455,7 +2412,7 @@ export default function CardGenerator({
 
                 {activeEditor ===
                   'color' &&
-                  'カードカラーを設定'}
+                  'カードカラー・好きな季節を設定'}
 
                 {activeEditor ===
                   'flavor' &&
@@ -2803,6 +2760,45 @@ export default function CardGenerator({
                         selectedColorType,
                       )}
                     </div>
+
+<div className="rounded-2xl border border-pink-200 bg-pink-50/60 p-3">
+  <div className="text-xs font-black text-pink-950">
+    好きな季節
+  </div>
+
+  <div className="mt-3 grid grid-cols-4 gap-2">
+    {FAVORITE_SEASONS.map((season) => (
+      <button
+        key={season.value}
+        type="button"
+        onClick={() => setFavoriteSeason(season.value)}
+        aria-pressed={favoriteSeason === season.value}
+        className={`rounded-xl border-2 px-1 py-3 text-center ${
+          favoriteSeason === season.value
+            ? 'border-pink-500 bg-white shadow-sm'
+            : 'border-pink-100 bg-white/60'
+        }`}
+      >
+        <span className="block text-xl">
+          {season.emoji}
+        </span>
+        <span className="mt-1 block text-[10px] font-black">
+          {season.label}
+        </span>
+      </button>
+    ))}
+  </div>
+
+  <button
+    type="button"
+    onClick={() => setFavoriteSeason('')}
+    className="mt-2 w-full rounded-lg border border-pink-100 bg-white px-3 py-2 text-[10px] font-bold text-gray-600"
+  >
+    季節を未設定にする
+  </button>
+</div>
+
+
                   </div>
                 </div>
               )}
