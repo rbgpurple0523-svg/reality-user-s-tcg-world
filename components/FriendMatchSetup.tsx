@@ -344,6 +344,7 @@ useEffect(() => {
     guestLastSeenAt: 0,
   });
 
+
   const deleteClosedStaleRoomData = async (
     roomRef: ReturnType<typeof doc>,
     hostPlayerRef: ReturnType<typeof doc>,
@@ -353,18 +354,17 @@ useEffect(() => {
     hostPresenceRef: ReturnType<typeof doc>,
     guestPresenceRef: ReturnType<typeof doc>,
   ) => {
-    const deleted = await runTransaction(
-      db,
-      async (transaction) => {
-        const roomSnap =
-          await transaction.get(roomRef);
+    const validateStaleRoom = async (
+      shouldDelete: boolean,
+    ) =>
+      runTransaction(db, async (transaction) => {
+        const roomSnap = await transaction.get(roomRef);
 
         if (!roomSnap.exists()) {
           return false;
         }
 
-        const roomData =
-          roomSnap.data() as RoomRecord;
+        const roomData = roomSnap.data() as RoomRecord;
 
         if (roomData.roomClosed !== true) {
           throw new Error('ROOM_NOT_CLOSED');
@@ -379,7 +379,6 @@ useEffect(() => {
 
         const hostPresenceSnap =
           await transaction.get(hostPresenceRef);
-
         const guestPresenceSnap =
           await transaction.get(guestPresenceRef);
 
@@ -403,20 +402,59 @@ useEffect(() => {
           throw new Error('ROOM_ALREADY_IN_USE');
         }
 
-        transaction.delete(hostPlayerRef);
-        transaction.delete(guestPlayerRef);
-        transaction.delete(hostPrivatePlayerRef);
-        transaction.delete(guestPrivatePlayerRef);
-        transaction.delete(hostPresenceRef);
-        transaction.delete(guestPresenceRef);
-        transaction.delete(roomRef);
+        if (shouldDelete) {
+          transaction.delete(hostPlayerRef);
+          transaction.delete(guestPlayerRef);
+          transaction.delete(hostPrivatePlayerRef);
+          transaction.delete(guestPrivatePlayerRef);
+          transaction.delete(hostPresenceRef);
+          transaction.delete(guestPresenceRef);
+          transaction.delete(roomRef);
+        }
 
         return true;
+      });
+
+    // 監査記録を作成する前に、削除可能か検証
+    const eligible = await validateStaleRoom(false);
+
+    if (!eligible) {
+      return false;
+    }
+
+    const currentUser = await ensureAnonymousAuth();
+
+    const auditResponse = await fetch(
+      '/api/rooms/audit-delete',
+      {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization:
+            `Bearer ${await currentUser.getIdToken()}`,
+        },
+        body: JSON.stringify({
+          roomId: roomRef.id,
+          reason: 'stale_room_cleanup',
+          liveLog: [],
+        }),
       },
     );
 
-    return deleted;
+    if (!auditResponse.ok) {
+      throw new Error('ROOM_AUDIT_SAVE_FAILED');
+    }
+
+    const auditResult = await auditResponse.json();
+
+    if (auditResult?.ok !== true) {
+      throw new Error('ROOM_AUDIT_SAVE_FAILED');
+    }
+
+    // 監査保存後にも再検証してから削除
+    return validateStaleRoom(true);
   };
+
 
   const createFreshRoom = async (
     roomRef: ReturnType<typeof doc>,

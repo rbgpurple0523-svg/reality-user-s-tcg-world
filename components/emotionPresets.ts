@@ -219,7 +219,7 @@ export const EMOTION_PRESETS: EmotionPreset[] = [
   {
     id: 'emo_19', name: '未開の白地図', duration: '永続', target: '相手',
     emotionPhrase: '新しい自分探しの時間を持つのもいいね、というあなたに',
-    emotionAxes: { challenge: 5, compassion: 5, temptation: 15, freedom: 80, philosophy: 15 },
+    emotionAxes: { challenge: 5, compassion: 5, temptation: 15, freedom: 90, philosophy: 15 },
     effectCategory: '愛嬌', statEffect: '愛嬌減少', effectAmount: '-10',
     description: '相手の愛嬌を減少させる。', note: '0を下回らない',
   },
@@ -339,7 +339,7 @@ export const EMOTION_PRESETS: EmotionPreset[] = [
   {
     id: 'emo_35', name: 'ゴング', duration: '一時', target: '相手',
     emotionPhrase: '真っ向勝負が好き、というあなたに',
-    emotionAxes: { challenge: 83, compassion: 0, temptation: 0, freedom: 0, philosophy: 10 },
+    emotionAxes: { challenge: 75, compassion: 0, temptation: 0, freedom: 0, philosophy: 10 },
     effectCategory: '技封印', statEffect: '技④の使用を封印する',
     description: '相手の技④の使用を封印する。',
   },

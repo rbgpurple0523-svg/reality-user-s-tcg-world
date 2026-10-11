@@ -10546,6 +10546,38 @@ if (
         },
       );
 
+
+
+      // 退出フラグ設定後、ルーム削除前に監査記録を作成
+      const auditResponse = await fetch(
+        '/api/rooms/audit-delete',
+        {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            Authorization:
+              `Bearer ${await currentUser.getIdToken()}`,
+          },
+          body: JSON.stringify({
+            roomId,
+            reason: 'explicit_exit',
+            liveLog: log,
+          }),
+        },
+      );
+
+      if (!auditResponse.ok) {
+        throw new Error('ROOM_AUDIT_SAVE_FAILED');
+      }
+
+      const auditResult = await auditResponse.json();
+
+      if (auditResult?.ok !== true) {
+        throw new Error('ROOM_AUDIT_SAVE_FAILED');
+      }
+
+
+
       await runTransaction(
         db,
         async (

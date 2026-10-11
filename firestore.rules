@@ -1469,5 +1469,10 @@ service cloud.firestore {
     match /characterProfileIndex/{profileHash} {
       allow read, create, update, delete: if false;
     }
+
+    match /auditLogs/{auditLogId} {
+      allow read, write: if false;
+    }
+
   }
 }
