@@ -6075,9 +6075,15 @@ const showClassResult =
     };
 
   const prepareClassStart =
+
     async (
       targetYear: number,
     ) => {
+
+addLog(
+  `🔎 CLASS DEBUG: prepareClassStart開始 / targetYear=${targetYear} / currentYear=${currentYear} / battlePhase=${battlePhase} / transitionLock=${classTransitionInProgressRef.current}`,
+);
+
       if (
         targetYear < 1 ||
         targetYear > 3
@@ -6251,6 +6257,12 @@ setMyDeckReady(
           targetYear,
         );
       }
+
+addLog(
+  `🔎 CLASS DEBUG: prepareClassStart完了 / targetYear=${targetYear} / currentYear=${currentYear} / battlePhase=${battlePhase}`,
+);
+
+
     };
 
 const continueAfterClassResult =
@@ -6384,6 +6396,10 @@ const timer =
 
     classTransitionInProgressRef.current =
       true;
+
+addLog(
+  `🔎 CLASS DEBUG: 再入室用prepareClassStart実行 / currentYear=${currentYear} / myClassReadyYear=${myClassReadyYear} / battlePhase=${battlePhase}`,
+);
 
     void prepareClassStart(
       currentYear,
