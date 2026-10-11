@@ -62,6 +62,20 @@ function isFavoriteSeason(
   );
 }
 
+function hasSavedColor(
+  entry: EntryRecord,
+): boolean {
+  return Boolean(
+    (
+      entry.colorHex &&
+      /^#[0-9a-fA-F]{6}$/.test(
+        entry.colorHex,
+      )
+    ) ||
+    entry.color,
+  );
+}
+
 type DraftData = {
   profileUrl: string;
   userName: string;
@@ -74,6 +88,7 @@ type DraftData = {
   colorType?: import('./colorTypes').ColorType;
   favoriteSeason?: FavoriteSeason | '';
   showProfileUrl?: boolean;
+  isColorTouched?: boolean;
 };
 
 type PublicCardResponse = EntryRecord;
@@ -868,6 +883,7 @@ export default function CardGenerator({
         favoriteSeason,
         colorHex: selectedColorHex,
         colorType: selectedColorType,
+        isColorTouched,
         showProfileUrl,
       };
 
@@ -1007,12 +1023,7 @@ export default function CardGenerator({
       );
 
       setIsColorTouched(
-        Boolean(
-          draft.colorHex &&
-            /^#[0-9a-fA-F]{6}$/.test(
-              draft.colorHex,
-            ),
-        ),
+        draft.isColorTouched === true,
       );
 
       setShowProfileUrl(
@@ -1281,6 +1292,26 @@ export default function CardGenerator({
 
       return;
     }
+
+
+
+    if (!colorComplete) {
+      setErrorMessage(
+        'カードカラーを設定してください。',
+      );
+      setActiveEditor('color');
+      return;
+    }
+
+    if (!favoriteSeasonComplete) {
+      setErrorMessage(
+        '好きな季節を選択してください。',
+      );
+      setActiveEditor('color');
+      return;
+    }
+
+
 
     if (registrationStep === 2) {
       setIsCompleted(false);
@@ -1703,7 +1734,7 @@ export default function CardGenerator({
           ),
     );
 
-    setIsColorTouched(true);
+    setIsColorTouched(hasSavedColor(entry),);
     setShowProfileUrl(
       entry.showProfileUrl !== false,
     );
@@ -1829,7 +1860,7 @@ export default function CardGenerator({
           ),
     );
 
-    setIsColorTouched(true);
+    setIsColorTouched(hasSavedColor(entry),);
     setIsCompleted(false);
     setEditingId(entry.id);
     setRegistrationStep(2);
@@ -1962,6 +1993,15 @@ export default function CardGenerator({
         ) &&
         imageDataUrl,
     );
+
+
+const colorComplete = isColorTouched;
+
+const favoriteSeasonComplete =
+  isFavoriteSeason(favoriteSeason);
+
+const colorAndSeasonComplete =
+  colorComplete && favoriteSeasonComplete;
 
   const skillsComplete =
     customSkills.every(
@@ -2237,14 +2277,16 @@ export default function CardGenerator({
 
                       <span
                         className={`rounded-full px-1.5 py-0.5 text-[8px] font-black ${
-                          isColorTouched
+                          colorAndSeasonComplete
                             ? 'bg-emerald-100 text-emerald-700'
                             : 'bg-white text-cyan-700'
                         }`}
                       >
-                        {isColorTouched
-                          ? '設定済み'
-                          : '未設定'}
+{colorAndSeasonComplete
+  ? '設定済み'
+  : !colorComplete
+    ? 'カラー未設定'
+    : '季節未設定'}
                       </span>
                     </div>
                     <div className="mt-1 flex items-center gap-1.5 text-[8px] font-bold text-cyan-800">
@@ -2790,14 +2832,6 @@ export default function CardGenerator({
       </button>
     ))}
   </div>
-
-  <button
-    type="button"
-    onClick={() => setFavoriteSeason('')}
-    className="mt-2 w-full rounded-lg border border-pink-100 bg-white px-3 py-2 text-[10px] font-bold text-gray-600"
-  >
-    季節を未設定にする
-  </button>
 </div>
                 </div>
               )}
