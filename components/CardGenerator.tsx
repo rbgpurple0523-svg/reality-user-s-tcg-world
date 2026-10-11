@@ -2230,7 +2230,7 @@ export default function CardGenerator({
                   >
                     <div className="flex items-center justify-between gap-2">
                       <span className="text-[10px] font-black text-cyan-950">
-                        カラー
+                        カラー・好きな季節
                       </span>
 
                       <span
@@ -2244,18 +2244,6 @@ export default function CardGenerator({
                           ? '設定済み'
                           : '未設定'}
                       </span>
-                    </div>
-
-                    <div className="mt-1 flex items-center gap-1.5 text-[8px] font-bold text-cyan-800">
-                      <span
-                        className="h-2.5 w-2.5 rounded-full border border-white shadow-sm"
-                        style={{
-                          backgroundColor:
-                            selectedColorHex,
-                        }}
-                      />
-
-                      反映：カードの枠・色
                     </div>
 
 <div className="rounded-2xl border border-pink-200 bg-pink-50/60 p-3">
@@ -2298,6 +2286,19 @@ export default function CardGenerator({
     季節を未設定にする
   </button>
 </div>
+
+
+                    <div className="mt-1 flex items-center gap-1.5 text-[8px] font-bold text-cyan-800">
+                      <span
+                        className="h-2.5 w-2.5 rounded-full border border-white shadow-sm"
+                        style={{
+                          backgroundColor:
+                            selectedColorHex,
+                        }}
+                      />
+                      反映：カードの枠・色・好きな季節
+                    </div>
+
 
 
                   </button>
