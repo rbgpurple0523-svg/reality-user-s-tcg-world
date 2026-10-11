@@ -341,17 +341,13 @@ function loadStoredEntries(): EntryRecord[] {
 function IntroVisual({ kind }: { kind: 'battle' | 'team' | 'card' }) {
   const visual = {
     battle: {
-    imageDataUrl: `@/public/${encodeURIComponent('REALITYUTCG_概要説明_1.png')}`,
+      image: '/REALITYUTCG_概要説明_1.png',
     },
     team: {
-      icon: '🃏',
-      label: '3 + 18',
-      sub: 'チーム編成',
+      image: '/REALITYUTCG_概要説明_2.png',
     },
     card: {
-      icon: '✨',
-      label: 'MY CARD',
-      sub: 'オリジナルカード',
+      image: '/REALITYUTCG_概要説明_3.png',
     },
   }[kind];
 
@@ -359,11 +355,18 @@ function IntroVisual({ kind }: { kind: 'battle' | 'team' | 'card' }) {
     <div className="relative overflow-hidden rounded-[2rem] border border-indigo-100 bg-gradient-to-br from-indigo-50 via-white to-purple-50 p-6 shadow-inner">
       <div className="absolute -right-8 -top-8 h-28 w-28 rounded-full bg-indigo-100/60" />
       <div className="absolute -bottom-10 -left-8 h-32 w-32 rounded-full bg-purple-100/50" />
+
       <div className="relative flex min-h-[170px] flex-col items-center justify-center text-center">
-        <div className="image">{visual.imageDataUrl}</div>
-        <div className="text-6xl drop-shadow-sm">{visual.icon}</div>
-        <div className="mt-3 text-2xl font-black tracking-wider text-indigo-950">{visual.label}</div>
-        <div className="mt-1 text-sm font-bold text-indigo-600">{visual.sub}</div>
+        {'image' in visual ? (
+          <img
+            src={visual.image}
+            alt="REALITYUTCGの対戦画面の説明"
+            className="h-auto max-h-64 w-full rounded-xl object-contain"
+          />
+        ) : (
+          <>
+          </>
+        )}
       </div>
     </div>
   );
