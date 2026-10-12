@@ -701,7 +701,7 @@ const handleMatchStart = (
               <div className="text-3xl">✨</div>
               <h2 className="mt-2 text-2xl font-black text-gray-950">どんなカードで参加する？</h2>
               <p className="mx-auto mt-3 max-w-md text-xs font-bold leading-5 text-gray-600">
-                REALITYアバターは、ゲームの主役にも、仲間を支えるサポートにもなれます。<br />
+                この世界では、ゲームの主役にも、仲間を支えるサポート役にもなれます。<br />
                 それぞれの役割を活かして、あなたらしいカードを作ろう！
               </p>
             </div>
@@ -713,7 +713,7 @@ const handleMatchStart = (
                 className="rounded-2xl border-2 border-gray-200 bg-white p-5 text-left shadow-sm transition hover:border-indigo-300 hover:bg-indigo-50"
               >
                 <div className="flex items-center justify-between">
-                  <span className="text-3xl">🧑‍🎤</span>
+                  <span className="text-3xl">👤</span>
                   <span className="text-indigo-500">→</span>
                 </div>
                 <h3 className="mt-4 text-lg font-black">キャラカード</h3>
