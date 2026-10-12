@@ -3793,6 +3793,7 @@ setDeckConfirmed(false);
               any
             >;
 
+
           const lastSkillAction =
             currentOpponentPlayerData.lastSkillAction;
 
@@ -3801,6 +3802,7 @@ setDeckConfirmed(false);
             lastSkillAction.actionId !==
               lastSkillActionRef.current
           ) {
+            // 同一Actionの重複演出を防止
             lastSkillActionRef.current =
               lastSkillAction.actionId;
 
@@ -3811,11 +3813,91 @@ setDeckConfirmed(false);
               );
 
             addLog(
-              gainedScore >
-                0
+              gainedScore > 0
                 ? `相手が「${lastSkillAction.skillName || '技'}」を発動しました。 +${gainedScore}スコア`
                 : `相手が「${lastSkillAction.skillName || '技'}」を発動しました。`,
             );
+          
+            // サーバーが確定したAction履歴から演出を再生する。
+            // Roomのターンはすでに進んでいる可能性があるため、
+            // ここでは現在のターンとの再照合を行わない。
+            const opponentAvatars =
+              Array.isArray(
+                currentOpponentPlayerData.avatars,
+              )
+                ? currentOpponentPlayerData.avatars
+                : oppAvatars;
+          
+            const avatarIndex =
+              Number(lastSkillAction.avatarIndex);
+
+            const opponentAvatar =
+              Number.isInteger(avatarIndex) &&
+              avatarIndex >= 0
+                ? opponentAvatars[avatarIndex]
+                : undefined;
+
+            const skillId =
+              lastSkillAction.skillId;
+
+            if (
+              opponentAvatar &&
+              skillId
+            ) {
+              const skill =
+                opponentAvatar.skills?.find(
+                  (item: { id: string }) =>
+                    item.id === skillId,
+                );
+          
+              if (skill) {
+                const opponentSkillPreset =
+                  getPresetForCard(
+                    opponentAvatar.card,
+                  );
+
+                const opponentSkillIndex =
+                  opponentAvatar.skills.findIndex(
+                    (item: { id: string }) =>
+                      item.id === skillId,
+                  );
+          
+                if (
+                  opponentSkillIndex >= 0
+                ) {
+                  void Promise.resolve()
+                    .then(() =>
+                      playSkillPreResultEffect({
+                        effectKey:
+                          getCharacterSkillBattleEffect(
+                            opponentSkillPreset,
+                            opponentSkillIndex,
+                          ),
+                        characterName:
+                          opponentAvatar.card.userName,
+                        skillName:
+                          skill.name,
+                        dialogue:
+                          getSkillCutInDialogue(
+                            skill,
+                            opponentSkillIndex,
+                          ),
+                        colorHex:
+                          getBattleVisualColorHex(
+                            opponentAvatar.card,
+                          ),
+                        side: 'right',
+                      }),
+                    )
+                    .catch((error) => {
+                      console.error(
+                        '相手の技演出再生エラー:',
+                        error,
+                      );
+                    });
+                }
+              }
+            }
           }
 
           const lastSupportAction =
@@ -3883,19 +3965,16 @@ setDeckConfirmed(false);
                   .lastProcessedIncomingActionId
               : '';
 
-          if (
-            pendingAction?.actionId &&
-            (
+
+            if (
+              pendingAction?.actionId &&
               pendingAction.type ===
-                'PLAY_SUPPORT' ||
-              pendingAction.type ===
-                'USE_SKILL'
-            ) &&
-            pendingAction.actionId !==
-              lastActionRef.current &&
-            pendingAction.actionId !==
-              lastProcessedIncomingActionId
-          ) {
+                'PLAY_SUPPORT' &&
+              pendingAction.actionId !==
+                lastActionRef.current &&
+              pendingAction.actionId !==
+                lastProcessedIncomingActionId
+            ) {
             lastActionRef.current =
               pendingAction.actionId;
 
