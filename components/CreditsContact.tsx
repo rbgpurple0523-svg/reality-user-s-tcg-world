@@ -193,7 +193,6 @@ export default function CreditsContact() {
               </section>
 
               <section>
-                <h3 className="text-xs font-black tracking-[0.2em] text-gray-500">CONTACT</h3>
                 <div className="mt-3 leading-6 text-gray-700">
                   <p>バージョン：pre-20261012</p>
                 </div>
