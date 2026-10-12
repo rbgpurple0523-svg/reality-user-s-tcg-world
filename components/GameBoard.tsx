@@ -3897,6 +3897,7 @@ console.log('[相手カードの色データ確認]', {
                           getSkillCutInDialogue(
                             skill,
                             opponentSkillIndex,
+                            opponentAvatar.card,
                           ),
                         colorHex:
                           getBattleVisualColorHex(
@@ -5644,8 +5645,14 @@ console.log('[相手カードの色データ確認]', {
               opponentAvatar.card.userName,
             skillName:
               skill.name,
+            
             dialogue:
-              skill.description,
+              getSkillCutInDialogue(
+                skill,
+                opponentSkillIndex,
+                opponentAvatar.card,
+              ),
+
             colorHex:
               getBattleVisualColorHex(
                 opponentAvatar.card,
@@ -6587,14 +6594,15 @@ addLog(
     };
 
 
+
 const getSkillCutInDialogue = (
   skill: Skill,
   skillIndex: number,
+  card: AvatarCard,
 ) => {
-  const voice =
-    myActiveAvatar.card.skillVoices?.[
-      skillIndex
-    ]?.trim();
+  const voice = (
+    card as BattleVisualCard
+  ).skillVoices?.[skillIndex]?.trim();
 
   return voice || `「${skill.name}！」`;
 };
@@ -6739,11 +6747,14 @@ if (
                   .userName,
               skillName:
                 skill.name,
+              
               dialogue:
                 getSkillCutInDialogue(
                   skill,
                   skillIndex,
+                  myActiveAvatar.card,
                 ),
+
               colorHex:
                 getBattleVisualColorHex(
                   myActiveAvatar.card,
@@ -7287,6 +7298,7 @@ if (
             getSkillCutInDialogue(
               skill,
               skillIndex,
+              myActiveAvatar.card,
             ),
           colorHex:
             getBattleVisualColorHex(
