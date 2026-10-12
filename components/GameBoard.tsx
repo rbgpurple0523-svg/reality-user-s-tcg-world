@@ -3873,8 +3873,16 @@ console.log('[相手技の色チェック]', {
                 if (
                   opponentSkillIndex >= 0
                 ) {
+
+console.log('[相手カードの色データ確認]', {
+  card: opponentAvatar.card,
+  colorHex: opponentAvatar.card?.colorHex,
+  keys: Object.keys(opponentAvatar.card ?? {}),
+});
+
                   void Promise.resolve()
                     .then(() =>
+
                       playSkillPreResultEffect({
                         effectKey:
                           getCharacterSkillBattleEffect(
