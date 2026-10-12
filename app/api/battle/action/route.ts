@@ -80,24 +80,25 @@ type BattleAvatar = {
     id: string;
     userName: string;
     presetId: string;
+    colorHex?: string;
+    colorType?: string;
+    flavorText?: string;
+    skillVoices?: [
+      string,
+      string,
+      string,
+      string,
+    ];
   };
 
   roleName: string;
-
   stats: Record<StatKey, number>;
-
   baseStats?: Record<StatKey, number>;
-
   currentDebuff: Record<StatKey, number>;
-
   debuffImmune?: boolean;
-
   statBoost?: Partial<Record<StatKey, number>>;
-
   supportEffects?: SupportAvatarEffectState[];
-
   supportControlEffects?: SupportControlEffectState[];
-
   skills: Skill[];
 };
 
@@ -251,8 +252,12 @@ type FirestoreCardData = {
   cardType?: unknown;
   presetId?: unknown;
   userName?: unknown;
+  colorHex?: unknown;
+  colorType?: unknown;
   customSkills?: unknown;
   customEffectName?: unknown;
+  flavorText?: unknown;
+  skillVoices?: unknown;
 };
 
 type BattleActionRequest = {
@@ -1998,6 +2003,38 @@ const readStringValue = (
     ? value.trim()
     : undefined;
 
+
+
+const readOptionalString = (
+  value: unknown,
+): string | undefined => {
+  if (typeof value !== 'string') {
+    return undefined;
+  }
+
+  const trimmed = value.trim();
+
+  return trimmed.length > 0
+    ? trimmed
+    : undefined;
+};
+
+const readSkillVoices = (
+  value: unknown,
+): [string, string, string, string] | undefined => {
+  if (!Array.isArray(value)) {
+    return undefined;
+  }
+
+  return [
+    readOptionalString(value[0]) ?? '',
+    readOptionalString(value[1]) ?? '',
+    readOptionalString(value[2]) ?? '',
+    readOptionalString(value[3]) ?? '',
+  ];
+};
+
+
 const readStringArrayValue = (
   value: unknown,
 ): string[] =>
@@ -2269,17 +2306,42 @@ const buildCanonicalAvatar = (
       }),
     );
 
-  const skeleton:
-    BattleAvatar = {
+  const rawColorHex =
+    readStringValue(card.colorHex);
+
+  const colorHex =
+    rawColorHex &&
+    /^#[0-9a-fA-F]{6}$/.test(rawColorHex)
+      ? rawColorHex.toUpperCase()
+      : '#22D3EE';
+
+  const colorType =
+    readStringValue(card.colorType);
+
+  const flavorText =
+    readOptionalString(card.flavorText);
+
+  const skillVoices =
+    readSkillVoices(card.skillVoices);
+
+
+  const skeleton: BattleAvatar = {
     card: {
       id: cardId,
       userName:
-        readStringValue(
-          card.userName,
-        ) ??
+        readStringValue(card.userName) ??
         'キャラクター',
-      presetId:
-        preset.id,
+      presetId: preset.id,
+      colorHex,
+      ...(colorType
+        ? { colorType }
+        : {}),
+      ...(flavorText
+        ? { flavorText }
+        : {}),
+      ...(skillVoices
+        ? { skillVoices }
+        : {}),
     },
     roleName,
     stats: {
@@ -2295,22 +2357,21 @@ const buildCanonicalAvatar = (
     statBoost: {},
     supportEffects: [],
     supportControlEffects: [],
-    skills:
-      displayedSkills,
+    skills: displayedSkills,
   };
 
   return {
     ...skeleton,
-    skills:
-      displayedSkills.map(
-        (skill) =>
-          getCanonicalSkill(
-            skeleton,
-            skill.id,
-          ),
-      ),
+    skills: displayedSkills.map(
+      (skill) =>
+        getCanonicalSkill(
+          skeleton,
+          skill.id,
+        ),
+    ),
   };
 };
+
 
 const resolveSupportCard = async (
   transaction: Transaction,
