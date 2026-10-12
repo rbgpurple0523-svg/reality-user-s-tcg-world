@@ -3837,6 +3837,14 @@ setDeckConfirmed(false);
                 ? opponentAvatars[avatarIndex]
                 : undefined;
 
+console.log('[相手技の色チェック]', {
+  card: opponentAvatar.card,
+  rawColorHex: opponentAvatar.card?.colorHex,
+  calculatedColorHex: getBattleVisualColorHex(
+    opponentAvatar.card,
+  ),
+});
+
             const skillId =
               lastSkillAction.skillId;
 
@@ -3884,7 +3892,7 @@ setDeckConfirmed(false);
                           ),
                         colorHex:
                           getBattleVisualColorHex(
-                            oppActiveAvatar.card,
+                            opponentAvatar.card,
                           ),
                         side: 'right',
                       }),
