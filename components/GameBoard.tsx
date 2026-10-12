@@ -10683,6 +10683,7 @@ if (
                 true,
               roomClosed:
                 true,
+              roomClosedAt: Date.now()
             },
           );
         },

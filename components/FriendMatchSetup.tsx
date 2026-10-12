@@ -1,3 +1,4 @@
+
 'use client';
 
 import React, { useEffect, useState } from 'react';
@@ -23,9 +24,7 @@ interface FriendMatchSetupProps {
 }
 
 type PlayerRole = 'host' | 'guest';
-
 type RoomRecord = Record<string, unknown>;
-type PlayerRecord = Record<string, unknown>;
 
 type PresenceRecord = {
   uid?: string;
@@ -48,13 +47,14 @@ type JoinStageResult =
   | { mode: 'staleClosed' };
 
 const STALE_STAGE_MS = 60 * 1000;
+const ROOM_CLOSED_RETENTION_MS = 60 * 1000;
 
 function isValidBattleDeckSnapshot(
   snapshot: BattleDeckSnapshot | null | undefined,
 ): snapshot is BattleDeckSnapshot {
-  if (!snapshot) return false;
-
-  if (snapshot.version !== 1) return false;
+  if (!snapshot || snapshot.version !== 1) {
+    return false;
+  }
 
   if (
     !snapshot.deckName ||
@@ -108,11 +108,132 @@ function isValidBattleDeckSnapshot(
 }
 
 /**
- * ホスト・ゲストの両方が60秒を超えて無応答の場合のみ、
- * 放置ルームと判定する。
+ * Timestampまたはミリ秒数値をミリ秒に変換する。
+ * 判定不能な値はnullとする。
+ */
+function toTimestampMillis(value: unknown): number | null {
+  if (typeof value === 'number') {
+    return Number.isFinite(value) && value > 0
+      ? value
+      : null;
+  }
+
+  if (value instanceof Date) {
+    const millis = value.getTime();
+
+    return Number.isFinite(millis) && millis > 0
+      ? millis
+      : null;
+  }
+
+  if (!value || typeof value !== 'object') {
+    return null;
+  }
+
+  const timestamp = value as {
+    toMillis?: () => number;
+    seconds?: number;
+    _seconds?: number;
+  };
+
+  if (typeof timestamp.toMillis === 'function') {
+    try {
+      const millis = timestamp.toMillis();
+
+      return Number.isFinite(millis) && millis > 0
+        ? millis
+        : null;
+    } catch {
+      return null;
+    }
+  }
+
+  const seconds =
+    typeof timestamp.seconds === 'number'
+      ? timestamp.seconds
+      : timestamp._seconds;
+
+  if (
+    typeof seconds === 'number' &&
+    Number.isFinite(seconds) &&
+    seconds > 0
+  ) {
+    return seconds * 1000;
+  }
+
+  return null;
+}
+
+/**
+ * 新しいルームではroomClosedAtを使用する。
+ * 古いルームにroomClosedAtがない場合は、
+ * 既存の活動時刻のうち最も新しいものを暫定的に使用する。
  *
- * Presenceが存在しない場合も、最終応答時刻を確認できないため
- * 無応答として扱う。
+ * 時刻が確認できない場合は削除を許可しない。
+ */
+function getRoomClosedAtMillis(
+  roomData: RoomRecord,
+  hostPresence: PresenceRecord | null,
+  guestPresence: PresenceRecord | null,
+): number | null {
+  const explicitClosedAt = toTimestampMillis(
+    roomData.roomClosedAt,
+  );
+
+  if (explicitClosedAt !== null) {
+    return explicitClosedAt;
+  }
+
+  const timestamps = [
+    roomData.createdAt,
+    roomData.hostLastSeenAt,
+    roomData.guestLastSeenAt,
+    hostPresence?.lastSeenAt,
+    guestPresence?.lastSeenAt,
+  ]
+    .map(toTimestampMillis)
+    .filter(
+      (value): value is number => value !== null,
+    );
+
+  if (timestamps.length === 0) {
+    return null;
+  }
+
+  return Math.max(...timestamps);
+}
+
+/**
+ * ルームが閉じられてから60秒以上経過しているかを判定する。
+ */
+function isClosedRoomCleanupEligible(
+  roomData: RoomRecord,
+  hostPresence: PresenceRecord | null,
+  guestPresence: PresenceRecord | null,
+): boolean {
+  if (roomData.roomClosed !== true) {
+    return false;
+  }
+
+  const closedAt = getRoomClosedAtMillis(
+    roomData,
+    hostPresence,
+    guestPresence,
+  );
+
+  if (closedAt === null) {
+    return false;
+  }
+
+  return Date.now() - closedAt >= ROOM_CLOSED_RETENTION_MS;
+}
+
+/**
+ * ホスト・ゲスト両方が60秒を超えて無応答なら、
+ * 稼働中ルームを放置ルーム候補として扱う。
+ *
+ * これは「まだ閉じられていないルーム」を閉じるための判定。
+ * すでに閉じられたルームの削除判定には使わない。
  */
 function isStageStale(
   hostPresenceData: PresenceRecord | null,
@@ -149,31 +270,19 @@ export default function FriendMatchSetup({
   const [mode, setMode] =
     useState<'menu' | 'create' | 'join'>('menu');
 
-  const [roomKey, setRoomKey] = useState<string>('');
-  const [waitingRoomId, setWaitingRoomId] =
-    useState<string>('');
-
-  const [statusMessage, setStatusMessage] =
-    useState<string>('');
-
-  const [isLoading, setIsLoading] =
-    useState<boolean>(false);
-
-  const [showConfirmModal, setShowConfirmModal] =
-    useState<boolean>(false);
-
-  const [isWaitingForGuest, setIsWaitingForGuest] =
-    useState<boolean>(false);
+  const [roomKey, setRoomKey] = useState('');
+  const [waitingRoomId, setWaitingRoomId] = useState('');
+  const [statusMessage, setStatusMessage] = useState('');
+  const [isLoading, setIsLoading] = useState(false);
+  const [showConfirmModal, setShowConfirmModal] = useState(false);
+  const [isWaitingForGuest, setIsWaitingForGuest] = useState(false);
 
   // =========================================================
   // ホスト待機中のPresenceハートビート
   // =========================================================
 
   useEffect(() => {
-    if (
-      !isWaitingForGuest ||
-      !waitingRoomId
-    ) {
+    if (!isWaitingForGuest || !waitingRoomId) {
       return;
     }
 
@@ -183,19 +292,12 @@ export default function FriendMatchSetup({
       if (cancelled) return;
 
       try {
-        const currentUser =
-          await ensureAnonymousAuth();
+        const currentUser = await ensureAnonymousAuth();
 
         if (cancelled) return;
 
         await setDoc(
-          doc(
-            db,
-            'rooms',
-            waitingRoomId,
-            'presence',
-            'host',
-          ),
+          doc(db, 'rooms', waitingRoomId, 'presence', 'host'),
           {
             uid: currentUser.uid,
             role: 'host',
@@ -213,12 +315,9 @@ export default function FriendMatchSetup({
 
     void writeHostHeartbeat();
 
-    const timer = window.setInterval(
-      () => {
-        void writeHostHeartbeat();
-      },
-      10000,
-    );
+    const timer = window.setInterval(() => {
+      void writeHostHeartbeat();
+    }, 10000);
 
     return () => {
       cancelled = true;
@@ -261,7 +360,7 @@ export default function FriendMatchSetup({
   };
 
   // =========================================================
-  // 新規ステージの初期データ
+  // 新規ルームの初期データ
   // =========================================================
 
   const buildNewRoomData = (
@@ -294,6 +393,7 @@ export default function FriendMatchSetup({
     classReadyYearHost: 0,
     classReadyYearGuest: 0,
     roomClosed: false,
+    roomClosedAt: null,
     createdAt: now,
     hostLastSeenAt: now,
     guestLastSeenAt: 0,
@@ -355,7 +455,7 @@ export default function FriendMatchSetup({
   };
 
   // =========================================================
-  // 旧放置ルームの監査ログ保存・関連データ削除
+  // 閉鎖済みルームの監査ログ保存・関連データ削除
   // =========================================================
 
   const deleteClosedStaleRoomData = async (
@@ -368,34 +468,24 @@ export default function FriendMatchSetup({
     guestPresenceRef: ReturnType<typeof doc>,
   ): Promise<boolean> => {
     /**
-     * 削除直前にも状態を再検証する。
-     * Firestoreトランザクションでは、すべてのreadを
-     * writeより先に実行する。
+     * 削除対象かどうかをトランザクション内で検証する。
+     * 削除時も再検証するため、監査ログ保存後に
+     * ルーム状態が変わった場合は削除を中止する。
      */
-    const validateStaleRoom = async (
+    const validateAndMaybeDelete = async (
       shouldDelete: boolean,
     ): Promise<boolean> =>
       runTransaction(db, async transaction => {
-        const roomSnap =
-          await transaction.get(roomRef);
+        const roomSnap = await transaction.get(roomRef);
 
         if (!roomSnap.exists()) {
           return false;
         }
 
-        const roomData =
-          roomSnap.data() as RoomRecord;
+        const roomData = roomSnap.data() as RoomRecord;
 
         if (roomData.roomClosed !== true) {
           throw new Error('ROOM_NOT_CLOSED');
-        }
-
-        // 正常な退出処理で終了した部屋は削除対象にしない。
-        if (
-          roomData.exitHost === true ||
-          roomData.exitGuest === true
-        ) {
-          throw new Error('ROOM_CLOSED');
         }
 
         const hostPresenceSnap =
@@ -404,23 +494,26 @@ export default function FriendMatchSetup({
         const guestPresenceSnap =
           await transaction.get(guestPresenceRef);
 
-        const hostPresenceData =
+        const hostPresenceData: PresenceRecord | null =
           hostPresenceSnap.exists()
             ? (hostPresenceSnap.data() as PresenceRecord)
             : null;
 
-        const guestPresenceData =
+        const guestPresenceData: PresenceRecord | null =
           guestPresenceSnap.exists()
             ? (guestPresenceSnap.data() as PresenceRecord)
             : null;
 
+        // 退出フラグでは削除可否を判断しない。
+        // 明示的に退出したルームも60秒経過すれば対象になる。
         if (
-          !isStageStale(
+          !isClosedRoomCleanupEligible(
+            roomData,
             hostPresenceData,
             guestPresenceData,
           )
         ) {
-          throw new Error('ROOM_ALREADY_IN_USE');
+          throw new Error('ROOM_CLEANUP_PENDING');
         }
 
         if (shouldDelete) {
@@ -436,8 +529,8 @@ export default function FriendMatchSetup({
         return true;
       });
 
-    // 監査ログを作成する前に、削除対象であることを確認する。
-    const eligible = await validateStaleRoom(false);
+    // 監査ログ保存前の検証。
+    const eligible = await validateAndMaybeDelete(false);
 
     if (!eligible) {
       return false;
@@ -445,24 +538,40 @@ export default function FriendMatchSetup({
 
     const currentUser = await ensureAnonymousAuth();
 
-    const auditResponse = await fetch(
-      '/api/rooms/audit-delete',
-      {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          Authorization:
-            `Bearer ${await currentUser.getIdToken()}`,
-        },
-        body: JSON.stringify({
-          roomId: roomRef.id,
-          reason: 'stale_room_cleanup',
-          liveLog: [],
-        }),
+    const auditResponse = await fetch('/api/rooms/audit-delete', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${await currentUser.getIdToken()}`,
       },
-    );
+      body: JSON.stringify({
+        roomId: roomRef.id,
+        reason: 'stale_room_cleanup',
+        liveLog: [],
+      }),
+    });
 
     if (!auditResponse.ok) {
+      let errorCode = '';
+
+      try {
+        const errorBody = await auditResponse.json();
+        errorCode =
+          typeof errorBody?.error === 'string'
+            ? errorBody.error
+            : '';
+      } catch {
+        // レスポンスがJSONでない場合は下の共通エラーへ進む。
+      }
+
+      if (errorCode === 'ROOM_CLEANUP_PENDING') {
+        throw new Error('ROOM_CLEANUP_PENDING');
+      }
+
+      if (errorCode === 'ROOM_NOT_CLOSED') {
+        throw new Error('ROOM_NOT_CLOSED');
+      }
+
       throw new Error('ROOM_AUDIT_SAVE_FAILED');
     }
 
@@ -472,15 +581,79 @@ export default function FriendMatchSetup({
       throw new Error('ROOM_AUDIT_SAVE_FAILED');
     }
 
-    // 監査ログ保存後、もう一度検証して削除する。
-    // 検証失敗時は新規ルームを作らせない。
-    const deleted = await validateStaleRoom(true);
+    // 監査ログ保存成功後に再検証して削除する。
+    const deleted = await validateAndMaybeDelete(true);
 
     if (!deleted) {
       throw new Error('ROOM_CLEANUP_INCOMPLETE');
     }
 
     return true;
+  };
+
+  // =========================================================
+  // 待機中のホストがステージをキャンセル
+  // =========================================================
+
+  const handleCancelWaitingRoom = async () => {
+    if (!waitingRoomId) {
+      setIsWaitingForGuest(false);
+      setMode('menu');
+      setRoomKey('');
+      setStatusMessage('');
+      return;
+    }
+
+    setIsLoading(true);
+
+    try {
+      const currentUser = await ensureAnonymousAuth();
+
+      const roomRef = doc(db, 'rooms', waitingRoomId);
+
+      await runTransaction(db, async transaction => {
+        const roomSnap = await transaction.get(roomRef);
+
+        if (!roomSnap.exists()) {
+          return;
+        }
+
+        const roomData = roomSnap.data() as RoomRecord;
+
+        if (roomData.hostUid !== currentUser.uid) {
+          throw new Error('EXIT_NOT_AUTHORIZED');
+        }
+
+        if (roomData.roomClosed === true) {
+          return;
+        }
+
+        const now = Date.now();
+
+        transaction.update(roomRef, {
+          roomClosed: true,
+          roomClosedAt: now,
+          exitHost: true,
+          hostLastSeenAt: now,
+        });
+      });
+
+      setIsWaitingForGuest(false);
+      setWaitingRoomId('');
+      setMode('menu');
+      setRoomKey('');
+      setStatusMessage(
+        'ステージを終了しました。旧データは終了から60秒経過後に整理されます。',
+      );
+    } catch (error) {
+      console.error('ステージ終了エラー:', error);
+
+      setStatusMessage(
+        '❌ ステージを終了できませんでした。ネットワーク環境を確認してください。',
+      );
+    } finally {
+      setIsLoading(false);
+    }
   };
 
   // =========================================================
@@ -494,31 +667,21 @@ export default function FriendMatchSetup({
   ) => {
     const now = Date.now();
 
-    await runTransaction(
-      db,
-      async transaction => {
-        const snapshot =
-          await transaction.get(roomRef);
+    await runTransaction(db, async transaction => {
+      const snapshot = await transaction.get(roomRef);
 
-        if (snapshot.exists()) {
-          throw new Error('ROOM_ALREADY_IN_USE');
-        }
+      if (snapshot.exists()) {
+        throw new Error('ROOM_ALREADY_IN_USE');
+      }
 
-        transaction.set(
-          roomRef,
-          buildNewRoomData(uid, now),
-        );
+      transaction.set(roomRef, buildNewRoomData(uid, now));
 
-        transaction.set(
-          hostPresenceRef,
-          {
-            uid,
-            role: 'host',
-            lastSeenAt: now,
-          },
-        );
-      },
-    );
+      transaction.set(hostPresenceRef, {
+        uid,
+        role: 'host',
+        lastSeenAt: now,
+      });
+    });
   };
 
   // =========================================================
@@ -539,7 +702,6 @@ export default function FriendMatchSetup({
     setStatusMessage('ステージを確認中...');
 
     const roomId = roomKey.trim();
-
     const roomRef = doc(db, 'rooms', roomId);
 
     const hostPlayerRef = doc(
@@ -571,144 +733,128 @@ export default function FriendMatchSetup({
       const now = Date.now();
 
       const stageResult: CreateStageResult =
-        await runTransaction(
-          db,
-          async transaction => {
-            const snapshot =
-              await transaction.get(roomRef);
+        await runTransaction(db, async transaction => {
+          const snapshot = await transaction.get(roomRef);
 
-            if (!snapshot.exists()) {
-              transaction.set(
-                roomRef,
-                buildNewRoomData(currentUser.uid, now),
-              );
+          if (!snapshot.exists()) {
+            transaction.set(
+              roomRef,
+              buildNewRoomData(currentUser.uid, now),
+            );
 
-              transaction.set(
-                hostPresenceRef,
-                {
-                  uid: currentUser.uid,
-                  role: 'host',
-                  lastSeenAt: now,
-                },
-              );
+            transaction.set(hostPresenceRef, {
+              uid: currentUser.uid,
+              role: 'host',
+              lastSeenAt: now,
+            });
 
-              return {
-                mode: 'created' as const,
-                guestJoined: false,
-              };
-            }
+            return {
+              mode: 'created' as const,
+              guestJoined: false,
+            };
+          }
 
-            const roomData =
-              snapshot.data() as RoomRecord;
+          const roomData = snapshot.data() as RoomRecord;
 
-            // 正常退出済みのルームは再利用しない。
-            if (
-              roomData.exitHost === true ||
-              roomData.exitGuest === true
-            ) {
-              throw new Error('ROOM_CLOSED');
-            }
-
-            // 閉鎖済みのルームも、放置状態かを検証する。
-            // まだ放置条件を満たしていない場合は削除しない。
-            if (roomData.roomClosed === true) {
-              const hostPresenceSnap =
-                await transaction.get(hostPresenceRef);
-
-              const guestPresenceSnap =
-                await transaction.get(guestPresenceRef);
-
-              const hostPresenceData =
-                hostPresenceSnap.exists()
-                  ? (hostPresenceSnap.data() as PresenceRecord)
-                  : null;
-
-              const guestPresenceData =
-                guestPresenceSnap.exists()
-                  ? (guestPresenceSnap.data() as PresenceRecord)
-                  : null;
-
-              if (
-                !isStageStale(
-                  hostPresenceData,
-                  guestPresenceData,
-                )
-              ) {
-                throw new Error('ROOM_ALREADY_IN_USE');
-              }
-
-              return {
-                mode: 'closedStale' as const,
-                guestJoined: false,
-              };
-            }
-
-            // 重要：ホスト本人の再入室より先に、
-            // ホスト・ゲスト両方の無応答状態を確認する。
+          // 閉鎖済みルームは、終了から60秒経過していなければ
+          // 再利用も削除も行わない。
+          if (roomData.roomClosed === true) {
             const hostPresenceSnap =
               await transaction.get(hostPresenceRef);
 
             const guestPresenceSnap =
               await transaction.get(guestPresenceRef);
 
-            const hostPresenceData =
+            const hostPresenceData: PresenceRecord | null =
               hostPresenceSnap.exists()
                 ? (hostPresenceSnap.data() as PresenceRecord)
                 : null;
 
-            const guestPresenceData =
+            const guestPresenceData: PresenceRecord | null =
               guestPresenceSnap.exists()
                 ? (guestPresenceSnap.data() as PresenceRecord)
                 : null;
 
             if (
-              isStageStale(
+              !isClosedRoomCleanupEligible(
+                roomData,
                 hostPresenceData,
                 guestPresenceData,
               )
             ) {
-              // 放置判定と終了状態への更新をセットで実行。
-              transaction.update(roomRef, {
-                roomClosed: true,
-              });
-
-              return {
-                mode: 'staleClosed' as const,
-                guestJoined: false,
-              };
+              throw new Error('ROOM_CLEANUP_PENDING');
             }
 
-            // 放置状態でなければ、ホスト本人の再入室を許可。
-            if (roomData.hostUid === currentUser.uid) {
-              transaction.update(roomRef, {
-                hostJoined: true,
-                hostRejoinedAt: now,
-                hostLastSeenAt: now,
-              });
+            return {
+              mode: 'closedStale' as const,
+              guestJoined: false,
+            };
+          }
 
-              transaction.set(
-                hostPresenceRef,
-                {
-                  uid: currentUser.uid,
-                  role: 'host',
-                  lastSeenAt: now,
-                },
-                { merge: true },
-              );
+          const hostPresenceSnap =
+            await transaction.get(hostPresenceRef);
 
-              return {
-                mode: 'rejoined' as const,
-                guestJoined: Boolean(roomData.guestJoined),
-              };
-            }
+          const guestPresenceSnap =
+            await transaction.get(guestPresenceRef);
 
-            // 別ユーザーが使用中のルームは奪わない。
-            throw new Error('ROOM_ALREADY_IN_USE');
-          },
-        );
+          const hostPresenceData: PresenceRecord | null =
+            hostPresenceSnap.exists()
+              ? (hostPresenceSnap.data() as PresenceRecord)
+              : null;
 
-      let result:
-        | { mode: 'created' | 'rejoined'; guestJoined: boolean };
+          const guestPresenceData: PresenceRecord | null =
+            guestPresenceSnap.exists()
+              ? (guestPresenceSnap.data() as PresenceRecord)
+              : null;
+
+          if (
+            isStageStale(
+              hostPresenceData,
+              guestPresenceData,
+            )
+          ) {
+            // 今回初めて閉鎖する場合、ここからさらに60秒待つ。
+            transaction.update(roomRef, {
+              roomClosed: true,
+              roomClosedAt: now,
+            });
+
+            return {
+              mode: 'staleClosed' as const,
+              guestJoined: false,
+            };
+          }
+
+          if (roomData.hostUid === currentUser.uid) {
+            transaction.update(roomRef, {
+              hostJoined: true,
+              hostRejoinedAt: now,
+              hostLastSeenAt: now,
+            });
+
+            transaction.set(
+              hostPresenceRef,
+              {
+                uid: currentUser.uid,
+                role: 'host',
+                lastSeenAt: now,
+              },
+              { merge: true },
+            );
+
+            return {
+              mode: 'rejoined' as const,
+              guestJoined: Boolean(roomData.guestJoined),
+            };
+          }
+
+          throw new Error('ROOM_ALREADY_IN_USE');
+        });
+
+      let result: {
+        mode: 'created' | 'rejoined';
+        guestJoined: boolean;
+      };
 
       if (
         stageResult.mode === 'staleClosed' ||
@@ -736,7 +882,6 @@ export default function FriendMatchSetup({
           '旧ステージの削除が完了しました。新しいステージを作成しています...',
         );
 
-        // 旧ルームの削除が完了してから、新規作成する。
         await createFreshRoom(
           roomRef,
           hostPresenceRef,
@@ -747,14 +892,18 @@ export default function FriendMatchSetup({
           mode: 'created',
           guestJoined: false,
         };
-      } else if (
-        stageResult.mode === 'created' ||
-        stageResult.mode === 'rejoined'
-      ) {
-        result = stageResult;
+
+      } else if (stageResult.mode === 'created') {
+        result = {
+          mode: 'created',
+          guestJoined: stageResult.guestJoined,
+        };
+      } else if (stageResult.mode === 'rejoined') {
+        result = {
+          mode: 'rejoined',
+          guestJoined: stageResult.guestJoined,
+        };
       } else {
-        // 放置ルームの処理後にここへ来ることは想定しない。
-        // 不正な状態で処理を続けないようにする。
         throw new Error('ROOM_CLEANUP_INCOMPLETE');
       }
 
@@ -848,15 +997,21 @@ export default function FriendMatchSetup({
             );
             return;
 
+          case 'ROOM_CLEANUP_PENDING':
+            setStatusMessage(
+              '⏳ このステージは終了済みです。終了から60秒経過すると旧データを整理できます。少し待ってからもう一度お試しください。',
+            );
+            return;
+
           case 'ROOM_ALREADY_IN_USE':
             setStatusMessage(
-              '❌ その合言葉のステージは使用中、または終了処理中です。別の合言葉を設定してください。',
+              '❌ その合言葉のステージは使用中です。別の合言葉を設定してください。',
             );
             return;
 
           case 'ROOM_CLOSED':
             setStatusMessage(
-              '❌ このステージは正常に終了しています。新しい合言葉を設定してください。',
+              '❌ このステージは終了しています。新しい合言葉を設定してください。',
             );
             return;
 
@@ -914,7 +1069,6 @@ export default function FriendMatchSetup({
     setStatusMessage('ステージを探しています...');
 
     const roomId = roomKey.trim();
-
     const roomRef = doc(db, 'rooms', roomId);
 
     const hostPlayerRef = doc(
@@ -946,131 +1100,112 @@ export default function FriendMatchSetup({
       const now = Date.now();
 
       const result: JoinStageResult =
-        await runTransaction(
-          db,
-          async transaction => {
-            const roomSnap =
-              await transaction.get(roomRef);
+        await runTransaction(db, async transaction => {
+          const roomSnap = await transaction.get(roomRef);
 
-            if (!roomSnap.exists()) {
-              throw new Error('ROOM_NOT_FOUND');
-            }
+          if (!roomSnap.exists()) {
+            throw new Error('ROOM_NOT_FOUND');
+          }
 
-            const roomData =
-              roomSnap.data() as RoomRecord;
+          const roomData = roomSnap.data() as RoomRecord;
 
-            // 正常退出済みのルームは放置ルーム扱いにしない。
+          const hostPresenceSnap =
+            await transaction.get(hostPresenceRef);
+
+          const guestPresenceSnap =
+            await transaction.get(guestPresenceRef);
+
+          const hostPresenceData: PresenceRecord | null =
+            hostPresenceSnap.exists()
+              ? (hostPresenceSnap.data() as PresenceRecord)
+              : null;
+
+          const guestPresenceData: PresenceRecord | null =
+            guestPresenceSnap.exists()
+              ? (guestPresenceSnap.data() as PresenceRecord)
+              : null;
+
+          // 閉鎖済みルームは、閉鎖後60秒経過するまで再利用不可。
+          if (roomData.roomClosed === true) {
             if (
-              roomData.exitHost === true ||
-              roomData.exitGuest === true
+              isClosedRoomCleanupEligible(
+                roomData,
+                hostPresenceData,
+                guestPresenceData,
+              )
             ) {
-              throw new Error('ROOM_CLOSED');
-            }
-
-            // 両Presenceを先に読む。
-            // Firestoreトランザクションのread-before-writeを守る。
-            const hostPresenceSnap =
-              await transaction.get(hostPresenceRef);
-
-            const guestPresenceSnap =
-              await transaction.get(guestPresenceRef);
-
-            const hostPresenceData =
-              hostPresenceSnap.exists()
-                ? (hostPresenceSnap.data() as PresenceRecord)
-                : null;
-
-            const guestPresenceData =
-              guestPresenceSnap.exists()
-                ? (guestPresenceSnap.data() as PresenceRecord)
-                : null;
-
-            const stale = isStageStale(
-              hostPresenceData,
-              guestPresenceData,
-            );
-
-            // 閉鎖済みルームは、放置条件を満たす場合のみ
-            // 監査・削除処理へ進める。
-            if (roomData.roomClosed === true) {
-              if (stale) {
-                return { mode: 'staleClosed' as const };
-              }
-
-              throw new Error('ROOM_CLOSED');
-            }
-
-            // ゲスト本人の再入室や新規入室より先に放置判定する。
-            if (stale) {
-              transaction.update(roomRef, {
-                roomClosed: true,
-              });
-
               return { mode: 'staleClosed' as const };
             }
 
-            if (
-              roomData.hostUid &&
-              roomData.hostUid === currentUser.uid
-            ) {
-              throw new Error('SELF_JOIN');
-            }
+            throw new Error('ROOM_CLEANUP_PENDING');
+          }
 
-            // 同じゲストによる再入室。
-            if (roomData.guestUid === currentUser.uid) {
-              transaction.update(roomRef, {
-                guestJoined: true,
-                guestRejoinedAt: now,
-                guestLastSeenAt: now,
-              });
+          // まだ閉じられていないルームについてのみ、
+          // 両者の無応答を検出して閉鎖する。
+          if (
+            isStageStale(
+              hostPresenceData,
+              guestPresenceData,
+            )
+          ) {
+            transaction.update(roomRef, {
+              roomClosed: true,
+              roomClosedAt: now,
+            });
 
-              transaction.set(
-                guestPresenceRef,
-                {
-                  uid: currentUser.uid,
-                  role: 'guest',
-                  lastSeenAt: now,
-                },
-                { merge: true },
-              );
+            return { mode: 'staleClosed' as const };
+          }
 
-              return { mode: 'rejoined' as const };
-            }
+          if (roomData.hostUid === currentUser.uid) {
+            throw new Error('SELF_JOIN');
+          }
 
-            // ゲスト枠が空いている場合のみ新規参加可能。
-            if (
-              roomData.guestJoined === false ||
-              !roomData.guestUid
-            ) {
-              transaction.update(roomRef, {
-                guestUid: currentUser.uid,
-                guestJoined: true,
-                guestRejoinedAt: now,
-                guestLastSeenAt: now,
-              });
+          if (roomData.guestUid === currentUser.uid) {
+            transaction.update(roomRef, {
+              guestJoined: true,
+              guestRejoinedAt: now,
+              guestLastSeenAt: now,
+            });
 
-              transaction.set(
-                guestPresenceRef,
-                {
-                  uid: currentUser.uid,
-                  role: 'guest',
-                  lastSeenAt: now,
-                },
-              );
+            transaction.set(
+              guestPresenceRef,
+              {
+                uid: currentUser.uid,
+                role: 'guest',
+                lastSeenAt: now,
+              },
+              { merge: true },
+            );
 
-              return { mode: 'joined' as const };
-            }
+            return { mode: 'rejoined' as const };
+          }
 
-            throw new Error('ROOM_FULL');
-          },
-        );
+          if (
+            roomData.guestJoined === false ||
+            !roomData.guestUid
+          ) {
+            transaction.update(roomRef, {
+              guestUid: currentUser.uid,
+              guestJoined: true,
+              guestRejoinedAt: now,
+              guestLastSeenAt: now,
+            });
 
-      // 放置ルームを検出した場合：
-      // roomClosed=true の確定後、監査保存・旧データ削除を行う。
-      // ゲストを自動的に新しいルームへ参加させない。
+            transaction.set(guestPresenceRef, {
+              uid: currentUser.uid,
+              role: 'guest',
+              lastSeenAt: now,
+            });
+
+            return { mode: 'joined' as const };
+          }
+
+          throw new Error('ROOM_FULL');
+        });
+
       if (result.mode === 'staleClosed') {
         setStatusMessage(
-          '放置されたステージを終了し、旧データを削除しています...',
+          '終了から60秒以上経過した旧ステージを整理しています...',
         );
 
         const deleted = await deleteClosedStaleRoomData(
@@ -1132,9 +1267,9 @@ export default function FriendMatchSetup({
             );
             return;
 
-          case 'ROOM_CLOSED':
+          case 'ROOM_CLEANUP_PENDING':
             setStatusMessage(
-              '❌ このステージは終了しています。ホストに新しいステージを作成してもらってください。',
+              '⏳ このステージは終了済みです。終了から60秒経過するまでは再入室できません。少し待ってからもう一度お試しください。',
             );
             return;
 
@@ -1146,13 +1281,13 @@ export default function FriendMatchSetup({
 
           case 'ROOM_AUDIT_SAVE_FAILED':
             setStatusMessage(
-              '❌ 旧ステージの監査ログを保存できませんでした。旧データの削除は完了していないため、時間をおいて再度お試しください。',
+              '❌ 旧ステージの監査ログを保存できませんでした。旧データは削除していません。時間をおいて再度お試しください。',
             );
             return;
 
           case 'ROOM_CLEANUP_INCOMPLETE':
             setStatusMessage(
-              '❌ 旧ステージの削除を完了できませんでした。ホストに連絡し、時間をおいて再度お試しください。',
+              '❌ 旧ステージの削除を完了できませんでした。時間をおいて再度お試しください。',
             );
             return;
 
@@ -1286,9 +1421,7 @@ export default function FriendMatchSetup({
                   disabled={isLoading}
                   className="w-full rounded-2xl bg-indigo-600 px-4 py-3.5 text-sm font-black text-white shadow-lg shadow-indigo-200 transition hover:bg-indigo-700 disabled:cursor-not-allowed disabled:opacity-50"
                 >
-                  {isLoading
-                    ? 'ステージを確認中…'
-                    : 'ステージ作成'}
+                  {isLoading ? 'ステージを確認中…' : 'ステージ作成'}
                 </button>
 
                 <button
@@ -1334,15 +1467,11 @@ export default function FriendMatchSetup({
 
                 <button
                   type="button"
-                  onClick={() => {
-                    setMode('menu');
-                    setIsWaitingForGuest(false);
-                    setStatusMessage('');
-                    setRoomKey('');
-                  }}
-                  className="mt-5 w-full rounded-xl py-2.5 text-xs font-black text-slate-400 transition hover:bg-slate-100 hover:text-slate-700"
+                  onClick={() => void handleCancelWaitingRoom()}
+                  disabled={isLoading}
+                  className="mt-5 w-full rounded-xl py-2.5 text-xs font-black text-slate-400 transition hover:bg-slate-100 hover:text-slate-700 disabled:opacity-50"
                 >
-                  ステージをやめる
+                  {isLoading ? '終了処理中…' : 'ステージをやめる'}
                 </button>
               </div>
             )}
@@ -1371,9 +1500,7 @@ export default function FriendMatchSetup({
               disabled={isLoading}
               className="w-full rounded-2xl bg-emerald-600 px-4 py-3.5 text-sm font-black text-white shadow-lg shadow-emerald-200 transition hover:bg-emerald-700 disabled:cursor-not-allowed disabled:opacity-50"
             >
-              {isLoading
-                ? 'ステージを確認中…'
-                : 'ステージに入る'}
+              {isLoading ? 'ステージを確認中…' : 'ステージに入る'}
             </button>
 
             <button
