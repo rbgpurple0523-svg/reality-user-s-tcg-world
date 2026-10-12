@@ -2797,33 +2797,38 @@ export default function SupportCardGenerator({
                 </div>
               )}
 
-              {activeEditor ===
-                'flavor' && (
-                <div>
-                  <label className="mb-1 block text-xs font-bold">
-                    カードの一言
-                  </label>
+{activeEditor === 'flavor' && (
+  <div>
+    <label className="mb-1 block text-xs font-bold">
+      カードの一言
+    </label>
 
-                  <textarea
-                    value={
-                      flavorText
-                    }
-                    onChange={(e) =>
-                      setFlavorText(
-                        e.target.value,
-                      )
-                    }
-                    rows={6}
-                    maxLength={120}
-                    placeholder="このカードらしい一言をどうぞ。"
-                    className="w-full resize-none rounded-2xl border px-3 py-3 text-sm"
-                  />
+    <input
+      type="text"
+      value={flavorText}
+      onChange={(e) => {
+        const value = e.target.value;
 
-                  <p className="mt-1 text-[9px] text-gray-500">
-                    最大120文字。
-                  </p>
-                </div>
-              )}
+        if (/[\r\n]/.test(value)) {
+          setErrorMessage(
+            '一言には改行を使用できません。',
+          );
+          return;
+        }
+
+        setFlavorText(value);
+        setErrorMessage('');
+      }}
+      maxLength={120}
+      placeholder="このカードらしい一言をどうぞ。"
+      className="w-full rounded-2xl border px-3 py-3 text-sm"
+    />
+
+    <p className="mt-1 text-[9px] text-gray-500">
+      最大120文字。改行は使用できません。
+    </p>
+  </div>
+)}
             </div>
 
             <div className="shrink-0 space-y-2 border-t border-gray-200 p-3">
