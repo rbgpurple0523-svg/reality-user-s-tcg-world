@@ -4631,6 +4631,23 @@ if (
           const processedAt =
             Date.now();
 
+const nextPendingAction = {
+  actionId,
+  type: 'USE_SKILL' as const,
+  playerRole: actorRole,
+  uid: authUid,
+  year: currentYear,
+  turnIndex,
+  avatarIndex,
+  skillId: skill.id,
+  ...(requestedBoostStat
+    ? {
+        selectedBoostStat: requestedBoostStat,
+      }
+    : {}),
+  submittedAt: processedAt,
+};
+
           const lastSkillAction:
             LastSkillAction =
             {
@@ -4702,7 +4719,7 @@ if (
               lastSkillAction,
 
               pendingAction:
-                FieldValue.delete(),
+                nextPendingAction,
             },
           );
 
