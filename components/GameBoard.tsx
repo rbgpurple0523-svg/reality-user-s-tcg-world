@@ -3884,7 +3884,7 @@ setDeckConfirmed(false);
                           ),
                         colorHex:
                           getBattleVisualColorHex(
-                            opponentAvatar.card,
+                            oppActiveAvatar.card,
                           ),
                         side: 'right',
                       }),
