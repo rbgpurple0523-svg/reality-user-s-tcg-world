@@ -272,6 +272,7 @@ type BattleActionRequest = {
   skillId?: unknown;
   selectedBoostStat?: unknown;
   supportCardId?: unknown;
+  selectedSupportStat?: unknown;
 };
 
 const STAT_KEYS: StatKey[] = [
@@ -1150,6 +1151,7 @@ const calculateSupportEffectResult = (
   turnOrdinal: number,
   actionId: string,
   actorRole: PlayerRole,
+  selectedSupportStat?: StatKey,
 ) => {
   const actor =
     actorAvatars[
@@ -1488,13 +1490,18 @@ let nextTargetAvatars: BattleAvatar[] =
           ),
         );
 
+      const tiedStats = STAT_KEYS.filter(
+        (item) => targetEffective[item] === highest,
+      );
       const key =
-        STAT_KEYS.find(
-          (item) =>
-            targetEffective[
-              item
-            ] === highest,
-        ) || 'hp';
+        selectedSupportStat ??
+        (tiedStats.length === 1 ? tiedStats[0] : undefined);
+
+      if (!key || !tiedStats.includes(key)) {
+        throw new Error(
+          '同値の最高ステータスが複数あります。コピー対象を選択してください。',
+        );
+      }
 
       appendToActor({
         sourcePresetId:
@@ -1519,13 +1526,18 @@ let nextTargetAvatars: BattleAvatar[] =
           ),
         );
 
+      const tiedStats = STAT_KEYS.filter(
+        (item) => actorEffective[item] === lowest,
+      );
       const key =
-        STAT_KEYS.find(
-          (item) =>
-            actorEffective[
-              item
-            ] === lowest,
-        ) || 'hp';
+        selectedSupportStat ??
+        (tiedStats.length === 1 ? tiedStats[0] : undefined);
+
+      if (!key || !tiedStats.includes(key)) {
+        throw new Error(
+          '同値の最低ステータスが複数あります。コピー対象を選択してください。',
+        );
+      }
 
       appendToTarget({
         sourcePresetId:
@@ -1541,10 +1553,15 @@ let nextTargetAvatars: BattleAvatar[] =
           ),
       });
     } else {
+      const averageSource =
+        preset.id === 'emo_32'
+          ? targetEffective
+          : actorEffective;
+
       const average =
         Math.round(
           Object.values(
-            actorEffective,
+            averageSource,
           ).reduce(
             (
               sum,
@@ -2840,6 +2857,22 @@ export async function POST(
     const requestedSupportCardId =
       body.supportCardId;
 
+    const requestedSelectedSupportStat =
+      body.selectedSupportStat;
+
+    if (
+      requestedSelectedSupportStat !== undefined &&
+      !isStatKey(requestedSelectedSupportStat)
+    ) {
+      return NextResponse.json(
+        {
+          ok: false,
+          error: 'selectedSupportStatが不正です。',
+        },
+        { status: 400 },
+      );
+    }
+
     const requestedBoostStat =
       body.selectedBoostStat;
 
@@ -3860,6 +3893,16 @@ console.log(
               );
             }
 
+            if (
+              requestedSelectedSupportStat !== undefined &&
+              preset.id !== 'emo_29' &&
+              preset.id !== 'emo_30'
+            ) {
+              throw new Error(
+                'このサポートカードではステータス選択を指定できません。',
+              );
+            }
+
             let actorAvatars =
               actorData.avatars
                 ? [
@@ -3969,6 +4012,9 @@ console.log(
                 turnOrdinal,
                 actionId,
                 actorRole,
+                isStatKey(requestedSelectedSupportStat)
+                  ? requestedSelectedSupportStat
+                  : undefined,
               );
 
             const nextHand =
@@ -4530,7 +4576,9 @@ if (
               actorAvatar,
               opponentAvatar,
               turnOrdinal,
-              requestedBoostStat,
+              isStatKey(requestedBoostStat)
+                ? requestedBoostStat
+                : undefined,
             );
 
           actorAvatars[

@@ -1203,6 +1203,15 @@ const [isCpuExitConfirmOpen, setIsCpuExitConfirmOpen] =
   const [myDeck, setMyDeck] =
     useState<SupportCard[]>([]);
 
+  const [
+    pendingSupportCopyChoice,
+    setPendingSupportCopyChoice,
+  ] = useState<{
+    card: SupportCard;
+    index: number;
+    candidates: StatKey[];
+  } | null>(null);
+
   const [isDeckSelectOpen, setIsDeckSelectOpen] =
     useState(false);
 
@@ -4989,6 +4998,7 @@ console.log('[相手カードの色データ確認]', {
     selectedBoostStat?: StatKey;
 
     supportCardId?: string;
+    selectedSupportStat?: StatKey;
     supportPresetId?: string;
     supportFlavorText?: string;
     supportColorHex?: string;
@@ -5208,6 +5218,12 @@ console.log('[相手カードの色データ確認]', {
                       action.avatarIndex,
                     supportCardId:
                       action.supportCardId,
+                    ...(action.selectedSupportStat
+                      ? {
+                          selectedSupportStat:
+                            action.selectedSupportStat,
+                        }
+                      : {}),
                   },
                 ),
               },
@@ -7989,6 +8005,7 @@ if (
           currentYear,
           turnIndex,
         ),
+      selectedCopyStat?: StatKey,
     ) => {
       const preset =
         getEmotionPresetForCard(
@@ -8379,15 +8396,17 @@ if (
               ),
             );
 
-          const key =
-            STAT_KEYS.find(
+          const tiedStats =
+            STAT_KEYS.filter(
               (item) =>
-                targetEffective[
-                  item
-                ] ===
-                highest,
-            ) ||
-            'hp';
+                targetEffective[item] === highest,
+            );
+
+          const key =
+            selectedCopyStat &&
+            tiedStats.includes(selectedCopyStat)
+              ? selectedCopyStat
+              : tiedStats[0] || 'hp';
 
           addActorAvatarEffect(
             {
@@ -8416,15 +8435,17 @@ if (
               ),
             );
 
-          const key =
-            STAT_KEYS.find(
+          const tiedStats =
+            STAT_KEYS.filter(
               (item) =>
-                actorEffective[
-                  item
-                ] ===
-                lowest,
-            ) ||
-            'hp';
+                actorEffective[item] === lowest,
+            );
+
+          const key =
+            selectedCopyStat &&
+            tiedStats.includes(selectedCopyStat)
+              ? selectedCopyStat
+              : tiedStats[0] || 'hp';
 
           addTargetAvatarEffect(
             {
@@ -9154,59 +9175,39 @@ if (
                   ),
               );
 
+              const cpuAvatarsWithSupport =
+                oppAvatars.map(
+                  (avatar, index) =>
+                    index === activeIndex
+                      ? workingCpu
+                      : avatar,
+                );
+
               const cpuAvatarsAfterSupport =
                 applied.actorSupportControlEffect
                   ? applySupportControlToAllAvatars(
-                      oppAvatars,
+                      cpuAvatarsWithSupport,
                       applied.actorSupportControlEffect,
                       cpuTurnOrdinal,
-                    ).map(
-                      (
-                        avatar,
-                        index,
-                      ) =>
-                        index ===
-                        activeIndex
-                          ? workingCpu
-                          : avatar,
                     )
-                  : oppAvatars.map(
-                      (
-                        avatar,
-                        index,
-                      ) =>
-                        index ===
-                        activeIndex
-                          ? workingCpu
-                          : avatar,
-                    );
+                  : cpuAvatarsWithSupport;
+
+              const playerAvatarsWithSupport =
+                myAvatars.map(
+                  (avatar, index) =>
+                    index === activeIndex
+                      ? workingPlayer
+                      : avatar,
+                );
 
               const playerAvatarsAfterSupport =
                 applied.targetSupportControlEffect
                   ? applySupportControlToAllAvatars(
-                      myAvatars,
+                      playerAvatarsWithSupport,
                       applied.targetSupportControlEffect,
                       cpuTurnOrdinal,
-                    ).map(
-                      (
-                        avatar,
-                        index,
-                      ) =>
-                        index ===
-                        activeIndex
-                          ? workingPlayer
-                          : avatar,
                     )
-                  : myAvatars.map(
-                      (
-                        avatar,
-                        index,
-                      ) =>
-                        index ===
-                        activeIndex
-                          ? workingPlayer
-                          : avatar,
-                    );
+                  : playerAvatarsWithSupport;
 
               setOppAvatars(
                 cpuAvatarsAfterSupport,
@@ -9952,6 +9953,7 @@ if (
     async (
       card: SupportCard,
       index: number,
+      selectedCopyStat?: StatKey,
     ) => {
       if (
         !myTurn ||
@@ -9987,6 +9989,52 @@ if (
         getEmotionPresetForCard(
           card,
         );
+
+      if (
+        supportPreset &&
+        (supportPreset.id === 'emo_29' ||
+          supportPreset.id === 'emo_30')
+      ) {
+        const actorEffective = getEffectiveStats(
+          myActiveAvatar,
+          supportTurnOrdinal,
+        );
+        const targetEffective = getEffectiveStats(
+          oppActiveAvatar,
+          supportTurnOrdinal,
+        );
+        const values =
+          supportPreset.id === 'emo_29'
+            ? targetEffective
+            : actorEffective;
+        const extreme =
+          supportPreset.id === 'emo_29'
+            ? Math.max(...Object.values(values))
+            : Math.min(...Object.values(values));
+        const candidates = STAT_KEYS.filter(
+          (key) => values[key] === extreme,
+        );
+
+        if (
+          candidates.length > 1 &&
+          !selectedCopyStat
+        ) {
+          setPendingSupportCopyChoice({
+            card,
+            index,
+            candidates,
+          });
+          return;
+        }
+
+        if (
+          selectedCopyStat &&
+          !candidates.includes(selectedCopyStat)
+        ) {
+          addLog('⚠️ 選択したコピー対象が現在の候補と一致しません。');
+          return;
+        }
+      }
 
       const isFreeSupportCard =
         supportPreset?.effectCategory ===
@@ -10056,6 +10104,12 @@ if (
                   activeIndex,
                 supportCardId:
                   card.id,
+                ...(selectedCopyStat
+                  ? {
+                      selectedSupportStat:
+                        selectedCopyStat,
+                    }
+                  : {}),
               },
             );
 
@@ -10124,6 +10178,8 @@ if (
             card,
             myActiveAvatar,
             oppActiveAvatar,
+            supportTurnOrdinal,
+            selectedCopyStat,
           );
 
         let nextMyAvatars =
@@ -14362,6 +14418,54 @@ onClick={() => {
           )}
       </div>
 
+    {pendingSupportCopyChoice && (
+      <div className="fixed inset-0 z-[110] flex items-center justify-center bg-slate-950/65 p-4 backdrop-blur-sm">
+        <div
+          className="w-full max-w-md rounded-3xl bg-white p-5 shadow-2xl"
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="support-copy-choice-title"
+        >
+          <h2
+            id="support-copy-choice-title"
+            className="text-lg font-black text-slate-950"
+          >
+            コピーするステータスを選択
+          </h2>
+          <p className="mt-2 text-sm font-bold leading-relaxed text-slate-600">
+            同じ値のステータスが複数あります。効果を適用するステータスを選んでください。
+          </p>
+          <div className="mt-4 grid grid-cols-2 gap-2">
+            {pendingSupportCopyChoice.candidates.map((stat) => (
+              <button
+                key={stat}
+                type="button"
+                onClick={() => {
+                  const pending = pendingSupportCopyChoice;
+                  setPendingSupportCopyChoice(null);
+                  void handleUseSupportCard(
+                    pending.card,
+                    pending.index,
+                    stat,
+                  );
+                }}
+                className="rounded-2xl border border-indigo-200 bg-indigo-50 px-4 py-3 text-sm font-black text-indigo-900 transition hover:bg-indigo-100"
+              >
+                {STAT_LABELS[stat]}
+              </button>
+            ))}
+          </div>
+          <button
+            type="button"
+            onClick={() => setPendingSupportCopyChoice(null)}
+            className="mt-3 w-full rounded-2xl bg-slate-100 px-4 py-3 text-sm font-black text-slate-700"
+          >
+            キャンセル
+          </button>
+        </div>
+      </div>
+    )}
+
     {!isOnline && isCpuExitConfirmOpen && (
       <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/40 px-4">
         <div
@@ -14427,5 +14531,3 @@ onClick={() => {
     </div>
   );
 }
-
-// 作成日時: 202610110130
