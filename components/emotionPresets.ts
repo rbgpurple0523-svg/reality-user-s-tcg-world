@@ -24,6 +24,18 @@ export type EmotionEffectCategory =
   | '効果反射'
   | '技封印';
 
+export type EmotionEffectAttribute =
+  | 'stat-buff'
+  | 'stat-debuff'
+  | 'stat-copy'
+  | 'stat-average';
+
+export interface EmotionReflectionRule {
+  reflectAttribute: 'stat-buff' | 'stat-debuff';
+  sourceSide: 'self' | 'opponent';
+  destinationSide: 'self' | 'opponent';
+}
+
 export interface EmotionPreset {
   id: string;
   name: string;
@@ -36,6 +48,8 @@ export interface EmotionPreset {
   note?: string;
   emotionPhrase: string;
   emotionAxes: Record<EmotionAxisKey, number>;
+  effectAttribute?: EmotionEffectAttribute;
+  reflectionRule?: EmotionReflectionRule;
 }
 
 
@@ -84,6 +98,7 @@ export function getEmotionPerformanceBadges(
 }
 
 
+
 export function getEmotionFlavorText(preset: EmotionPreset): string {
   const [mainText] = preset.emotionPhrase.split('、', 1);
   return mainText.trim() || preset.emotionPhrase;
@@ -96,6 +111,7 @@ export const EMOTION_PRESETS: EmotionPreset[] = [
     emotionAxes: { challenge: 10, compassion: 95, temptation: 0, freedom: 0, philosophy: 0 },
     effectCategory: '情熱', statEffect: '情熱増加', effectAmount: '+20',
     description: '自分の情熱を増加させる。',
+    effectAttribute: 'stat-buff'
   },
   {
     id: 'emo_02', name: '一冊の本', duration: '一時', target: '自分',
@@ -103,6 +119,7 @@ export const EMOTION_PRESETS: EmotionPreset[] = [
     emotionAxes: { challenge: 5, compassion: 55, temptation: 0, freedom: 5, philosophy: 35 },
     effectCategory: '知性', statEffect: '知性増加', effectAmount: '+20',
     description: '自分の知性を増加させる。',
+    effectAttribute: 'stat-buff'
   },
   {
     id: 'emo_03', name: 'ファンアート', duration: '一時', target: '自分',
@@ -110,6 +127,7 @@ export const EMOTION_PRESETS: EmotionPreset[] = [
     emotionAxes: { challenge: 5, compassion: 55, temptation: 0, freedom: 25, philosophy: 15 },
     effectCategory: '技能', statEffect: '技能増加', effectAmount: '+20',
     description: '自分の技能を増加させる。',
+    effectAttribute: 'stat-buff'
   },
   {
     id: 'emo_04', name: 'スポットライト', duration: '一時', target: '自分',
@@ -117,6 +135,7 @@ export const EMOTION_PRESETS: EmotionPreset[] = [
     emotionAxes: { challenge: 10, compassion: 75, temptation: 10, freedom: 5, philosophy: 0 },
     effectCategory: '愛嬌', statEffect: '愛嬌増加', effectAmount: '+20',
     description: '自分の愛嬌を増加させる。',
+    effectAttribute: 'stat-buff'
   },
   {
     id: 'emo_05', name: '朝の一杯', duration: '一時', target: '自分',
@@ -124,6 +143,7 @@ export const EMOTION_PRESETS: EmotionPreset[] = [
     emotionAxes: { challenge: 0, compassion: 55, temptation: 0, freedom: 10, philosophy: 35 },
     effectCategory: '全ステータス', statEffect: '全ステータス増加', effectAmount: '+10',
     description: '自分の全ステータスを増加させる。',
+    effectAttribute: 'stat-buff'
   },
   {
     id: 'emo_06', name: '底なしの沼へようこそ', duration: '一時', target: '相手',
@@ -131,6 +151,7 @@ export const EMOTION_PRESETS: EmotionPreset[] = [
     emotionAxes: { challenge: 25, compassion: 0, temptation: 75, freedom: 0, philosophy: 0 },
     effectCategory: '情熱', statEffect: '情熱減少', effectAmount: '-20',
     description: '相手の情熱を減少させる。', note: '0を下回らない',
+    effectAttribute: 'stat-debuff'
   },
   {
     id: 'emo_07', name: '仕掛けられた謎', duration: '一時', target: '相手',
@@ -138,6 +159,7 @@ export const EMOTION_PRESETS: EmotionPreset[] = [
     emotionAxes: { challenge: 60, compassion: 0, temptation: 5, freedom: 0, philosophy: 35 },
     effectCategory: '知性', statEffect: '知性減少', effectAmount: '-20',
     description: '相手の知性を減少させる。', note: '0を下回らない',
+    effectAttribute: 'stat-debuff'
   },
   {
     id: 'emo_08', name: '万華鏡のきらめき', duration: '一時', target: '相手',
@@ -145,6 +167,7 @@ export const EMOTION_PRESETS: EmotionPreset[] = [
     emotionAxes: { challenge: 5, compassion: 5, temptation: 80, freedom: 10, philosophy: 0 },
     effectCategory: '技能', statEffect: '技能減少', effectAmount: '-20',
     description: '相手の技能を減少させる。', note: '0を下回らない',
+    effectAttribute: 'stat-debuff'
   },
   {
     id: 'emo_09', name: '我が家のテンポ', duration: '一時', target: '相手',
@@ -152,6 +175,7 @@ export const EMOTION_PRESETS: EmotionPreset[] = [
     emotionAxes: { challenge: 5, compassion: 10, temptation: 75, freedom: 30, philosophy: 0 },
     effectCategory: '愛嬌', statEffect: '愛嬌減少', effectAmount: '-20',
     description: '相手の愛嬌を減少させる。', note: '0を下回らない',
+    effectAttribute: 'stat-debuff'
   },
   {
     id: 'emo_10', name: '片道きっぷ', duration: '一時', target: '相手',
@@ -159,6 +183,7 @@ export const EMOTION_PRESETS: EmotionPreset[] = [
     emotionAxes: { challenge: 10, compassion: 25, temptation: 25, freedom: 40, philosophy: 0 },
     effectCategory: '全ステータス', statEffect: '全ステータス減少', effectAmount: '-10',
     description: '相手の全ステータスを減少させる。', note: '0を下回らない',
+    effectAttribute: 'stat-debuff'
   },
   {
     id: 'emo_11', name: 'あたたかいお茶', duration: '永続', target: '自分',
@@ -166,6 +191,7 @@ export const EMOTION_PRESETS: EmotionPreset[] = [
     emotionAxes: { challenge: 0, compassion: 90, temptation: 0, freedom: 10, philosophy: 0 },
     effectCategory: '情熱', statEffect: '情熱増加', effectAmount: '+10',
     description: '自分の情熱を増加させる。',
+    effectAttribute: 'stat-buff'
   },
   {
     id: 'emo_12', name: '使い込んだルーペ', duration: '永続', target: '自分',
@@ -173,6 +199,7 @@ export const EMOTION_PRESETS: EmotionPreset[] = [
     emotionAxes: { challenge: 0, compassion: 20, temptation: 0, freedom: 5, philosophy: 75 },
     effectCategory: '知性', statEffect: '知性増加', effectAmount: '+10',
     description: '自分の知性を増加させる。',
+    effectAttribute: 'stat-buff'
   },
   {
     id: 'emo_13', name: '宝物のスケッチブック', duration: '永続', target: '自分',
@@ -180,6 +207,7 @@ export const EMOTION_PRESETS: EmotionPreset[] = [
     emotionAxes: { challenge: 0, compassion: 15, temptation: 30, freedom: 10, philosophy: 75 },
     effectCategory: '技能', statEffect: '技能増加', effectAmount: '+10',
     description: '自分の技能を増加させる。',
+    effectAttribute: 'stat-buff'
   },
   {
     id: 'emo_14', name: 'サイン入り色紙', duration: '永続', target: '自分',
@@ -187,6 +215,7 @@ export const EMOTION_PRESETS: EmotionPreset[] = [
     emotionAxes: { challenge: 5, compassion: 20, temptation: 40, freedom: 5, philosophy: 30 },
     effectCategory: '愛嬌', statEffect: '愛嬌増加', effectAmount: '+10',
     description: '自分の愛嬌を増加させる。',
+    effectAttribute: 'stat-buff'
   },
   {
     id: 'emo_15', name: 'お守り', duration: '永続', target: '自分',
@@ -194,6 +223,7 @@ export const EMOTION_PRESETS: EmotionPreset[] = [
     emotionAxes: { challenge: 0, compassion: 90, temptation: 0, freedom: 0, philosophy: 10 },
     effectCategory: '全ステータス', statEffect: '全ステータス増加', effectAmount: '+5',
     description: '自分の全ステータスを増加させる。',
+    effectAttribute: 'stat-buff'
   },
   {
     id: 'emo_16', name: 'ヴィンテージの一品', duration: '永続', target: '相手',
@@ -201,6 +231,7 @@ export const EMOTION_PRESETS: EmotionPreset[] = [
     emotionAxes: { challenge: 20, compassion: 25, temptation: 0, freedom: 15, philosophy: 60 },
     effectCategory: '情熱', statEffect: '情熱減少', effectAmount: '-10',
     description: '相手の情熱を減少させる。', note: '0を下回らない',
+    effectAttribute: 'stat-debuff'
   },
   {
     id: 'emo_17', name: 'ダークホースの予感', duration: '永続', target: '相手',
@@ -208,6 +239,7 @@ export const EMOTION_PRESETS: EmotionPreset[] = [
     emotionAxes: { challenge: 10, compassion: 10, temptation: 10, freedom: 45, philosophy: 25 },
     effectCategory: '知性', statEffect: '知性減少', effectAmount: '-10',
     description: '相手の知性を減少させる。', note: '0を下回らない',
+    effectAttribute: 'stat-debuff'
   },
   {
     id: 'emo_18', name: '不器用な折り紙', duration: '永続', target: '相手',
@@ -215,6 +247,7 @@ export const EMOTION_PRESETS: EmotionPreset[] = [
     emotionAxes: { challenge: 25, compassion: 60, temptation: 0, freedom: 15, philosophy: 10 },
     effectCategory: '技能', statEffect: '技能減少', effectAmount: '-10',
     description: '相手の技能を減少させる。', note: '0を下回らない',
+    effectAttribute: 'stat-debuff'
   },
   {
     id: 'emo_19', name: '未開の白地図', duration: '永続', target: '相手',
@@ -222,6 +255,7 @@ export const EMOTION_PRESETS: EmotionPreset[] = [
     emotionAxes: { challenge: 5, compassion: 5, temptation: 15, freedom: 90, philosophy: 15 },
     effectCategory: '愛嬌', statEffect: '愛嬌減少', effectAmount: '-10',
     description: '相手の愛嬌を減少させる。', note: '0を下回らない',
+    effectAttribute: 'stat-debuff'
   },
   {
     id: 'emo_20', name: '雨のち晴れの予報', duration: '永続', target: '相手',
@@ -229,6 +263,7 @@ export const EMOTION_PRESETS: EmotionPreset[] = [
     emotionAxes: { challenge: 5, compassion: 10, temptation: 0, freedom: 65, philosophy: 15 },
     effectCategory: '全ステータス', statEffect: '全ステータス減少', effectAmount: '-5',
     description: '相手の全ステータスを減少させる。', note: '0を下回らない',
+    effectAttribute: 'stat-debuff'
   },
   {
     id: 'emo_21', name: 'ご褒美のお菓子', duration: '一時', target: '自分',
@@ -253,7 +288,7 @@ export const EMOTION_PRESETS: EmotionPreset[] = [
     note: 'この効果は永続的な使用数制限解放の効果に必ず勝つが、一時的な使用数制限解放の効果に必ず負ける。',
   },
   {
-    id: 'emo_24', name: '手出し無用の看板', duration: '一時', target: '相手',
+    id: 'emo_24', name: '手出し無用の看板', duration: '永続', target: '相手',
     emotionPhrase: '特別な2人の関係はそっと見守ろうぜ、というあなたに',
     emotionAxes: { challenge: 5, compassion: 60, temptation: 20, freedom: 15, philosophy: 0 },
     effectCategory: 'サポートカード使用数', statEffect: 'サポートカードの使用数を制限', effectAmount: '2枚まで',
@@ -297,6 +332,7 @@ export const EMOTION_PRESETS: EmotionPreset[] = [
     effectCategory: 'ステータスコピー・平均化', statEffect: '相手の最も高いステータスをコピーする',
     description: '相手の最も高いステータスを自分にコピーする。',
     note: '最も高いステータスが複数ある場合はいずれかを選択する。',
+    effectAttribute: 'stat-copy'
   },
   {
     id: 'emo_30', name: 'ツワモノのプライド', duration: '一時', target: '相手',
@@ -305,6 +341,7 @@ export const EMOTION_PRESETS: EmotionPreset[] = [
     effectCategory: 'ステータスコピー・平均化', statEffect: '自身の最も低いステータスをコピーさせる',
     description: '自分の最も低いステータスを相手にコピーさせる。',
     note: '最も低いステータスが複数ある場合はいずれかを選択する。',
+    effectAttribute: 'stat-copy'
   },
   {
     id: 'emo_31', name: '日めくりカレンダー', duration: '一時', target: '自分',
@@ -312,6 +349,7 @@ export const EMOTION_PRESETS: EmotionPreset[] = [
     emotionAxes: { challenge: 0, compassion: 30, temptation: 0, freedom: 40, philosophy: 60 },
     effectCategory: 'ステータスコピー・平均化', statEffect: '自分の全ステータスを自分の全ステータスの平均値にする',
     description: '自分の全ステータスを、自分の全ステータスの平均値にする。',
+    effectAttribute: 'stat-average'
   },
   {
     id: 'emo_32', name: '夕暮れの高台', duration: '一時', target: '相手',
@@ -319,6 +357,7 @@ export const EMOTION_PRESETS: EmotionPreset[] = [
     emotionAxes: { challenge: 0, compassion: 25, temptation: 0, freedom: 10, philosophy: 65 },
     effectCategory: 'ステータスコピー・平均化', statEffect: '相手の全ステータスを相手自身の全ステータスの平均値にする',
     description: '相手の全ステータスを、相手自身の全ステータスの平均値にする。',
+    effectAttribute: 'stat-average'
   },
   {
     id: 'emo_33', name: 'カウンターパンチ', duration: '一時', target: '自分・相手',
@@ -327,6 +366,11 @@ export const EMOTION_PRESETS: EmotionPreset[] = [
     effectCategory: '効果反射', statEffect: '自身にかけられているステータス減少効果を相手に反映させる',
     description: '使用時点で自身にかけられているすべてのサポートカードによるステータス減少効果を自身から無くし、相手のステータスに反映させる。',
     note: '平均化の効果・ステータスコピーの効果は対象外。',
+    reflectionRule: {
+      reflectAttribute: 'stat-debuff',
+      sourceSide: 'self',
+      destinationSide: 'opponent',
+    },
   },
   {
     id: 'emo_34', name: '反撃の狼煙', duration: '一時', target: '自分・相手',
@@ -335,6 +379,11 @@ export const EMOTION_PRESETS: EmotionPreset[] = [
     effectCategory: '効果反射', statEffect: '相手にかけられているステータス増加効果を自身に反映させる',
     description: '使用時点で相手にかけられているすべてのサポートカードによるステータス増加効果を相手から無くし、自身のステータスに反映させる。',
     note: '平均化の効果・ステータスコピーの効果は対象外。',
+    reflectionRule: {
+      reflectAttribute: 'stat-buff',
+      sourceSide: 'opponent',
+      destinationSide: 'self',
+    },
   },
   {
     id: 'emo_35', name: 'ゴング', duration: '一時', target: '相手',

@@ -59,6 +59,8 @@ type Skill = {
 type SupportAvatarEffectState = {
   id: string;
   sourcePresetId: string;
+  /** 効果を発生させたプレイヤー。旧データ互換のため optional。 */
+  appliedByRole?: PlayerRole;
   statDelta?: Partial<Record<StatKey, number>>;
   statOverride?: Partial<Record<StatKey, number>>;
   skillSealIndex?: number;
@@ -1085,75 +1087,60 @@ const applySupportControlToAllAvatars = (
     ),
   );
 
+type ReflectedSupportEffect = {
+  sourceEffectId: string;
+  reflectedEffect: SupportAvatarEffectState;
+};
+
+/**
+ * 指定された公式プリセット属性を持つ、有効なサポート効果だけを反射用に複製する。
+ * statOverride（コピー・平均化）や currentDebuff はこの処理の対象外。
+ */
 const cloneSupportDeltaEffects = (
-  effects:
-    | SupportAvatarEffectState[]
-    | undefined,
-  predicate: (
-    delta: number,
-  ) => boolean,
+  effects: SupportAvatarEffectState[] | undefined,
+  requiredAttribute: 'stat-buff' | 'stat-debuff',
+  requiredAppliedByRole: PlayerRole,
   turnOrdinal: number,
   actionId: string,
-): SupportAvatarEffectState[] =>
-  (effects ?? [])
-    .filter((effect) =>
-      isSupportEffectActive(
-        effect,
-        turnOrdinal,
-      ),
-    )
-    .map(
-      (
-        effect,
-        index,
-      ):
-        | SupportAvatarEffectState
-        | null => {
-        const filtered: Partial<
-          Record<
-            StatKey,
-            number
-          >
-        > = {};
+): ReflectedSupportEffect[] => {
+  const result: ReflectedSupportEffect[] = [];
 
-        for (const stat of STAT_KEYS) {
-          const value =
-            Number(
-              effect.statDelta?.[
-                stat
-              ] ?? 0,
-            );
+  for (const effect of effects ?? []) {
+    if (!isSupportEffectActive(effect, turnOrdinal)) continue;
 
-          if (
-            value !== 0 &&
-            predicate(value)
-          ) {
-            filtered[stat] = value;
-          }
-        }
+    // 古い状態に付与者情報がない場合は、誤反射を避けるため対象外にする。
+    if (effect.appliedByRole !== requiredAppliedByRole) continue;
 
-        if (
-          !Object.keys(
-            filtered,
-          ).length
-        ) {
-          return null;
-        }
-
-        return {
-          ...effect,
-          id: `${actionId}_reflect_${index}_${effect.id}`,
-          statDelta:
-            filtered,
-        };
-      },
-    )
-    .filter(
-      (
-        effect,
-      ): effect is SupportAvatarEffectState =>
-        effect !== null,
+    const sourcePreset = EMOTION_PRESETS.find(
+      (item) => item.id === effect.sourcePresetId,
     );
+    if (sourcePreset?.effectAttribute !== requiredAttribute) continue;
+
+    const filtered: Partial<Record<StatKey, number>> = {};
+    for (const stat of STAT_KEYS) {
+      const value = Number(effect.statDelta?.[stat] ?? 0);
+      if (
+        value !== 0 &&
+        (requiredAttribute === 'stat-debuff' ? value < 0 : value > 0)
+      ) {
+        filtered[stat] = value;
+      }
+    }
+
+    if (Object.keys(filtered).length === 0) continue;
+
+    result.push({
+      sourceEffectId: effect.id,
+      reflectedEffect: {
+        ...effect,
+        id: `${actionId}_reflect_${result.length}_${effect.id}`,
+        statDelta: filtered,
+      },
+    });
+  }
+
+  return result;
+};
 
 const calculateSupportEffectResult = (
   preset: EmotionPreset,
@@ -1162,6 +1149,7 @@ const calculateSupportEffectResult = (
   activeIndex: number,
   turnOrdinal: number,
   actionId: string,
+  actorRole: PlayerRole,
 ) => {
   const actor =
     actorAvatars[
@@ -1237,6 +1225,7 @@ let nextTargetAvatars: BattleAvatar[] =
         ],
         {
           ...effect,
+          appliedByRole: actorRole,
           id: `${actionId}_actor`,
         },
         turnOrdinal,
@@ -1258,6 +1247,7 @@ let nextTargetAvatars: BattleAvatar[] =
         ],
         {
           ...effect,
+          appliedByRole: actorRole,
           id: `${actionId}_target`,
         },
         turnOrdinal,
@@ -1608,115 +1598,63 @@ let nextTargetAvatars: BattleAvatar[] =
     preset.effectCategory ===
     '効果反射'
   ) {
-    if (
-      preset.id === 'emo_33'
-    ) {
-      const sourceEffects =
-        cloneSupportDeltaEffects(
-          actor.supportEffects,
-          (delta) =>
-            delta < 0,
-          turnOrdinal,
-          actionId,
-        );
+    const reflectionRule = preset.reflectionRule;
 
-      const sourceIds =
-        new Set(
-          sourceEffects.map(
-            (effect) =>
-              effect.id.split(
-                '_reflect_',
-              )[0],
-          ),
-        );
+    if (reflectionRule) {
+      const sourceAvatar =
+        reflectionRule.sourceSide === 'self'
+          ? actor
+          : target;
+      const sourceEffects = cloneSupportDeltaEffects(
+        sourceAvatar.supportEffects,
+        reflectionRule.reflectAttribute,
+        // The relevant effect must have been created by the opposing player.
+        getOpponentRole(actorRole),
+        turnOrdinal,
+        actionId,
+      );
 
-      nextActorAvatars[
-        activeIndex
-      ] = {
-        ...nextActorAvatars[
-          activeIndex
-        ],
-        supportEffects: (
-          nextActorAvatars[
-            activeIndex
-          ].supportEffects ??
-          []
-        ).filter(
-          (effect) =>
-            !sourceIds.has(
-              effect.id,
-            ),
-        ),
-      };
+      const sourceIds = new Set(
+        sourceEffects.map((item) => item.sourceEffectId),
+      );
 
-      for (
-        const effect of sourceEffects
-      ) {
-        nextTargetAvatars[
-          activeIndex
-        ] =
-          appendSupportAvatarEffect(
-            nextTargetAvatars[
-              activeIndex
-            ],
-            effect,
-            turnOrdinal,
-          );
-      }
-    } else if (
-      preset.id === 'emo_34'
-    ) {
-      const sourceEffects =
-        cloneSupportDeltaEffects(
-          target.supportEffects,
-          (delta) =>
-            delta > 0,
-          turnOrdinal,
-          actionId,
-        );
+      if (sourceIds.size > 0) {
+        if (reflectionRule.sourceSide === 'self') {
+          nextActorAvatars[activeIndex] = {
+            ...nextActorAvatars[activeIndex],
+            supportEffects: (
+              nextActorAvatars[activeIndex].supportEffects ?? []
+            ).filter((effect) => !sourceIds.has(effect.id)),
+          };
+        } else {
+          nextTargetAvatars[activeIndex] = {
+            ...nextTargetAvatars[activeIndex],
+            supportEffects: (
+              nextTargetAvatars[activeIndex].supportEffects ?? []
+            ).filter((effect) => !sourceIds.has(effect.id)),
+          };
+        }
 
-      const sourceIds =
-        new Set(
-          sourceEffects.map(
-            (effect) =>
-              effect.id.split(
-                '_reflect_',
-              )[0],
-          ),
-        );
+        const destination =
+          reflectionRule.destinationSide === 'self'
+            ? 'actor'
+            : 'target';
 
-      nextTargetAvatars[
-        activeIndex
-      ] = {
-        ...nextTargetAvatars[
-          activeIndex
-        ],
-        supportEffects: (
-          nextTargetAvatars[
-            activeIndex
-          ].supportEffects ??
-          []
-        ).filter(
-          (effect) =>
-            !sourceIds.has(
-              effect.id,
-            ),
-        ),
-      };
-
-      for (
-        const effect of sourceEffects
-      ) {
-        nextActorAvatars[
-          activeIndex
-        ] =
-          appendSupportAvatarEffect(
-            nextActorAvatars[
-              activeIndex
-            ],
-            effect,
-            turnOrdinal,
-          );
+        for (const item of sourceEffects) {
+          if (destination === 'actor') {
+            nextActorAvatars[activeIndex] = appendSupportAvatarEffect(
+              nextActorAvatars[activeIndex],
+              item.reflectedEffect,
+              turnOrdinal,
+            );
+          } else {
+            nextTargetAvatars[activeIndex] = appendSupportAvatarEffect(
+              nextTargetAvatars[activeIndex],
+              item.reflectedEffect,
+              turnOrdinal,
+            );
+          }
+        }
       }
     }
   } else if (
@@ -4030,6 +3968,7 @@ console.log(
                 requestedAvatarIndex,
                 turnOrdinal,
                 actionId,
+                actorRole,
               );
 
             const nextHand =
