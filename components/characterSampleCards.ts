@@ -36,7 +36,7 @@ const makeSkills = (code: string): [string, string, string, string] => {
     `${labels[rank[0]]}ブースト`,
     `${labels[rank[1]]}＋${labels[rank[2]]}スコア`,
     `${labels[rank[0]]}対抗スコア`,
-    `${labels[rank[1]]}＋${labels[rank[3]]}スコア`,
+    `${labels[rank[2]]}＋${labels[rank[3]]}スコア`,
   ];
 };
 

@@ -576,43 +576,24 @@ const getEffectiveStats = (
       }
     }
 
-    if (effect.statOverride) {
-      for (const key of STAT_KEYS) {
-        const override =
-          effect.statOverride[key];
-
-        if (
-          typeof override ===
-          'number'
-        ) {
-          result[key] = Math.max(
-            0,
-            override,
-          );
-        }
-      }
-    }
   }
 
   for (const key of STAT_KEYS) {
-    const debuff =
-      Number(
-        avatar.currentDebuff?.[
-          key
-        ] ?? 0,
-      );
+    const debuff = Number(avatar.currentDebuff?.[key] ?? 0);
+    const boost = Number(avatar.statBoost?.[key] ?? 1);
+    result[key] = Math.max(0, result[key] * boost - debuff);
+  }
 
-    const boost =
-      Number(
-        avatar.statBoost?.[key] ??
-          1,
-      );
-
-    result[key] = Math.max(
-      0,
-      result[key] * boost -
-        debuff,
-    );
+  // コピー・平均化の statOverride は有効ステータスの確定値。
+  // スキル④の倍率や既存デバフをコピー後に二重適用しない。
+  for (const effect of activeSupportEffects) {
+    if (!effect.statOverride) continue;
+    for (const key of STAT_KEYS) {
+      const override = effect.statOverride[key];
+      if (typeof override === 'number') {
+        result[key] = Math.max(0, override);
+      }
+    }
   }
 
   return result;
