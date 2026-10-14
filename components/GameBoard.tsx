@@ -43,12 +43,20 @@ import {
   getCharacterSkillBattleEffect,
   getSupportBattleEffect,
 } from './battle/battleEffectResolver';
+import {
+  calculateEffectiveStats,
+  isSupportEffectActive,
+  STAT_KEYS,
+  type PlayerRole,
+  type StatKey,
+  type SupportAvatarEffectState,
+  type SupportControlEffectState,
+} from '@/lib/battle/battleEngine';
 
 
 // ===== 対戦の基本設定 =====
 type Season = '春' | '夏' | '秋' | '冬';
 type RoleName = '先鋒' | '中堅' | '大将';
-type PlayerRole = 'host' | 'guest';
 type SkillRule =
   | 'primary_score'
   | 'product_score'
@@ -63,7 +71,6 @@ type SkillRule =
   | 'y_burst'
   | 'y_crash';
 
-type StatKey = 'hp' | 'intellect' | 'dexterity' | 'charm';
 type SkillType = 'score' | 'debuff_clear' | 'draw_score' | 'debuff_attack';
 
 const SEASONS: Season[] = ['春', '夏', '秋', '冬'];
@@ -72,7 +79,6 @@ const MAX_HAND = 7;
 const BATTLE_DECK_SIZE = 18;
 const INITIAL_HAND_SIZE = 4;
 
-const STAT_KEYS: StatKey[] = ['hp', 'intellect', 'dexterity', 'charm'];
 const STAT_LABELS: Record<StatKey, string> = {
   hp: '情熱',
   intellect: '知性',
@@ -294,25 +300,6 @@ function buildSkills(
 }
 
 // ===== Firebaseへ保存する戦闘キャラクター =====
-type SupportAvatarEffectState = {
-  id: string;
-  sourcePresetId: string;
-  statDelta?: Partial<Record<StatKey, number>>;
-  statOverride?: Partial<Record<StatKey, number>>;
-  skillSealIndex?: number;
-  expiresAtTurnOrdinal: number | null;
-};
-
-type SupportControlEffectState = {
-  id: string;
-  sourcePresetId: string;
-  duration: '一時' | '永続';
-  kind: 'limit' | 'free' | 'extra_draw';
-  maxUsesPerTurn?: number;
-  extraDrawPerTurn?: number;
-  expiresAtTurnOrdinal: number | null;
-};
-
 type BattleAvatar = {
   card: AvatarCard;
   roleName: RoleName;
@@ -363,13 +350,6 @@ const getBattleTurnOrdinal = (
     0,
     (year - 1) * 8 + turnIndex,
   );
-
-const isSupportEffectActive = (
-  effect: { expiresAtTurnOrdinal: number | null },
-  turnOrdinal: number,
-) =>
-  effect.expiresAtTurnOrdinal === null ||
-  turnOrdinal < effect.expiresAtTurnOrdinal;
 
 const getSupportEffectExpiration = (
   preset: EmotionPreset,
@@ -4442,146 +4422,8 @@ console.log('[相手カードの色データ確認]', {
         currentYear,
         turnIndex,
       ),
-  ) => {
-    const activeSupportEffects =
-      (
-        avatar.supportEffects ||
-        []
-      ).filter(
-        (effect) =>
-          isSupportEffectActive(
-            effect,
-            turnOrdinal,
-          ),
-      );
-
-    const baseStats =
-      avatar.baseStats ||
-      avatar.stats;
-
-    const supportStats = {
-      hp: Math.max(
-        0,
-        baseStats.hp,
-      ),
-      intellect:
-        Math.max(
-          0,
-          baseStats.intellect,
-        ),
-      dexterity:
-        Math.max(
-          0,
-          baseStats.dexterity,
-        ),
-      charm: Math.max(
-        0,
-        baseStats.charm,
-      ),
-    };
-
-    for (
-      const effect of activeSupportEffects
-    ) {
-      if (
-        effect.statDelta
-      ) {
-        for (
-          const stat of STAT_KEYS
-        ) {
-          supportStats[
-            stat
-          ] = Math.max(
-            0,
-            supportStats[
-              stat
-            ] +
-              Number(
-                effect
-                  .statDelta[
-                    stat
-                  ] || 0,
-              ),
-          );
-        }
-      }
-
-      if (
-        effect.statOverride
-      ) {
-        for (
-          const stat of STAT_KEYS
-        ) {
-          if (
-            typeof effect
-              .statOverride[
-                stat
-              ] ===
-            'number'
-          ) {
-            supportStats[
-              stat
-            ] = Math.max(
-              0,
-              Number(
-                effect
-                  .statOverride[
-                    stat
-                  ],
-              ),
-            );
-          }
-        }
-      }
-    }
-
-    return {
-      hp: Math.max(
-        0,
-        supportStats.hp *
-          (avatar
-            .statBoost
-            ?.hp || 1) -
-          avatar
-            .currentDebuff
-            .hp,
-      ),
-      intellect:
-        Math.max(
-          0,
-          supportStats.intellect *
-            (avatar
-              .statBoost
-              ?.intellect ||
-              1) -
-            avatar
-              .currentDebuff
-              .intellect,
-        ),
-      dexterity:
-        Math.max(
-          0,
-          supportStats.dexterity *
-            (avatar
-              .statBoost
-              ?.dexterity ||
-              1) -
-            avatar
-              .currentDebuff
-              .dexterity,
-        ),
-      charm: Math.max(
-        0,
-        supportStats.charm *
-          (avatar
-            .statBoost
-            ?.charm || 1) -
-          avatar
-            .currentDebuff
-            .charm,
-      ),
-    };
-  };
+  ): Record<StatKey, number> =>
+    calculateEffectiveStats(avatar, turnOrdinal);
 
   const previousTurnRef =
     useRef<string>('');
