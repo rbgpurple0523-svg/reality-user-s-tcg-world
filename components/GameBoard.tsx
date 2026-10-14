@@ -213,7 +213,7 @@ function buildPresetSkills(
         description: preset.skillDescriptions[0],
         maxUsesPerClass: 0,
         type: 'score',
-        rule: 'total_score',
+        rule: preset.code === 'n1' ? 'y_total_score' : 'total_score',
       },
       {
         id: 'skill_2',
@@ -221,7 +221,7 @@ function buildPresetSkills(
         description: preset.skillDescriptions[1],
         maxUsesPerClass: 0,
         type: 'score',
-        rule: 'response_score',
+        rule: preset.code === 'n1' ? 'y_response_score' : 'response_score',
       },
       {
         id: 'skill_3',
@@ -229,7 +229,7 @@ function buildPresetSkills(
         description: preset.skillDescriptions[2],
         maxUsesPerClass: 2,
         type: 'score',
-        rule: 'burst',
+        rule: preset.code === 'n1' ? 'y_burst' : 'burst',
       },
       {
         id: 'skill_4',
@@ -237,7 +237,7 @@ function buildPresetSkills(
         description: preset.skillDescriptions[3],
         maxUsesPerClass: 1,
         type: 'debuff_attack',
-        rule: 'crash',
+        rule: preset.code === 'n1' ? 'y_crash' : 'crash',
       },
     ];
   }
@@ -6493,7 +6493,11 @@ if (
     skill.rule ===
       'y_response_score' ||
     skill.rule ===
-      'y_burst'
+      'y_burst' ||
+    skill.rule ===
+      'response_score' ||
+    skill.rule ===
+      'burst'
   ) &&
   !selectedStatOverride
 ) {
@@ -6501,7 +6505,9 @@ if (
     skillId: skill.id,
     mode:
       skill.rule ===
-      'y_response_score'
+      'y_response_score' ||
+      skill.rule ===
+      'response_score'
         ? 'response'
         : 'burst',
   });
@@ -6868,8 +6874,8 @@ if (
             );
         }
       } else if (
-        skill.rule ===
-        'total_score'
+        skill.rule === 'total_score' ||
+        skill.rule === 'y_total_score'
       ) {
         gainedScore =
           Object.values(
@@ -6886,8 +6892,8 @@ if (
             0,
           ) * 10;
       } else if (
-        skill.rule ===
-        'response_score'
+        skill.rule === 'response_score' ||
+        skill.rule === 'y_response_score'
       ) {
         selectedBoostStat =
           selectedStatOverride ||
@@ -6912,8 +6918,8 @@ if (
               ),
           ) * 40;
       } else if (
-        skill.rule ===
-        'burst'
+        skill.rule === 'burst' ||
+        skill.rule === 'y_burst'
       ) {
         selectedBoostStat =
           selectedStatOverride ||
@@ -6974,8 +6980,8 @@ if (
                 : avatar,
           );
       } else if (
-        skill.rule ===
-        'crash'
+        skill.rule === 'crash' ||
+        skill.rule === 'y_crash'
       ) {
         const baseRank =
           STAT_KEYS.slice().sort(
@@ -8251,9 +8257,24 @@ if (
           throw new Error('同値のステータスが複数あります。コピー対象を選択してください。');
         }
 
+        const overrideSourceAvatar =
+          statResult.targetSide === 'actor'
+            ? nextActor
+            : nextTarget;
+        const includedStatDeltaIds = (
+          overrideSourceAvatar.supportEffects || []
+        )
+          .filter(
+            (effect) =>
+              isSupportEffectActive(effect, turnOrdinal) &&
+              Boolean(effect.statDelta),
+          )
+          .map((effect) => effect.id);
+
         const overrideEffect = {
           sourcePresetId: preset.id,
           statOverride: statResult.statOverride,
+          statDeltaIdsIncludedInOverride: includedStatDeltaIds,
           expiresAtTurnOrdinal: getSupportEffectExpiration(
             preset,
             turnOrdinal,
@@ -9256,8 +9277,8 @@ if (
                     0.5,
                 );
             } else if (
-              skill.rule ===
-              'total_score'
+              skill.rule === 'total_score' ||
+              skill.rule === 'y_total_score'
             ) {
               gainedScore =
                 Object.values(
@@ -9275,8 +9296,8 @@ if (
                   0,
                 ) * 10;
             } else if (
-              skill.rule ===
-              'response_score'
+              skill.rule === 'response_score' ||
+              skill.rule === 'y_response_score'
             ) {
               const responseStat =
                 cpuRank[0] ||
@@ -9293,8 +9314,8 @@ if (
                     ],
                 ) * 40;
             } else if (
-              skill.rule ===
-              'burst'
+              skill.rule === 'burst' ||
+              skill.rule === 'y_burst'
             ) {
               const boostStat =
                 cpuRank[0] ||
@@ -9334,8 +9355,8 @@ if (
                     },
                 };
             } else if (
-              skill.rule ===
-              'crash'
+              skill.rule === 'crash' ||
+              skill.rule === 'y_crash'
             ) {
               const cpuLowRank =
                 getLowEffectiveStatRank(
@@ -10148,6 +10169,32 @@ if (
                   prev +
                     applied.scoreDelta,
                 ),
+            );
+          }
+        }
+
+        if (
+          applied.targetScoreDelta !==
+          0
+        ) {
+          setOppClassScores(
+            (prev) => {
+              const next = [...prev];
+              next[activeIndex] = Math.max(
+                0,
+                (next[activeIndex] || 0) + applied.targetScoreDelta,
+              );
+              return next;
+            },
+          );
+
+          if (playerRole === 'host') {
+            setGuestTotalScore((prev) =>
+              Math.max(0, prev + applied.targetScoreDelta),
+            );
+          } else {
+            setHostTotalScore((prev) =>
+              Math.max(0, prev + applied.targetScoreDelta),
             );
           }
         }

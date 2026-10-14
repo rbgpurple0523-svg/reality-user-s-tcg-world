@@ -21,6 +21,8 @@ export type SupportAvatarEffectState = {
   appliedByRole?: PlayerRole;
   statDelta?: Partial<Record<StatKey, number>>;
   statOverride?: Partial<Record<StatKey, number>>;
+  /** statOverride のスナップショットに含まれている既存 statDelta 効果のID。平均化後に追加された補正だけを後段で反映する。 */
+  statDeltaIdsIncludedInOverride?: string[];
   skillSealIndex?: number;
   expiresAtTurnOrdinal: number | null;
 };
@@ -89,13 +91,30 @@ export const calculateEffectiveStats = (
     result[key] = Math.max(0, result[key] * boost - debuff);
   }
 
-  for (const effect of activeEffects) {
-    if (!effect.statOverride) continue;
-    for (const key of STAT_KEYS) {
-      const override = effect.statOverride[key];
+  // コピー／平均化の値は、その効果を適用した時点の有効値をスナップショットとして保持する。
+  // ただし、その後に追加されたサポート補正はスナップショットに隠されず反映する。
+  // ステータスごとに最後にその値を上書きした効果を採用するため、複数のコピー／平均化も共存できる。
+  for (const key of STAT_KEYS) {
+    let latestOverride: SupportAvatarEffectState | undefined;
+
+    for (const effect of activeEffects) {
+      const override = effect.statOverride?.[key];
       if (typeof override === 'number' && Number.isFinite(override)) {
-        result[key] = Math.max(0, override);
+        latestOverride = effect;
       }
+    }
+
+    if (!latestOverride) continue;
+
+    result[key] = Math.max(0, Number(latestOverride.statOverride?.[key] ?? 0));
+    const includedIds = new Set(latestOverride.statDeltaIdsIncludedInOverride ?? []);
+
+    for (const effect of activeEffects) {
+      if (!effect.statDelta || includedIds.has(effect.id)) continue;
+      result[key] = Math.max(
+        0,
+        result[key] + Number(effect.statDelta[key] ?? 0),
+      );
     }
   }
 

@@ -19,16 +19,20 @@ import {
   EMOTION_PRESETS,
   type EmotionPreset,
 } from '@/components/emotionPresets';
+import {
+  calculateEffectiveStats,
+  calculateSkillScore,
+  calculateSupportScoreDelta,
+  calculateSupportStatOverride,
+  isSupportEffectActive,
+  STAT_KEYS,
+  type PlayerRole,
+  type StatKey,
+  type SupportAvatarEffectState,
+  type SupportControlEffectState,
+} from '@/lib/battle/battleEngine';
 
 export const runtime = 'nodejs';
-
-type PlayerRole = 'host' | 'guest';
-
-type StatKey =
-  | 'hp'
-  | 'intellect'
-  | 'dexterity'
-  | 'charm';
 
 type SkillRule =
   | 'primary_score'
@@ -54,27 +58,6 @@ type Skill = {
   secondaryStat?: StatKey;
   tertiaryStat?: StatKey;
   maxUsesPerClass: number;
-};
-
-type SupportAvatarEffectState = {
-  id: string;
-  sourcePresetId: string;
-  /** 効果を発生させたプレイヤー。旧データ互換のため optional。 */
-  appliedByRole?: PlayerRole;
-  statDelta?: Partial<Record<StatKey, number>>;
-  statOverride?: Partial<Record<StatKey, number>>;
-  skillSealIndex?: number;
-  expiresAtTurnOrdinal: number | null;
-};
-
-type SupportControlEffectState = {
-  id: string;
-  sourcePresetId: string;
-  duration: '一時' | '永続';
-  kind: 'limit' | 'free' | 'extra_draw';
-  maxUsesPerTurn?: number;
-  extraDrawPerTurn?: number;
-  expiresAtTurnOrdinal: number | null;
 };
 
 type BattleAvatar = {
@@ -275,13 +258,6 @@ type BattleActionRequest = {
   selectedSupportStat?: unknown;
 };
 
-const STAT_KEYS: StatKey[] = [
-  'hp',
-  'intellect',
-  'dexterity',
-  'charm',
-];
-
 const CLASS_ROLE_NAMES = [
   'フェザークラス',
   'オーロラクラス',
@@ -303,15 +279,6 @@ const getBattleTurnOrdinal = (
     0,
     (year - 1) * 8 + turnIndex,
   );
-
-const isSupportEffectActive = (
-  effect: {
-    expiresAtTurnOrdinal: number | null;
-  },
-  turnOrdinal: number,
-) =>
-  effect.expiresAtTurnOrdinal === null ||
-  turnOrdinal < effect.expiresAtTurnOrdinal;
 
 const getSupportEffectExpiration = (
   preset: EmotionPreset,
@@ -517,10 +484,7 @@ const getEffectiveStats = (
   avatar: BattleAvatar,
   turnOrdinal: number,
 ): Record<StatKey, number> => {
-  const preset =
-    getCoordinatePresetForAvatar(
-      avatar,
-    );
+  const preset = getCoordinatePresetForAvatar(avatar);
 
   if (!preset) {
     throw new Error(
@@ -528,75 +492,11 @@ const getEffectiveStats = (
     );
   }
 
-  const sourceBaseStats =
-    avatar.baseStats ??
-    preset.stats;
-
-  const result: Record<
-    StatKey,
-    number
-  > = {
-    hp: Number(
-      sourceBaseStats.hp,
-    ),
-    intellect: Number(
-      sourceBaseStats.intellect,
-    ),
-    dexterity: Number(
-      sourceBaseStats.dexterity,
-    ),
-    charm: Number(
-      sourceBaseStats.charm,
-    ),
-  };
-
-  const activeSupportEffects =
-    (
-      avatar.supportEffects ??
-      []
-    ).filter(
-      (effect) =>
-        isSupportEffectActive(
-          effect,
-          turnOrdinal,
-        ),
-    );
-
-  for (const effect of activeSupportEffects) {
-    if (effect.statDelta) {
-      for (const key of STAT_KEYS) {
-        result[key] = Math.max(
-          0,
-          result[key] +
-            Number(
-              effect.statDelta[key] ??
-                0,
-            ),
-        );
-      }
-    }
-
-  }
-
-  for (const key of STAT_KEYS) {
-    const debuff = Number(avatar.currentDebuff?.[key] ?? 0);
-    const boost = Number(avatar.statBoost?.[key] ?? 1);
-    result[key] = Math.max(0, result[key] * boost - debuff);
-  }
-
-  // コピー・平均化の statOverride は有効ステータスの確定値。
-  // スキル④の倍率や既存デバフをコピー後に二重適用しない。
-  for (const effect of activeSupportEffects) {
-    if (!effect.statOverride) continue;
-    for (const key of STAT_KEYS) {
-      const override = effect.statOverride[key];
-      if (typeof override === 'number') {
-        result[key] = Math.max(0, override);
-      }
-    }
-  }
-
-  return result;
+  return calculateEffectiveStats(
+    avatar,
+    turnOrdinal,
+    avatar.baseStats ?? preset.stats,
+  );
 };
 
 const sanitizeFreshBattleAvatars = (
@@ -979,11 +879,22 @@ const calculateSkillResult = (
     );
   }
 
+  // スコアの最終値はCPU戦と共有する純粋関数で再計算する。
+  // デバフ／強化などの状態変更は上の既存処理で維持する。
+  gainedScore = calculateSkillScore({
+    rule: skill.rule,
+    effective,
+    targetEffective,
+    baseRank,
+    baseTargetStats,
+    primaryStat: skill.primaryStat,
+    secondaryStat: skill.secondaryStat,
+    tertiaryStat: skill.tertiaryStat,
+    selectedStat: selectedBoostStat,
+  });
+
   return {
-    gainedScore: Math.max(
-      0,
-      gainedScore,
-    ),
+    gainedScore,
     nextActor,
     nextTarget,
   };
@@ -1333,15 +1244,11 @@ let nextTargetAvatars: BattleAvatar[] =
     'スコア'
   ) {
     if (
-      preset.id === 'emo_21'
+      preset.id === 'emo_21' || preset.id === 'emo_22'
     ) {
-      actorScoreDelta =
-        Math.abs(amount);
-    } else if (
-      preset.id === 'emo_22'
-    ) {
-      targetScoreDelta =
-        -Math.abs(amount);
+      const scoreResult = calculateSupportScoreDelta(preset.id, amount);
+      actorScoreDelta = scoreResult.actorScoreDelta;
+      targetScoreDelta = scoreResult.targetScoreDelta;
     } else {
       throw new Error(
         '未定義のスコアサポートです。',
@@ -1461,136 +1368,56 @@ let nextTargetAvatars: BattleAvatar[] =
         turnOrdinal,
       );
 
-    if (
-      preset.id === 'emo_29'
-    ) {
-      const highest =
-        Math.max(
-          ...Object.values(
-            targetEffective,
-          ),
-        );
+    const statResult = calculateSupportStatOverride(
+      preset.id as 'emo_29' | 'emo_30' | 'emo_31' | 'emo_32',
+      actorEffective,
+      targetEffective,
+      selectedSupportStat,
+    );
 
-      const tiedStats = STAT_KEYS.filter(
-        (item) => targetEffective[item] === highest,
+    if (statResult.candidates && !statResult.selected) {
+      const extremeName = preset.id === 'emo_29' ? '最高' : '最低';
+      throw new Error(
+        `同値の${extremeName}ステータスが複数あります。コピー対象を選択してください。`,
       );
-      const key =
-        selectedSupportStat ??
-        (tiedStats.length === 1 ? tiedStats[0] : undefined);
+    }
 
-      if (!key || !tiedStats.includes(key)) {
-        throw new Error(
-          '同値の最高ステータスが複数あります。コピー対象を選択してください。',
-        );
-      }
+    // 平均化・コピーの対象は、効果適用後の最新配列から取得する。
+    // nextActor / nextTarget はこの関数内の変数ではないため、
+    // nextActorAvatars / nextTargetAvatars を参照する。
+    const overrideSourceAvatar: BattleAvatar =
+      (statResult.targetSide === 'actor'
+        ? nextActorAvatars[activeIndex]
+        : nextTargetAvatars[activeIndex]) ??
+      (statResult.targetSide === 'actor' ? actor : target);
 
-      appendToActor({
-        sourcePresetId:
-          preset.id,
-        statOverride: {
-          [key]: highest,
-        },
-        expiresAtTurnOrdinal:
-          getSupportEffectExpiration(
-            preset,
-            turnOrdinal,
-            false,
-          ),
-      });
-    } else if (
-      preset.id === 'emo_30'
-    ) {
-      const lowest =
-        Math.min(
-          ...Object.values(
-            actorEffective,
-          ),
-        );
-
-      const tiedStats = STAT_KEYS.filter(
-        (item) => actorEffective[item] === lowest,
+    const includedStatDeltaIds = (
+      overrideSourceAvatar.supportEffects ?? []
+    )
+      .filter(
+        (existingEffect: SupportAvatarEffectState) =>
+          isSupportEffectActive(existingEffect, turnOrdinal) &&
+          Boolean(existingEffect.statDelta),
+      )
+      .map(
+        (existingEffect: SupportAvatarEffectState) => existingEffect.id,
       );
-      const key =
-        selectedSupportStat ??
-        (tiedStats.length === 1 ? tiedStats[0] : undefined);
 
-      if (!key || !tiedStats.includes(key)) {
-        throw new Error(
-          '同値の最低ステータスが複数あります。コピー対象を選択してください。',
-        );
-      }
+    const effect = {
+      sourcePresetId: preset.id,
+      statOverride: statResult.statOverride,
+      statDeltaIdsIncludedInOverride: includedStatDeltaIds,
+      expiresAtTurnOrdinal: getSupportEffectExpiration(
+        preset,
+        turnOrdinal,
+        statResult.targetSide === 'target',
+      ),
+    };
 
-      appendToTarget({
-        sourcePresetId:
-          preset.id,
-        statOverride: {
-          [key]: lowest,
-        },
-        expiresAtTurnOrdinal:
-          getSupportEffectExpiration(
-            preset,
-            turnOrdinal,
-            true,
-          ),
-      });
+    if (statResult.targetSide === 'actor') {
+      appendToActor(effect);
     } else {
-      const averageSource =
-        preset.id === 'emo_32'
-          ? targetEffective
-          : actorEffective;
-
-      const average =
-        Math.round(
-          Object.values(
-            averageSource,
-          ).reduce(
-            (
-              sum,
-              value,
-            ) =>
-              sum + value,
-            0,
-          ) / 4,
-        );
-
-      const override = {
-        hp: average,
-        intellect: average,
-        dexterity: average,
-        charm: average,
-      };
-
-      if (
-        preset.id === 'emo_31'
-      ) {
-        appendToActor({
-          sourcePresetId:
-            preset.id,
-          statOverride:
-            override,
-          expiresAtTurnOrdinal:
-            getSupportEffectExpiration(
-              preset,
-              turnOrdinal,
-              false,
-            ),
-        });
-      } else if (
-        preset.id === 'emo_32'
-      ) {
-        appendToTarget({
-          sourcePresetId:
-            preset.id,
-          statOverride:
-            override,
-          expiresAtTurnOrdinal:
-            getSupportEffectExpiration(
-              preset,
-              turnOrdinal,
-              true,
-            ),
-        });
-      }
+      appendToTarget(effect);
     }
   } else if (
     preset.effectCategory ===
