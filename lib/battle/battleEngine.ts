@@ -14,6 +14,19 @@ export const STAT_KEYS: readonly StatKey[] = [
   'charm',
 ];
 
+/**
+ * 期限付き効果が終了したことを表すイベント。
+ * eventId は同じ効果の期限切れを二重処理しないための冪等キー。
+ */
+export type SupportEffectExpirationEvent = {
+  eventId: string;
+  type: 'support_effect_expired';
+  effectId: string;
+  sourcePresetId: string;
+  turnOrdinal: number;
+  statDelta?: Partial<Record<StatKey, number>>;
+};
+
 export type SupportAvatarEffectState = {
   id: string;
   sourcePresetId: string;
@@ -21,7 +34,7 @@ export type SupportAvatarEffectState = {
   appliedByRole?: PlayerRole;
   statDelta?: Partial<Record<StatKey, number>>;
   statOverride?: Partial<Record<StatKey, number>>;
-  /** statOverride のスナップショットに含まれている既存 statDelta 効果のID。平均化後に追加された補正だけを後段で反映する。 */
+  /** statOverride のスナップショットに含まれている既存 statDelta 効果のID。期限切れ時の調整にも使用する。 */
   statDeltaIdsIncludedInOverride?: string[];
   skillSealIndex?: number;
   expiresAtTurnOrdinal: number | null;
@@ -43,6 +56,39 @@ export type BattleStatState = {
   currentDebuff?: Partial<Record<StatKey, number>>;
   statBoost?: Partial<Record<StatKey, number>>;
   supportEffects?: SupportAvatarEffectState[];
+};
+
+/**
+ * 指定ターンまでに期限切れとなった効果について、未記録の終了イベントを生成する。
+ * 呼び出し側は返されたイベントを対戦状態に保存し、再処理時に recordedEventIds へ渡す。
+ */
+export const collectSupportEffectExpirationEvents = (
+  effects: readonly SupportAvatarEffectState[],
+  turnOrdinal: number,
+  recordedEventIds: readonly string[] = [],
+): SupportEffectExpirationEvent[] => {
+  const recorded = new Set(recordedEventIds);
+
+  return effects.flatMap((effect) => {
+    if (
+      effect.expiresAtTurnOrdinal === null ||
+      turnOrdinal < effect.expiresAtTurnOrdinal
+    ) {
+      return [];
+    }
+
+    const eventId = `${effect.id}:expired:${effect.expiresAtTurnOrdinal}`;
+    if (recorded.has(eventId)) return [];
+
+    return [{
+      eventId,
+      type: 'support_effect_expired' as const,
+      effectId: effect.id,
+      sourcePresetId: effect.sourcePresetId,
+      turnOrdinal: effect.expiresAtTurnOrdinal,
+      ...(effect.statDelta ? { statDelta: { ...effect.statDelta } } : {}),
+    }];
+  });
 };
 
 export const isSupportEffectActive = (
@@ -109,6 +155,21 @@ export const calculateEffectiveStats = (
     result[key] = Math.max(0, Number(latestOverride.statOverride?.[key] ?? 0));
     const includedIds = new Set(latestOverride.statDeltaIdsIncludedInOverride ?? []);
 
+    // スナップショットに含まれていた一時効果が後から期限切れになった場合、
+    // 平均化自体はやり直さず、その効果の差分だけをスナップショットから取り除く。
+    // statDelta は符号付きなので、-15 のデバフが切れた場合は -(-15) = +15 となる。
+    for (const effect of avatar.supportEffects ?? []) {
+      if (!effect.statDelta || !includedIds.has(effect.id)) continue;
+      if (isSupportEffectActive(effect, turnOrdinal)) continue;
+      if (effect.expiresAtTurnOrdinal === null) continue;
+
+      result[key] = Math.max(
+        0,
+        result[key] - Number(effect.statDelta[key] ?? 0),
+      );
+    }
+
+    // スナップショット作成後に付与された、現在も有効な効果は後段で反映する。
     for (const effect of activeEffects) {
       if (!effect.statDelta || includedIds.has(effect.id)) continue;
       result[key] = Math.max(
