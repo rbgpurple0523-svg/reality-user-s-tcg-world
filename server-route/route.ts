@@ -21,6 +21,7 @@ import {
 } from '@/components/emotionPresets';
 import {
   calculateEffectiveStats,
+  calculateSkillScore,
   isSupportEffectActive,
   STAT_KEYS,
   type PlayerRole,
@@ -876,11 +877,22 @@ const calculateSkillResult = (
     );
   }
 
+  // スコアの最終値はCPU戦と共有する純粋関数で再計算する。
+  // デバフ／強化などの状態変更は上の既存処理で維持する。
+  gainedScore = calculateSkillScore({
+    rule: skill.rule,
+    effective,
+    targetEffective,
+    baseRank,
+    baseTargetStats,
+    primaryStat: skill.primaryStat,
+    secondaryStat: skill.secondaryStat,
+    tertiaryStat: skill.tertiaryStat,
+    selectedStat: selectedBoostStat,
+  });
+
   return {
-    gainedScore: Math.max(
-      0,
-      gainedScore,
-    ),
+    gainedScore,
     nextActor,
     nextTarget,
   };

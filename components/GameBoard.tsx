@@ -45,6 +45,7 @@ import {
 } from './battle/battleEffectResolver';
 import {
   calculateEffectiveStats,
+  calculateSkillScore,
   isSupportEffectActive,
   STAT_KEYS,
   type PlayerRole,
@@ -7119,6 +7120,27 @@ if (
         }
       }
 
+      const sharedBaseRank =
+        STAT_KEYS.slice().sort(
+          (a, b) =>
+            Number(baseStats[b] ?? 0) -
+            Number(baseStats[a] ?? 0),
+        );
+
+      // CPU戦・オンライン戦で共有する計算をスコアの最終値に適用する。
+      // デバフ／強化の付与とstate更新はこの関数の既存処理を維持する。
+      gainedScore = calculateSkillScore({
+        rule: skill.rule,
+        effective,
+        targetEffective: opponentEffective,
+        baseRank: sharedBaseRank,
+        baseTargetStats: opponentBaseStats,
+        primaryStat: skill.primaryStat,
+        secondaryStat: skill.secondaryStat,
+        tertiaryStat: skill.tertiaryStat,
+        selectedStat: selectedBoostStat ?? undefined,
+      });
+
       const nextUsed = {
         ...usedSkillsByClass,
         [usedKey]:
@@ -9510,6 +9532,17 @@ if (
                 effective.hp *
                 10;
             }
+
+            gainedScore = calculateSkillScore({
+              rule: skill.rule,
+              effective,
+              targetEffective: opponentEffective,
+              baseRank: cpuRank,
+              baseTargetStats: playerBaseStats,
+              primaryStat: skill.primaryStat,
+              secondaryStat: skill.secondaryStat,
+              tertiaryStat: skill.tertiaryStat,
+            });
 
             const cpuSkillPreset =
               getPresetForCard(
