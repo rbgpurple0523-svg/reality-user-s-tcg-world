@@ -202,3 +202,65 @@ export const calculateSkillScore = ({
 
   return Math.max(0, Number.isFinite(score) ? score : 0);
 };
+
+
+export type ExtremeStatResult = {
+  value: number;
+  candidates: StatKey[];
+  selected?: StatKey;
+};
+
+/** 最大／最小ステータスと同値候補を共通計算する。 */
+export const calculateExtremeStatCandidates = (
+  stats: Record<StatKey, number>,
+  mode: 'highest' | 'lowest',
+  selected?: StatKey,
+): ExtremeStatResult => {
+  const values = STAT_KEYS.map((key) => Number(stats[key] ?? 0));
+  const value = mode === 'highest' ? Math.max(...values) : Math.min(...values);
+  const candidates = STAT_KEYS.filter((key) => Number(stats[key] ?? 0) === value);
+  const selectedKey = selected && candidates.includes(selected)
+    ? selected
+    : candidates.length === 1 ? candidates[0] : undefined;
+  return { value, candidates, selected: selectedKey };
+};
+
+/** コピー・平均化効果が確定した有効値を、statOverride形式で返す。 */
+export const calculateSupportStatOverride = (
+  presetId: 'emo_29' | 'emo_30' | 'emo_31' | 'emo_32',
+  actorEffective: Record<StatKey, number>,
+  targetEffective: Record<StatKey, number>,
+  selected?: StatKey,
+): { targetSide: 'actor' | 'target'; statOverride: Partial<Record<StatKey, number>>; candidates?: StatKey[]; selected?: StatKey; value?: number } => {
+  if (presetId === 'emo_29' || presetId === 'emo_30') {
+    const source = presetId === 'emo_29' ? targetEffective : actorEffective;
+    const extreme = calculateExtremeStatCandidates(source, presetId === 'emo_29' ? 'highest' : 'lowest', selected);
+    if (!extreme.selected) {
+      return { targetSide: presetId === 'emo_29' ? 'actor' : 'target', statOverride: {}, candidates: extreme.candidates, value: extreme.value };
+    }
+    return {
+      targetSide: presetId === 'emo_29' ? 'actor' : 'target',
+      statOverride: { [extreme.selected]: extreme.value },
+      candidates: extreme.candidates,
+      selected: extreme.selected,
+      value: extreme.value,
+    };
+  }
+
+  const source = presetId === 'emo_32' ? targetEffective : actorEffective;
+  const average = Math.round(STAT_KEYS.reduce((sum, key) => sum + Number(source[key] ?? 0), 0) / STAT_KEYS.length);
+  return {
+    targetSide: presetId === 'emo_32' ? 'target' : 'actor',
+    statOverride: { hp: average, intellect: average, dexterity: average, charm: average },
+    value: average,
+  };
+};
+
+/** スコア系サポートカードの増減値を共通化する。適用時の下限処理は状態更新側で行う。 */
+export const calculateSupportScoreDelta = (
+  presetId: 'emo_21' | 'emo_22',
+  amount: number,
+): { actorScoreDelta: number; targetScoreDelta: number } => ({
+  actorScoreDelta: presetId === 'emo_21' ? Math.abs(amount) : 0,
+  targetScoreDelta: presetId === 'emo_22' ? -Math.abs(amount) : 0,
+});

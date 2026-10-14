@@ -22,6 +22,8 @@ import {
 import {
   calculateEffectiveStats,
   calculateSkillScore,
+  calculateSupportScoreDelta,
+  calculateSupportStatOverride,
   isSupportEffectActive,
   STAT_KEYS,
   type PlayerRole,
@@ -1242,15 +1244,11 @@ let nextTargetAvatars: BattleAvatar[] =
     'スコア'
   ) {
     if (
-      preset.id === 'emo_21'
+      preset.id === 'emo_21' || preset.id === 'emo_22'
     ) {
-      actorScoreDelta =
-        Math.abs(amount);
-    } else if (
-      preset.id === 'emo_22'
-    ) {
-      targetScoreDelta =
-        -Math.abs(amount);
+      const scoreResult = calculateSupportScoreDelta(preset.id, amount);
+      actorScoreDelta = scoreResult.actorScoreDelta;
+      targetScoreDelta = scoreResult.targetScoreDelta;
     } else {
       throw new Error(
         '未定義のスコアサポートです。',
@@ -1370,136 +1368,34 @@ let nextTargetAvatars: BattleAvatar[] =
         turnOrdinal,
       );
 
-    if (
-      preset.id === 'emo_29'
-    ) {
-      const highest =
-        Math.max(
-          ...Object.values(
-            targetEffective,
-          ),
-        );
+    const statResult = calculateSupportStatOverride(
+      preset.id as 'emo_29' | 'emo_30' | 'emo_31' | 'emo_32',
+      actorEffective,
+      targetEffective,
+      selectedSupportStat,
+    );
 
-      const tiedStats = STAT_KEYS.filter(
-        (item) => targetEffective[item] === highest,
+    if (statResult.candidates && !statResult.selected) {
+      const extremeName = preset.id === 'emo_29' ? '最高' : '最低';
+      throw new Error(
+        `同値の${extremeName}ステータスが複数あります。コピー対象を選択してください。`,
       );
-      const key =
-        selectedSupportStat ??
-        (tiedStats.length === 1 ? tiedStats[0] : undefined);
+    }
 
-      if (!key || !tiedStats.includes(key)) {
-        throw new Error(
-          '同値の最高ステータスが複数あります。コピー対象を選択してください。',
-        );
-      }
+    const effect = {
+      sourcePresetId: preset.id,
+      statOverride: statResult.statOverride,
+      expiresAtTurnOrdinal: getSupportEffectExpiration(
+        preset,
+        turnOrdinal,
+        statResult.targetSide === 'target',
+      ),
+    };
 
-      appendToActor({
-        sourcePresetId:
-          preset.id,
-        statOverride: {
-          [key]: highest,
-        },
-        expiresAtTurnOrdinal:
-          getSupportEffectExpiration(
-            preset,
-            turnOrdinal,
-            false,
-          ),
-      });
-    } else if (
-      preset.id === 'emo_30'
-    ) {
-      const lowest =
-        Math.min(
-          ...Object.values(
-            actorEffective,
-          ),
-        );
-
-      const tiedStats = STAT_KEYS.filter(
-        (item) => actorEffective[item] === lowest,
-      );
-      const key =
-        selectedSupportStat ??
-        (tiedStats.length === 1 ? tiedStats[0] : undefined);
-
-      if (!key || !tiedStats.includes(key)) {
-        throw new Error(
-          '同値の最低ステータスが複数あります。コピー対象を選択してください。',
-        );
-      }
-
-      appendToTarget({
-        sourcePresetId:
-          preset.id,
-        statOverride: {
-          [key]: lowest,
-        },
-        expiresAtTurnOrdinal:
-          getSupportEffectExpiration(
-            preset,
-            turnOrdinal,
-            true,
-          ),
-      });
+    if (statResult.targetSide === 'actor') {
+      appendToActor(effect);
     } else {
-      const averageSource =
-        preset.id === 'emo_32'
-          ? targetEffective
-          : actorEffective;
-
-      const average =
-        Math.round(
-          Object.values(
-            averageSource,
-          ).reduce(
-            (
-              sum,
-              value,
-            ) =>
-              sum + value,
-            0,
-          ) / 4,
-        );
-
-      const override = {
-        hp: average,
-        intellect: average,
-        dexterity: average,
-        charm: average,
-      };
-
-      if (
-        preset.id === 'emo_31'
-      ) {
-        appendToActor({
-          sourcePresetId:
-            preset.id,
-          statOverride:
-            override,
-          expiresAtTurnOrdinal:
-            getSupportEffectExpiration(
-              preset,
-              turnOrdinal,
-              false,
-            ),
-        });
-      } else if (
-        preset.id === 'emo_32'
-      ) {
-        appendToTarget({
-          sourcePresetId:
-            preset.id,
-          statOverride:
-            override,
-          expiresAtTurnOrdinal:
-            getSupportEffectExpiration(
-              preset,
-              turnOrdinal,
-              true,
-            ),
-        });
-      }
+      appendToTarget(effect);
     }
   } else if (
     preset.effectCategory ===

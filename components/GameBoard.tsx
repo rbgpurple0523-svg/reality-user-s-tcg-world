@@ -46,6 +46,8 @@ import {
 import {
   calculateEffectiveStats,
   calculateSkillScore,
+  calculateSupportScoreDelta,
+  calculateSupportStatOverride,
   isSupportEffectActive,
   STAT_KEYS,
   type PlayerRole,
@@ -8166,23 +8168,12 @@ if (
         preset.effectCategory ===
         'スコア'
       ) {
-        if (
-          preset.target ===
-          '自分'
-        ) {
-          scoreDelta =
-            Math.abs(
-              amount,
-            );
-        } else if (
-          preset.target ===
-          '相手'
-        ) {
-          targetScoreDelta =
-            -Math.abs(
-              amount,
-            );
-        }
+        const scoreResult =
+          preset.id === 'emo_21' || preset.id === 'emo_22'
+            ? calculateSupportScoreDelta(preset.id, amount)
+            : { actorScoreDelta: 0, targetScoreDelta: 0 };
+        scoreDelta = scoreResult.actorScoreDelta;
+        targetScoreDelta = scoreResult.targetScoreDelta;
       } else if (
         preset.effectCategory ===
         'サポートカード使用数'
@@ -8249,168 +8240,31 @@ if (
             turnOrdinal,
           );
 
-        if (
-          preset.id ===
-          'emo_29'
-        ) {
-          const highest =
-            Math.max(
-              ...Object.values(
-                targetEffective,
-              ),
-            );
+        const statResult = calculateSupportStatOverride(
+          preset.id as 'emo_29' | 'emo_30' | 'emo_31' | 'emo_32',
+          actorEffective,
+          targetEffective,
+          selectedCopyStat,
+        );
 
-          const tiedStats =
-            STAT_KEYS.filter(
-              (item) =>
-                targetEffective[item] === highest,
-            );
+        if (statResult.candidates && !statResult.selected) {
+          throw new Error('同値のステータスが複数あります。コピー対象を選択してください。');
+        }
 
-          const key =
-            selectedCopyStat &&
-            tiedStats.includes(selectedCopyStat)
-              ? selectedCopyStat
-              : tiedStats[0] || 'hp';
+        const overrideEffect = {
+          sourcePresetId: preset.id,
+          statOverride: statResult.statOverride,
+          expiresAtTurnOrdinal: getSupportEffectExpiration(
+            preset,
+            turnOrdinal,
+            statResult.targetSide === 'target',
+          ),
+        };
 
-          addActorAvatarEffect(
-            {
-              sourcePresetId:
-                preset.id,
-              statOverride: {
-                [key]:
-                  highest,
-              },
-              expiresAtTurnOrdinal:
-                getSupportEffectExpiration(
-                  preset,
-                  turnOrdinal,
-                  false,
-                ),
-            },
-          );
-        } else if (
-          preset.id ===
-          'emo_30'
-        ) {
-          const lowest =
-            Math.min(
-              ...Object.values(
-                actorEffective,
-              ),
-            );
-
-          const tiedStats =
-            STAT_KEYS.filter(
-              (item) =>
-                actorEffective[item] === lowest,
-            );
-
-          const key =
-            selectedCopyStat &&
-            tiedStats.includes(selectedCopyStat)
-              ? selectedCopyStat
-              : tiedStats[0] || 'hp';
-
-          addTargetAvatarEffect(
-            {
-              sourcePresetId:
-                preset.id,
-              statOverride: {
-                [key]:
-                  lowest,
-              },
-              expiresAtTurnOrdinal:
-                getSupportEffectExpiration(
-                  preset,
-                  turnOrdinal,
-                  true,
-                ),
-            },
-          );
-        } else if (
-          preset.id ===
-          'emo_31'
-        ) {
-          const average =
-            Math.round(
-              Object.values(
-                actorEffective,
-              ).reduce(
-                (
-                  sum,
-                  value,
-                ) =>
-                  sum +
-                  value,
-                0,
-              ) / 4,
-            );
-
-          addActorAvatarEffect(
-            {
-              sourcePresetId:
-                preset.id,
-              statOverride:
-                {
-                  hp:
-                    average,
-                  intellect:
-                    average,
-                  dexterity:
-                    average,
-                  charm:
-                    average,
-                },
-              expiresAtTurnOrdinal:
-                getSupportEffectExpiration(
-                  preset,
-                  turnOrdinal,
-                  false,
-                ),
-            },
-          );
-        } else if (
-          preset.id ===
-          'emo_32'
-        ) {
-          const average =
-            Math.round(
-              Object.values(
-                targetEffective,
-              ).reduce(
-                (
-                  sum,
-                  value,
-                ) =>
-                  sum +
-                  value,
-                0,
-              ) / 4,
-            );
-
-          addTargetAvatarEffect(
-            {
-              sourcePresetId:
-                preset.id,
-              statOverride:
-                {
-                  hp:
-                    average,
-                  intellect:
-                    average,
-                  dexterity:
-                    average,
-                  charm:
-                    average,
-                },
-              expiresAtTurnOrdinal:
-                getSupportEffectExpiration(
-                  preset,
-                  turnOrdinal,
-                  true,
-                ),
-            },
-          );
+        if (statResult.targetSide === 'actor') {
+          addActorAvatarEffect(overrideEffect);
+        } else {
+          addTargetAvatarEffect(overrideEffect);
         }
       } else if (
         preset.effectCategory ===
