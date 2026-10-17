@@ -263,6 +263,7 @@ type BattleActionRequest = {
   selectedBoostStat?: unknown;
   supportCardId?: unknown;
   selectedSupportStat?: unknown;
+  deckId?: unknown;
 };
 
 const CLASS_ROLE_NAMES = [
@@ -2496,6 +2497,8 @@ export async function POST(
       body.type !==
         'START_BATTLE' &&
       body.type !==
+        'VALIDATE_DECK' &&
+      body.type !==
         'REMATCH_RESET'
     ) {
       return NextResponse.json(
@@ -2730,6 +2733,105 @@ export async function POST(
               roomData.turnIndex ??
                 0,
             );
+
+          if (
+            body.type ===
+            'VALIDATE_DECK'
+          ) {
+            if (
+              roomData.battlePhase !==
+              'setup'
+            ) {
+              throw new Error(
+                'チームを確認できる準備状態ではありません。',
+              );
+            }
+
+            if (
+              typeof body.deckId !== 'string' ||
+              !body.deckId
+            ) {
+              throw new Error(
+                '選択したチームIDが不正です。',
+              );
+            }
+
+            const playerRole: PlayerRole | null =
+              roomData.hostUid === authUid
+                ? 'host'
+                : roomData.guestUid === authUid
+                  ? 'guest'
+                  : null;
+
+            if (!playerRole) {
+              throw new Error(
+                'このルームの参加者ではありません。',
+              );
+            }
+
+            const privatePlayerRef = roomRef
+              .collection('privatePlayers')
+              .doc(playerRole);
+            const privatePlayerSnapshot = await transaction.get(
+              privatePlayerRef,
+            );
+
+            if (!privatePlayerSnapshot.exists) {
+              throw new Error(
+                '対戦用チーム情報が保存されていません。',
+              );
+            }
+
+            const privatePlayerData =
+              privatePlayerSnapshot.data() as PrivatePlayerData;
+            const deckSnapshot =
+              privatePlayerData.battleDeckSnapshot;
+
+            if (
+              !deckSnapshot ||
+              !isValidBattleDeckSnapshot(deckSnapshot)
+            ) {
+              throw new Error(
+                '対戦用チームの内容が不正です。チームを選び直してください。',
+              );
+            }
+
+            if (deckSnapshot.deckId !== body.deckId) {
+              throw new Error(
+                '選択したチームと保存されたチームが一致しません。もう一度チームを選択してください。',
+              );
+            }
+
+            // 選択確定時点でキャラとサポート全てをサーバー側から再確認する。
+            // 削除済み・無効化済みカードがあれば ready フラグを立てる前に拒否する。
+            for (const character of deckSnapshot.characters) {
+              await resolveCoordinateCard(
+                transaction,
+                character.cardId,
+                character.presetId,
+              );
+            }
+
+            for (const support of deckSnapshot.supportCards) {
+              await resolveSupportCard(
+                transaction,
+                support.cardId,
+                support.presetId,
+              );
+            }
+
+            if (deckSnapshot.supportCards.length !== 18) {
+              throw new Error(
+                '対戦用サポートカードが18枚ではありません。',
+              );
+            }
+
+            return {
+              validated: true,
+              playerRole,
+              deckId: deckSnapshot.deckId,
+            };
+          }
 
           if (
             body.type ===

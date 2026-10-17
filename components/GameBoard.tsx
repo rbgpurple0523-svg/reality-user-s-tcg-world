@@ -5959,12 +5959,15 @@ console.log('[相手カードの色データ確認]', {
 
       if (
         !selectedDeck ||
-        !myPrivatePlayerRef
+        !myPrivatePlayerRef ||
+        !roomId
       ) {
+        setPreparationMessage(
+          '⚠️ 対戦用チーム情報を確認できませんでした。チームを選び直してください。',
+        );
         addLog(
           '⚠️ 対戦用チーム情報を確認できませんでした。',
         );
-
         return;
       }
 
@@ -5977,52 +5980,114 @@ console.log('[相手カードの色データ確認]', {
         return;
       }
 
-      setDeckConfirmed(
-        true,
-      );
-
-      await setDoc(
-        myPrivatePlayerRef,
-        {
-          battleDeckSnapshot:
-            snapshot,
-        },
-        {
-          merge: true,
-        },
-      );
-
-      const field =
-        playerRole ===
-        'host'
-          ? 'readyHost'
-          : 'readyGuest';
-
-      await updateDoc(
-        doc(
-          db,
-          'rooms',
-          roomId,
-        ),
-        {
-          [field]:
-            true,
-          [playerRole ===
-          'host'
-            ? 'hostDeckId'
-            : 'guestDeckId']:
-            activeDeckId,
-          [playerRole ===
-          'host'
-            ? 'classReadyYearHost'
-            : 'classReadyYearGuest']:
-            1,
-        },
-      );
-
       setPreparationMessage(
-        'このチームでの準備が完了しました。両者のチーム確定後、ルーム作成者がコイントスを行います。',
+        'チームのキャラ・サポートカードが現在も使用可能か確認しています…',
       );
+
+      try {
+        // 先にスナップショットを保存し、サーバーが最新のカード状態を検証する。
+        // 検証が通るまで readyHost / readyGuest は更新しない。
+        await setDoc(
+          myPrivatePlayerRef,
+          {
+            battleDeckSnapshot:
+              snapshot,
+          },
+          {
+            merge: true,
+          },
+        );
+
+        const currentUser =
+          await ensureAnonymousAuth();
+        const idToken =
+          await currentUser.getIdToken();
+        const response =
+          await fetch(
+            '/api/battle/action',
+            {
+              method: 'POST',
+              headers: {
+                'Content-Type': 'application/json',
+                Authorization: `Bearer ${idToken}`,
+              },
+              body: JSON.stringify({
+                roomId,
+                actionId: `${currentUser.uid}-VALIDATE_DECK-${selectedDeck.id}-${Date.now()}`,
+                type: 'VALIDATE_DECK',
+                deckId: selectedDeck.id,
+              }),
+            },
+          );
+
+        const responseData =
+          (await response.json()) as {
+            ok?: boolean;
+            error?: string;
+            result?: {
+              validated?: boolean;
+              deckId?: string;
+            };
+          };
+
+        if (
+          !response.ok ||
+          responseData.ok !== true ||
+          responseData.result?.validated !== true ||
+          responseData.result.deckId !== selectedDeck.id
+        ) {
+          throw new Error(
+            responseData.error ||
+              'サーバーでチームのカードを確認できませんでした。',
+          );
+        }
+
+        const readyField =
+          playerRole === 'host'
+            ? 'readyHost'
+            : 'readyGuest';
+        const deckField =
+          playerRole === 'host'
+            ? 'hostDeckId'
+            : 'guestDeckId';
+        const classReadyField =
+          playerRole === 'host'
+            ? 'classReadyYearHost'
+            : 'classReadyYearGuest';
+
+        await updateDoc(
+          doc(db, 'rooms', roomId),
+          {
+            [readyField]: true,
+            [deckField]: selectedDeck.id,
+            [classReadyField]: 1,
+          },
+        );
+
+        setDeckConfirmed(true);
+        setPreparationMessage(
+          'チーム内のキャラ・サポートカードを確認し、対戦用チームを確定しました。両者のチーム確定後、ルーム作成者がコイントスを行います。',
+        );
+        addLog(
+          'チーム内の全カードをサーバーで確認し、対戦用チームを確定しました。',
+        );
+      } catch (error) {
+        console.error(
+          '対戦用チームの検証エラー:',
+          error,
+        );
+        setDeckConfirmed(false);
+        const message =
+          error instanceof Error
+            ? error.message
+            : 'チーム内のカードを確認できませんでした。';
+        setPreparationMessage(
+          `⚠️ チームを確定できませんでした。${message} カードライブラリを確認し、別のチームを選択してください。`,
+        );
+        addLog(
+          `⚠️ チーム確定を中止しました：${message}`,
+        );
+      }
     };
 
 const showClassResult =
