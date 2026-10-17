@@ -2160,9 +2160,23 @@ export default function SupportCardGenerator({
                       SELECTED EMOTION
                     </div>
 
-                    <div className="mt-1 text-[9px] font-black text-purple-700">
-                      性能
+                    <div className="mt-1 text-[9px] leading-4 text-gray-600">
+                      {
+                        activeEmotion.description
+                      }
                     </div>
+                    <div className="mt-2 text-sm font-serif font-black leading-relaxed text-purple-950">
+                      {
+                        activeEmotion.emotionPhrase
+                      }
+                    </div>
+                    <div className="mt-1 text-[8px] font-bold text-gray-400">
+                      仮カード名：
+                      {
+                        activeEmotion.name
+                      }
+                    </div>
+
 
                     <div className="mt-0.5 text-sm font-black text-gray-950">
                       {
@@ -2187,24 +2201,7 @@ export default function SupportCardGenerator({
                       </span>
                     </div>
 
-                    <div className="mt-1 text-[9px] leading-4 text-gray-600">
-                      {
-                        activeEmotion.description
-                      }
-                    </div>
 
-                    <div className="mt-2 text-sm font-serif font-black leading-relaxed text-purple-950">
-                      {
-                        activeEmotion.emotionPhrase
-                      }
-                    </div>
-
-                    <div className="mt-1 text-[8px] font-bold text-gray-400">
-                      仮カード名：
-                      {
-                        activeEmotion.name
-                      }
-                    </div>
                   </div>
 
                   <button
@@ -2393,48 +2390,7 @@ export default function SupportCardGenerator({
                   </button>
                 </div>
 
-                <div className="mt-3 rounded-2xl border border-gray-200 bg-gray-50 p-3">
-                  <div className="flex items-center justify-between gap-2">
-                    <div>
-                      <div className="text-[9px] font-black text-gray-500">
-                        選択中の「想い」
-                      </div>
 
-                      <div className="mt-1 text-sm font-black text-gray-900">
-                        {
-                          activeEmotion.name
-                        }
-                      </div>
-                    </div>
-
-                    <div className="rounded-xl bg-white px-2.5 py-2 text-right shadow-sm">
-                      <div className="text-[8px] font-black text-purple-700">
-                        {
-                          activeEmotion.statEffect
-                        }
-                        {activeEmotion.effectAmount
-                          ? ` ${activeEmotion.effectAmount}`
-                          : ''}
-                      </div>
-
-                      <div className="mt-0.5 text-[8px] font-bold text-gray-500">
-                        {
-                          activeEmotion.target
-                        }{' '}
-                        /{' '}
-                        {
-                          activeEmotion.duration
-                        }
-                      </div>
-                    </div>
-                  </div>
-
-                  <div className="mt-2 text-[9px] leading-4 text-gray-600">
-                    {
-                      activeEmotion.description
-                    }
-                  </div>
-                </div>
               </div>
             </div>
           ) : (
