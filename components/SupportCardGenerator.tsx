@@ -2160,11 +2160,6 @@ export default function SupportCardGenerator({
                       SELECTED EMOTION
                     </div>
 
-                    <div className="mt-1 text-[9px] leading-4 text-gray-600">
-                      {
-                        activeEmotion.description
-                      }
-                    </div>
                     <div className="mt-2 text-sm font-serif font-black leading-relaxed text-purple-950">
                       {
                         activeEmotion.emotionPhrase
@@ -2186,21 +2181,26 @@ export default function SupportCardGenerator({
                         ? ` ${activeEmotion.effectAmount}`
                         : ''}
 
-                      <span className="ml-1 text-[8px] font-bold text-gray-500">
-                        {
-                          activeEmotion.target
-                        }{' '}
-                        /{' '}
-                        {
-                          activeEmotion.duration
-                        }{' '}
-                        /{' '}
-                        {
-                          activeEmotion.effectCategory
-                        }
-                      </span>
                     </div>
 
+                    <div className="ml-1 text-[8px] font-bold text-gray-500">
+                      {
+                        activeEmotion.target
+                      }{' '}
+                      /{' '}
+                      {
+                        activeEmotion.duration
+                      }{' '}
+                      /{' '}                       {
+                        activeEmotion.effectCategory
+                      }
+                    </div>
+
+                    <div className="mt-1 text-[9px] leading-4 text-gray-600">
+                      {
+                        activeEmotion.description
+                      }
+                    </div>
 
                   </div>
 
