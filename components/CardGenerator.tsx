@@ -813,6 +813,11 @@ export default function CardGenerator({
     setIsCompleted,
   ] = useState(false);
 
+  const [
+    showOwnershipNotice,
+    setShowOwnershipNotice,
+  ] = useState(false);
+
   useEffect(() => {
     void ensureAnonymousAuth().catch(
       () => {},
@@ -1588,6 +1593,10 @@ export default function CardGenerator({
         setRegistrationStep(3);
         setActiveEditor(null);
 
+        if (isNewRegistration) {
+          setShowOwnershipNotice(true);
+        }
+
         return;
       }
 
@@ -1605,6 +1614,10 @@ export default function CardGenerator({
 
       setRegistrationStep(3);
       setActiveEditor(null);
+
+      if (isNewRegistration) {
+        setShowOwnershipNotice(true);
+      }
 
       try {
         localStorage.removeItem(
@@ -2440,6 +2453,40 @@ const colorAndSeasonComplete =
           )}
         </div>
       </form>
+
+      {showOwnershipNotice && (
+        <div className="fixed inset-0 z-[100] flex items-center justify-center bg-slate-950/55 p-4 backdrop-blur-sm">
+          <div
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="character-ownership-notice-title"
+            className="w-full max-w-md rounded-3xl bg-white p-5 shadow-2xl"
+          >
+            <h2
+              id="character-ownership-notice-title"
+              className="text-base font-black text-gray-900"
+            >
+              カードの編集権限について
+            </h2>
+            <p className="mt-3 text-sm leading-6 text-gray-700">
+              このカードの編集権限は、今お使いのブラウザに保存されています。
+            </p>
+            <p className="mt-2 text-sm leading-6 text-gray-700">
+              別の端末への移行や、ブラウザのサイトデータを削除する予定がある場合は、事前に「引き継ぎコード」を発行してくださいね。
+            </p>
+            <p className="mt-3 text-xs leading-5 text-gray-500">
+              ※ 引き継ぎコードを発行すると、引き継ぎが完了するまで、発行元からカードを編集できなくなります。必要なときにご利用ください。
+            </p>
+            <button
+              type="button"
+              onClick={() => setShowOwnershipNotice(false)}
+              className="mt-5 w-full rounded-2xl bg-pink-600 px-4 py-3 text-sm font-black text-white transition hover:bg-pink-700"
+            >
+              わかりました
+            </button>
+          </div>
+        </div>
+      )}
 
       {activeEditor && (
         <div className="fixed inset-0 z-[70] flex items-center justify-center bg-slate-950/60 p-3 backdrop-blur-sm">
