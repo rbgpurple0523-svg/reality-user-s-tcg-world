@@ -1306,10 +1306,9 @@ export default function SupportCardGenerator({
   const handleProfileUrlChange = (
     value: string,
   ) => {
-    setProfileUrl(
-      normalizeProfileUrl(value),
-    );
-
+    // 入力中は加工しない。URL内の「/」を入力直後に消さないため。
+    // 正規化は登録・検証時に行う。
+    setProfileUrl(value);
     setErrorMessage('');
   };
 
@@ -2529,13 +2528,13 @@ export default function SupportCardGenerator({
               id="support-ownership-notice-title"
               className="text-base font-black text-gray-900"
             >
-              カードの編集権限について
+              🔰カードの編集権限について
             </h2>
             <p className="mt-3 text-sm leading-6 text-gray-700">
               このカードの編集権限は、今お使いのブラウザに保存されています。
             </p>
             <p className="mt-2 text-sm leading-6 text-gray-700">
-              別の端末への移行や、ブラウザのサイトデータを削除する予定がある場合は、事前に「引き継ぎコード」を発行してくださいね。
+              別の端末への移行や、ブラウザのサイトデータを削除する予定がある場合は、事前に登録済みカード一覧から「引き継ぎコード」を発行してください。
             </p>
             <p className="mt-3 text-xs leading-5 text-gray-500">
               ※ 引き継ぎコードを発行すると、引き継ぎが完了するまで、発行元からカードを編集できなくなります。必要なときにご利用ください。
@@ -2545,7 +2544,7 @@ export default function SupportCardGenerator({
               onClick={() => setShowOwnershipNotice(false)}
               className="mt-5 w-full rounded-2xl bg-purple-600 px-4 py-3 text-sm font-black text-white transition hover:bg-purple-700"
             >
-              わかりました
+              ✅わかりました
             </button>
           </div>
         </div>
@@ -2598,29 +2597,30 @@ export default function SupportCardGenerator({
                       </span>
                     </label>
 
-                    <label className="inline-flex cursor-pointer items-center rounded-xl bg-red-500 px-3 py-2 text-[10px] font-black text-white shadow-sm transition hover:bg-red-600 active:bg-red-700">
-                      ファイルを選択
-                      <input
-                        type="file"
-                        accept="image/*"
-                        onChange={
-                          handleImageUpload
-                        }
-                        className="hidden"
-                      />
-                    </label>
-
                     {imageDataUrl && (
-                      <div className="mt-2 overflow-hidden rounded-xl border border-gray-200 bg-gray-50">
+                      <div className="mb-2 flex items-center gap-3 rounded-xl border border-emerald-200 bg-emerald-50 p-2">
                         <img
-                          src={
-                            imageDataUrl
-                          }
-                          alt=""
-                          className="h-36 w-full object-contain"
+                          src={imageDataUrl}
+                          alt="選択したカード画像"
+                          className="h-16 w-16 shrink-0 rounded-lg object-cover"
                         />
+                        <div className="min-w-0">
+                          <div className="text-[10px] font-black text-emerald-700">
+                            ✓ 画像選択済み
+                          </div>
+                          <div className="mt-0.5 text-[8px] font-bold leading-4 text-emerald-600">
+                            画像は保持されています。変更する場合は下から別の画像を選択してください。
+                          </div>
+                        </div>
                       </div>
                     )}
+
+                    <input
+                      type="file"
+                      accept="image/*"
+                      onChange={handleImageUpload}
+                      className="w-full text-xs file:mr-3 file:rounded-lg file:border-0 file:bg-purple-100 file:px-3 file:py-2 file:text-[10px] file:font-black file:text-purple-700 hover:file:bg-purple-200"
+                    />
                   </div>
 
                   <div>
@@ -2659,6 +2659,10 @@ export default function SupportCardGenerator({
                       className="w-full rounded-xl border px-3 py-2.5"
                     />
 
+                    <p className="mt-1 text-[9px] font-bold leading-4 text-gray-500">
+                      同じREALITYユーザーがサポートカードを複数登録することを防ぐために使用します。1ユーザーにつき1枚まで登録できます。
+                    </p>
+
                     <label className="mt-2 flex cursor-pointer items-center justify-between gap-3 rounded-xl border border-gray-200 bg-gray-50 px-3 py-2.5">
                       <span className="text-[10px] font-bold text-gray-700">
                         プロフURLをカードに表示する
@@ -2693,10 +2697,6 @@ export default function SupportCardGenerator({
                         />
                       </span>
                     </label>
-
-                    <p className="mt-1 text-[9px] leading-4 text-gray-500">
-                      同じREALITYユーザーがカードを複数登録することを防ぐために使用します。
-                    </p>
                   </div>
 
                   <div>

@@ -2113,6 +2113,10 @@ const colorAndSeasonComplete =
                 </button>
               </div>
             </div>
+
+            <div className="mt-1 text-[8px] font-bold text-amber-800">
+              登録情報はこのブラウザの下書きに保存されます。
+            </div>
           </div>
         )}
 
@@ -2466,13 +2470,13 @@ const colorAndSeasonComplete =
               id="character-ownership-notice-title"
               className="text-base font-black text-gray-900"
             >
-              カードの編集権限について
+              🔰カードの編集権限について
             </h2>
             <p className="mt-3 text-sm leading-6 text-gray-700">
               このカードの編集権限は、今お使いのブラウザに保存されています。
             </p>
             <p className="mt-2 text-sm leading-6 text-gray-700">
-              別の端末への移行や、ブラウザのサイトデータを削除する予定がある場合は、事前に「引き継ぎコード」を発行してくださいね。
+              別の端末への移行や、ブラウザのサイトデータを削除する予定がある場合は、事前に登録済みカード一覧から「引き継ぎコード」を発行してください。
             </p>
             <p className="mt-3 text-xs leading-5 text-gray-500">
               ※ 引き継ぎコードを発行すると、引き継ぎが完了するまで、発行元からカードを編集できなくなります。必要なときにご利用ください。
@@ -2482,7 +2486,7 @@ const colorAndSeasonComplete =
               onClick={() => setShowOwnershipNotice(false)}
               className="mt-5 w-full rounded-2xl bg-pink-600 px-4 py-3 text-sm font-black text-white transition hover:bg-pink-700"
             >
-              わかりました
+              ✅わかりました
             </button>
           </div>
         </div>
