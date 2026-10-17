@@ -24,12 +24,14 @@ import {
   calculateSkillScore,
   calculateSupportScoreDelta,
   calculateSupportStatOverride,
+  collectSupportEffectExpirationEvents,
   isSupportEffectActive,
   STAT_KEYS,
   type PlayerRole,
   type StatKey,
   type SupportAvatarEffectState,
   type SupportControlEffectState,
+  type SupportEffectExpirationEvent,
 } from '@/lib/battle/battleEngine';
 
 export const runtime = 'nodejs';
@@ -175,6 +177,11 @@ type PlayerData = {
 
   battleStateVersion?: number;
   lastDrawTurnOrdinal?: number;
+
+  /** サーバーが記録した期限切れイベント履歴。 */
+  supportEffectExpirationEvents?: SupportEffectExpirationEvent[];
+  /** 期限切れイベントの二重適用を防ぐ冪等キー。 */
+  processedSupportEffectExpirationEventIds?: string[];
 
   lastSupportActionId?: string;
   lastSupportAction?: {
@@ -2975,6 +2982,10 @@ export async function POST(
                 FieldValue.delete(),
               lastDrawTurnOrdinal:
                 FieldValue.delete(),
+              supportEffectExpirationEvents:
+                FieldValue.delete(),
+              processedSupportEffectExpirationEventIds:
+                FieldValue.delete(),
             };
 
             transaction.set(
@@ -3317,6 +3328,56 @@ export async function POST(
             );
           }
 
+          // 期限切れイベントはクライアントに作らせず、サーバー側で現在ターンを基準に生成する。
+          // イベント履歴・処理済みIDは各 Player ドキュメントに状態と同じトランザクションで保存する。
+          const actionTurnOrdinal = getBattleTurnOrdinal(currentYear, turnIndex);
+          const collectPlayerExpirationEvents = (player: PlayerData) => {
+            const avatars = Array.isArray(player.avatars) ? player.avatars : [];
+            const existingIds = Array.isArray(player.processedSupportEffectExpirationEventIds)
+              ? player.processedSupportEffectExpirationEventIds.filter((id): id is string => typeof id === 'string')
+              : [];
+            const recordedIds = new Set(existingIds);
+            const recordedEvents = Array.isArray(player.supportEffectExpirationEvents)
+              ? player.supportEffectExpirationEvents.filter((event): event is SupportEffectExpirationEvent =>
+                  Boolean(event && typeof event.eventId === 'string'),
+                )
+              : [];
+            // 履歴側にも存在するIDを既処理として扱い、旧データや部分的な履歴更新でも重複を避ける。
+            for (const event of recordedEvents) recordedIds.add(event.eventId);
+            const newEvents: SupportEffectExpirationEvent[] = [];
+
+            for (const avatar of avatars) {
+              const events = collectSupportEffectExpirationEvents(
+                avatar.supportEffects ?? [],
+                actionTurnOrdinal,
+                [...recordedIds],
+              );
+              for (const event of events) {
+                if (recordedIds.has(event.eventId)) continue;
+                recordedIds.add(event.eventId);
+                newEvents.push(event);
+              }
+            }
+
+            return {
+              avatars,
+              processedIds: [...recordedIds].slice(-1000),
+              events: [...recordedEvents, ...newEvents].slice(-1000),
+            };
+          };
+          const actorExpirationState = collectPlayerExpirationEvents(actorData);
+          const opponentExpirationState = collectPlayerExpirationEvents(opponentData);
+          const actorAvatarsForTurn = actorExpirationState.avatars;
+          const opponentAvatarsForTurn = opponentExpirationState.avatars;
+          const actorExpirationFields = {
+            supportEffectExpirationEvents: actorExpirationState.events,
+            processedSupportEffectExpirationEventIds: actorExpirationState.processedIds,
+          };
+          const opponentExpirationFields = {
+            supportEffectExpirationEvents: opponentExpirationState.events,
+            processedSupportEffectExpirationEventIds: opponentExpirationState.processedIds,
+          };
+
           if (
             body.type ===
             'DRAW_TURN'
@@ -3389,9 +3450,9 @@ export async function POST(
             }
 
             let actorAvatars =
-              actorData.avatars
+              actorAvatarsForTurn
                 ? [
-                    ...actorData.avatars,
+                    ...actorAvatarsForTurn,
                   ]
                 : [];
 
@@ -3558,8 +3619,12 @@ console.log(
                   nextDeck.length,
                 lastDrawTurnOrdinal:
                   turnOrdinal,
+                ...actorExpirationFields,
               },
             );
+
+            // 相手側に発生した期限切れイベントも同じトランザクションで記録する。
+            transaction.update(opponentPlayerRef, opponentExpirationFields);
 
             return {
               actionId,
@@ -3712,16 +3777,16 @@ console.log(
             }
 
             let actorAvatars =
-              actorData.avatars
+              actorAvatarsForTurn
                 ? [
-                    ...actorData.avatars,
+                    ...actorAvatarsForTurn,
                   ]
                 : [];
 
             let opponentAvatars =
-              opponentData.avatars
+              opponentAvatarsForTurn
                 ? [
-                    ...opponentData.avatars,
+                    ...opponentAvatarsForTurn,
                   ]
                 : [];
 
@@ -4126,6 +4191,7 @@ console.log(
                 lastSupportAction,
                 pendingAction:
                   nextPendingAction,
+                ...actorExpirationFields,
               },
             );
 
@@ -4136,6 +4202,7 @@ console.log(
                   calculated.targetAvatars,
                 battleStateVersion:
                   nextOpponentVersion,
+                ...opponentExpirationFields,
               },
             );
 
@@ -4234,16 +4301,16 @@ console.log(
           }
 
           const actorAvatars =
-            actorData.avatars
+            actorAvatarsForTurn
               ? [
-                  ...actorData.avatars,
+                  ...actorAvatarsForTurn,
                 ]
               : [];
 
           const opponentAvatars =
-            opponentData.avatars
+            opponentAvatarsForTurn
               ? [
-                  ...opponentData.avatars,
+                  ...opponentAvatarsForTurn,
                 ]
               : [];
 
@@ -4576,6 +4643,7 @@ const nextPendingAction = {
 
               pendingAction:
                 nextPendingAction,
+              ...actorExpirationFields,
             },
           );
 
@@ -4588,6 +4656,7 @@ const nextPendingAction = {
               battleStateVersion:
                 opponentBattleStateVersion +
                 1,
+              ...opponentExpirationFields,
             },
           );
 
