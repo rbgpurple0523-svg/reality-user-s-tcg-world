@@ -1496,10 +1496,15 @@ const [classResultCountdown, setClassResultCountdown] =
   const addLog = (
     message: string,
   ) =>
-    setLog((prev) => [
-      message,
-      ...prev,
-    ]);
+    setLog((prev) => {
+      // 同じイベントが連続して二重通知された場合だけ重複表示を抑止する。
+      // 過去ログ全体での重複排除は、別ターンの同じ行動記録を消すため行わない。
+      if (prev[0] === message) {
+        return prev;
+      }
+
+      return [message, ...prev];
+    });
 
   type BattleVisualCard =
     AvatarCard & {
@@ -3829,13 +3834,6 @@ setDeckConfirmed(false);
                 ? opponentAvatars[avatarIndex]
                 : undefined;
 
-console.log('[相手技の色チェック]', {
-  card: opponentAvatar.card,
-  rawColorHex: opponentAvatar.card?.colorHex,
-  calculatedColorHex: getBattleVisualColorHex(
-    opponentAvatar.card,
-  ),
-});
 
             const skillId =
               lastSkillAction.skillId;
@@ -3866,11 +3864,6 @@ console.log('[相手技の色チェック]', {
                   opponentSkillIndex >= 0
                 ) {
 
-console.log('[相手カードの色データ確認]', {
-  card: opponentAvatar.card,
-  colorHex: opponentAvatar.card?.colorHex,
-  keys: Object.keys(opponentAvatar.card ?? {}),
-});
 
                   void Promise.resolve()
                     .then(() =>
@@ -5568,14 +5561,7 @@ console.log('[相手カードの色データ確認]', {
 
       try {
         if (!isOnline) {
-          await new Promise(
-            (resolve) =>
-              setTimeout(
-                resolve,
-                650,
-              ),
-          );
-
+          // CPU戦はサーバー応答を待つ必要がないため、不要な固定待機を挟まず先手を決定する。
           const result: PlayerRole =
             Math.random() <
             0.5
@@ -14177,21 +14163,47 @@ onClick={() => {
                     (
                       item,
                       index,
-                    ) => (
-                      <div
-                        key={`${item}_${index}`}
-                        className={`border-b border-white/5 pb-1.5 pt-1 ${
-                          index ===
-                          0
-                            ? 'font-black text-white'
-                            : 'text-white/65'
-                        }`}
-                      >
-                        {
-                          item
-                        }
-                      </div>
-                    ),
+                    ) => {
+                      const isWarning = /⚠️|失敗|エラー|できません/.test(item);
+                      const isCoin = /コイントス|先手|後手/.test(item);
+                      const isScore = /スコア|点/.test(item) && /[+＋−-]\s*\d/.test(item);
+                      const isOpponent = /相手|CPU/.test(item);
+                      const isSelf = /自分|あなた/.test(item);
+                      const actorLabel = isOpponent
+                        ? '相手'
+                        : isSelf
+                          ? '自分'
+                          : isCoin
+                            ? '進行'
+                            : '実況';
+                      const actorStyle = isWarning
+                        ? 'bg-rose-400/10 text-rose-200'
+                        : isScore
+                          ? 'bg-amber-300/10 text-amber-200'
+                          : isOpponent
+                            ? 'bg-violet-400/10 text-violet-200'
+                            : isSelf
+                              ? 'bg-pink-400/10 text-pink-200'
+                              : 'bg-white/5 text-slate-300';
+
+                      return (
+                        <div
+                          key={`${item}_${index}`}
+                          className={`flex items-start gap-2 border-b border-white/5 py-2 ${
+                            index === 0 ? 'font-bold' : 'opacity-85'
+                          }`}
+                        >
+                          <span className={`mt-0.5 shrink-0 rounded-md px-1.5 py-0.5 text-[9px] font-black ${actorStyle}`}>
+                            {actorLabel}
+                          </span>
+                          <span className={`min-w-0 flex-1 whitespace-pre-wrap break-words ${
+                            isWarning ? 'text-rose-100' : 'text-white'
+                          }`}>
+                            {item}
+                          </span>
+                        </div>
+                      );
+                    },
                   )
                 )}
               </div>

@@ -3656,20 +3656,6 @@ export async function POST(
                 deck.length,
               );
 
-console.log(
-  '[DRAW_TURN DEBUG]',
-  {
-    year: currentYear,
-    turnIndex,
-    turnOrdinal,
-    actorRole,
-    handLength: hand.length,
-    deckLength: deck.length,
-    supportControlEffects:
-      activeAvatar.supportControlEffects,
-    drawCount,
-  },
-);
 
             const drawnCards =
               deck.slice(
