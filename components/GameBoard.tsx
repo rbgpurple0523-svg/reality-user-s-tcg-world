@@ -12595,9 +12595,9 @@ grouped.set(
                         />
                       </div>
 
-                      <div className="absolute bottom-0 right-0 top-1 z-20 w-3 overflow-hidden rounded border border-indigo-300/90 bg-indigo-50/90 shadow-md" aria-label={`自分のスコア ${currentMyClassScore}`} role="img">
+                      <div className="absolute bottom-1 right-0 top-1 z-20 w-3 overflow-hidden rounded border border-indigo-300/90 bg-indigo-50/90 shadow-md" aria-label={`自分のスコア ${currentMyClassScore}`} role="img">
                         <div
-                          className="absolute inset-x-0 bottom-3 bg-gradient-to-t from-indigo-700 to-indigo-400 transition-[height] duration-500"
+                          className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-indigo-700 to-indigo-400 transition-[height] duration-500"
                           style={{ height: `${Math.min(100, Math.max(0, currentMyClassScore / 5000 * 100))}%` }}
                         />
                         {Array.from({ length: 9 }, (_, index) => {
@@ -12646,7 +12646,7 @@ grouped.set(
                         />
                       </BattleCardReveal>
 
-                      <div className="absolute bottom-1 left-0 z-10 flex h-[65px] w-[65px] max-w-[82%] items-end justify-start overflow-hidden rounded-tr-2xl border-r border-t border-white/70 bg-white/55 p-0.3 shadow-[0_-4px_16px_rgba(15,23,42,0.12)] backdrop-blur-[2px] sm:h-[132px] sm:w-[132px]">
+                      <div className="absolute bottom-0 left-0 z-10 flex h-[65px] w-[65px] max-w-[82%] items-end justify-start overflow-hidden rounded-tr-2xl border-r border-t border-white/70 bg-white/55 p-0.3 shadow-[0_-4px_16px_rgba(15,23,42,0.12)] backdrop-blur-[2px] sm:h-[132px] sm:w-[132px]">
                         <RadarChart
                           baseStats={oppActiveAvatar.baseStats || oppActiveAvatar.card.stats}
                           currentStats={getEffectiveStats(oppActiveAvatar)}
