@@ -12585,11 +12585,11 @@ grouped.set(
                         />
                       </BattleCardReveal>
 
-                      <div className="absolute bottom-0 left-0 z-10 flex h-[59px] w-[59px] max-w-[82%] items-end justify-start overflow-hidden rounded-tr-2xl border-r border-t border-white/70 bg-white/55 p-0.5 shadow-[0_-4px_16px_rgba(15,23,42,0.12)] backdrop-blur-[2px] sm:h-[132px] sm:w-[132px]">
+                      <div className="absolute bottom-0 left-0 z-10 flex h-[59px] w-[65px] max-w-[65%] items-end justify-start overflow-hidden rounded-tr-2xl border-r border-t border-white/70 bg-white/55 p-0.3 shadow-[0_-4px_16px_rgba(15,23,42,0.12)] backdrop-blur-[2px] sm:h-[132px] sm:w-[132px]">
                         <RadarChart
                           baseStats={myActiveAvatar.baseStats || myActiveAvatar.card.stats}
                           currentStats={getEffectiveStats(myActiveAvatar)}
-                          size={59}
+                          size={65}
                           showLabels={false}
                           showLegend={false}
                         />
@@ -12611,11 +12611,12 @@ grouped.set(
                           );
                         })}
                       </div>
-                    </div>
-                  </button>
                   <div className="mt-1 text-right text-xs font-black tabular-nums text-indigo-700" aria-label={`自分の獲得スコア ${currentMyClassScore}`}>
                     {currentMyClassScore.toLocaleString()} 
                   </div>
+
+                    </div>
+                  </button>
                 </div>
               </div>
 
@@ -12646,17 +12647,17 @@ grouped.set(
                         />
                       </BattleCardReveal>
 
-                      <div className="absolute bottom-0 left-0 z-10 flex h-[59px] w-[59px] max-w-[82%] items-end justify-start overflow-hidden rounded-tr-2xl border-r border-t border-white/70 bg-white/55 p-0.5 shadow-[0_-4px_16px_rgba(15,23,42,0.12)] backdrop-blur-[2px] sm:h-[132px] sm:w-[132px]">
+                      <div className="absolute bottom-0 left-0 z-10 flex h-[65px] w-[65px] max-w-[82%] items-end justify-start overflow-hidden rounded-tr-2xl border-r border-t border-white/70 bg-white/55 p-0.3 shadow-[0_-4px_16px_rgba(15,23,42,0.12)] backdrop-blur-[2px] sm:h-[132px] sm:w-[132px]">
                         <RadarChart
                           baseStats={oppActiveAvatar.baseStats || oppActiveAvatar.card.stats}
                           currentStats={getEffectiveStats(oppActiveAvatar)}
-                          size={59}
+                          size={65}
                           showLabels={false}
                           showLegend={false}
                         />
                       </div>
 
-                      <div className="absolute bottom-1 right-2 top-1 z-20 w-3 overflow-hidden rounded border border-rose-300/90 bg-rose-50/90 shadow-md" aria-label={`相手のスコア ${currentOppClassScore}`} role="img">
+                      <div className="absolute bottom-1 right-0 top-1 z-20 w-3 overflow-hidden rounded border border-rose-300/90 bg-rose-50/90 shadow-md" aria-label={`相手のスコア ${currentOppClassScore}`} role="img">
                         <div
                           className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-rose-700 to-rose-400 transition-[height] duration-500"
                           style={{ height: `${Math.min(100, Math.max(0, currentOppClassScore / 5000 * 100))}%` }}
@@ -12672,11 +12673,12 @@ grouped.set(
                           );
                         })}
                       </div>
-                    </div>
-                  </button>
                   <div className="mt-1 text-right text-xs font-black tabular-nums text-rose-700" aria-label={`${isOnline ? '相手' : 'CPU'}の獲得スコア ${currentOppClassScore}`}>
                     {currentOppClassScore.toLocaleString()} 
                   </div>
+
+                    </div>
+                  </button>
                 </div>
               </div>
             </div>
