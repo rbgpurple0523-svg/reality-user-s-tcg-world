@@ -8978,7 +8978,7 @@ if (
                 0
               ) {
                 cpuSupportScoreParts.push(
-                  `あなた ${applied.targetScoreDelta > 0 ? '+' : ''}${applied.targetScoreDelta}スコア`,
+                  `自分 ${applied.targetScoreDelta > 0 ? '+' : ''}${applied.targetScoreDelta}スコア`,
                 );
               }
 
@@ -9522,7 +9522,11 @@ if (
                 skillName:
                   skill.name,
                 dialogue:
-                  skill.description,
+                  getSkillCutInDialogue(
+                    skill,
+                    cpuSkillIndex,
+                    workingCpu.card,
+                  ),
                 colorHex:
                   getBattleVisualColorHex(
                     workingCpu.card,
@@ -9649,7 +9653,9 @@ if (
             );
 
             addLog(
-              `CPU「${skill.name}」発動！ +${gainedScore}スコア`,
+              gainedScore > 0
+                ? `CPUが「${skill.name}」を使用しました。 CPU +${gainedScore}スコア`
+                : `CPUが「${skill.name}」を使用しました。`,
             );
 
             const next =
@@ -12499,7 +12505,7 @@ grouped.set(
 
                 <div className="text-right">
                   <div className="text-[9px] font-black text-rose-600">
-                    相手
+                    {isOnline ? '相手' : 'CPU'}
                   </div>
 
                   <div className="mt-1 flex items-center justify-end gap-1.5">
@@ -12564,11 +12570,11 @@ grouped.set(
                     className="relative block w-full overflow-hidden rounded-xl bg-white/55 text-left"
                     aria-label={`${myActiveAvatar.card.userName} のステータス詳細を開く`}
                   >
-                    <div ref={myActiveCardAnchorRef} className="relative h-[190px] w-full">
+                    <div ref={myActiveCardAnchorRef} className="relative h-[210px] w-full">
                       <BattleCardReveal
                         revealed={activeCardsRevealed}
-                        width={140}
-                        height={190}
+                        width={160}
+                        height={210}
                         className="h-full w-full"
                         colorHex={getBattleVisualColorHex(myActiveAvatar.card)}
                       >
@@ -12594,14 +12600,22 @@ grouped.set(
                           className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-indigo-700 to-indigo-400 transition-[height] duration-500"
                           style={{ height: `${Math.min(100, Math.max(0, currentMyClassScore / 5000 * 100))}%` }}
                         />
-                        <div className="absolute inset-0 z-10 flex flex-col justify-between py-1">
-                          {Array.from({ length: 11 }, (_, tick) => (
-                            <div key={`my-score-tick-${tick}`} className="h-px w-full bg-white/90 shadow-[0_0_1px_rgba(15,23,42,0.6)]" />
-                          ))}
-                        </div>
+                        {Array.from({ length: 9 }, (_, index) => {
+                          const tick = index + 1;
+                          return (
+                            <div
+                              key={`my-score-tick-${tick}`}
+                              className="absolute inset-x-0 z-10 h-px bg-white/45"
+                              style={{ bottom: `${tick * 10}%` }}
+                            />
+                          );
+                        })}
                       </div>
                     </div>
                   </button>
+                  <div className="mt-1 text-right text-xs font-black tabular-nums text-indigo-700" aria-label={`自分の獲得スコア ${currentMyClassScore}`}>
+                    {currentMyClassScore.toLocaleString()} スコア
+                  </div>
                 </div>
               </div>
 
@@ -12617,11 +12631,11 @@ grouped.set(
                     className="relative block w-full overflow-hidden rounded-xl bg-white/55 text-left"
                     aria-label={`${oppActiveAvatar.card.userName} のステータス詳細を開く`}
                   >
-                    <div ref={opponentActiveCardAnchorRef} className="relative h-[190px] w-full">
+                    <div ref={opponentActiveCardAnchorRef} className="relative h-[210px] w-full">
                       <BattleCardReveal
                         revealed={activeCardsRevealed}
-                        width={140}
-                        height={190}
+                        width={160}
+                        height={210}
                         className="h-full w-full"
                         colorHex={getBattleVisualColorHex(oppActiveAvatar.card)}
                       >
@@ -12647,14 +12661,22 @@ grouped.set(
                           className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-rose-700 to-rose-400 transition-[height] duration-500"
                           style={{ height: `${Math.min(100, Math.max(0, currentOppClassScore / 5000 * 100))}%` }}
                         />
-                        <div className="absolute inset-0 z-10 flex flex-col justify-between py-1">
-                          {Array.from({ length: 11 }, (_, tick) => (
-                            <div key={`opp-score-tick-${tick}`} className="h-px w-full bg-white/90 shadow-[0_0_1px_rgba(15,23,42,0.6)]" />
-                          ))}
-                        </div>
+                        {Array.from({ length: 9 }, (_, index) => {
+                          const tick = index + 1;
+                          return (
+                            <div
+                              key={`opp-score-tick-${tick}`}
+                              className="absolute inset-x-0 z-10 h-px bg-white/45"
+                              style={{ bottom: `${tick * 10}%` }}
+                            />
+                          );
+                        })}
                       </div>
                     </div>
                   </button>
+                  <div className="mt-1 text-right text-xs font-black tabular-nums text-rose-700" aria-label={`${isOnline ? '相手' : 'CPU'}の獲得スコア ${currentOppClassScore}`}>
+                    {currentOppClassScore.toLocaleString()} スコア
+                  </div>
                 </div>
               </div>
             </div>
