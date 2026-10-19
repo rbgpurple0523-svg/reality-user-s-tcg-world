@@ -12579,11 +12579,11 @@ grouped.set(
                         />
                       </BattleCardReveal>
 
-                      <div className="absolute bottom-0 left-0 z-10 flex h-[118px] w-[118px] max-w-[82%] items-end justify-start overflow-hidden rounded-tr-2xl border-r border-t border-white/70 bg-white/55 p-0.5 shadow-[0_-4px_16px_rgba(15,23,42,0.12)] backdrop-blur-[2px] sm:h-[132px] sm:w-[132px]">
+                      <div className="absolute bottom-0 left-0 z-10 flex h-[59px] w-[59px] max-w-[82%] items-end justify-start overflow-hidden rounded-tr-2xl border-r border-t border-white/70 bg-white/55 p-0.5 shadow-[0_-4px_16px_rgba(15,23,42,0.12)] backdrop-blur-[2px] sm:h-[132px] sm:w-[132px]">
                         <RadarChart
                           baseStats={myActiveAvatar.baseStats || myActiveAvatar.card.stats}
                           currentStats={getEffectiveStats(myActiveAvatar)}
-                          size={118}
+                          size={59}
                           showLabels={false}
                           showLegend={false}
                         />
@@ -12632,11 +12632,11 @@ grouped.set(
                         />
                       </BattleCardReveal>
 
-                      <div className="absolute bottom-0 left-0 z-10 flex h-[118px] w-[118px] max-w-[82%] items-end justify-start overflow-hidden rounded-tr-2xl border-r border-t border-white/70 bg-white/55 p-0.5 shadow-[0_-4px_16px_rgba(15,23,42,0.12)] backdrop-blur-[2px] sm:h-[132px] sm:w-[132px]">
+                      <div className="absolute bottom-0 left-0 z-10 flex h-[59px] w-[59px] max-w-[82%] items-end justify-start overflow-hidden rounded-tr-2xl border-r border-t border-white/70 bg-white/55 p-0.5 shadow-[0_-4px_16px_rgba(15,23,42,0.12)] backdrop-blur-[2px] sm:h-[132px] sm:w-[132px]">
                         <RadarChart
                           baseStats={oppActiveAvatar.baseStats || oppActiveAvatar.card.stats}
                           currentStats={getEffectiveStats(oppActiveAvatar)}
-                          size={118}
+                          size={59}
                           showLabels={false}
                           showLegend={false}
                         />
