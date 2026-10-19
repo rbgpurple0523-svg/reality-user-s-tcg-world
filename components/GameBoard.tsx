@@ -36,7 +36,6 @@ import BattleEffectLayer, {
   playSkillPreResultEffect,
   playSupportPreResultEffect,
 } from './battle/BattleEffectLayer';
-import VerticalScoreGauge from './battle/VerticalScoreGauge';
 import BattleCardReveal from './battle/BattleCardReveal';
 import BattleDeckPile from './battle/BattleDeckPile';
 import {
@@ -1496,15 +1495,10 @@ const [classResultCountdown, setClassResultCountdown] =
   const addLog = (
     message: string,
   ) =>
-    setLog((prev) => {
-      // 同じイベントが連続して二重通知された場合だけ重複表示を抑止する。
-      // 過去ログ全体での重複排除は、別ターンの同じ行動記録を消すため行わない。
-      if (prev[0] === message) {
-        return prev;
-      }
-
-      return [message, ...prev];
-    });
+    setLog((prev) => [
+      message,
+      ...prev,
+    ]);
 
   type BattleVisualCard =
     AvatarCard & {
@@ -3834,6 +3828,13 @@ setDeckConfirmed(false);
                 ? opponentAvatars[avatarIndex]
                 : undefined;
 
+console.log('[相手技の色チェック]', {
+  card: opponentAvatar.card,
+  rawColorHex: opponentAvatar.card?.colorHex,
+  calculatedColorHex: getBattleVisualColorHex(
+    opponentAvatar.card,
+  ),
+});
 
             const skillId =
               lastSkillAction.skillId;
@@ -3864,6 +3865,11 @@ setDeckConfirmed(false);
                   opponentSkillIndex >= 0
                 ) {
 
+console.log('[相手カードの色データ確認]', {
+  card: opponentAvatar.card,
+  colorHex: opponentAvatar.card?.colorHex,
+  keys: Object.keys(opponentAvatar.card ?? {}),
+});
 
                   void Promise.resolve()
                     .then(() =>
@@ -5000,6 +5006,9 @@ setDeckConfirmed(false);
             (await response.json()) as {
               ok?: boolean;
               error?: string;
+              result?: {
+                gainedScore?: number;
+              };
             };
 
           if (
@@ -5013,7 +5022,9 @@ setDeckConfirmed(false);
             );
           }
 
-          return true;
+          return {
+            gainedScore: Number(responseData.result?.gainedScore ?? 0),
+          };
         }
 
         if (
@@ -5561,7 +5572,14 @@ setDeckConfirmed(false);
 
       try {
         if (!isOnline) {
-          // CPU戦はサーバー応答を待つ必要がないため、不要な固定待機を挟まず先手を決定する。
+          await new Promise(
+            (resolve) =>
+              setTimeout(
+                resolve,
+                650,
+              ),
+          );
+
           const result: PlayerRole =
             Math.random() <
             0.5
@@ -6725,8 +6743,15 @@ if (
 
           await skillEffectPromise;
 
+          const gainedScore =
+            typeof actionSubmitted === 'object'
+              ? Number(actionSubmitted.gainedScore || 0)
+              : 0;
+
           addLog(
-            `「${skill.name}」発動！`,
+            gainedScore > 0
+              ? `「${skill.name}」発動！ 自分 +${gainedScore}スコア`
+              : `「${skill.name}」発動！`,
           );
         } finally {
           skillSubmitInProgressRef.current =
@@ -7309,7 +7334,9 @@ if (
       );
 
       addLog(
-        `「${skill.name}」発動！`,
+        gainedScore > 0
+          ? `「${skill.name}」発動！ 自分 +${gainedScore}スコア`
+          : `「${skill.name}」発動！`,
       );
 
       if (
@@ -12525,216 +12552,110 @@ grouped.set(
             </div>
 
             <div className="grid shrink-0 grid-cols-2 gap-2">
-              <div className="rounded-2xl border border-indigo-300 bg-white/90 p-2.5 shadow-lg ring-1 ring-indigo-100">
-                <div className="text-center text-[9px] font-black text-indigo-600">
-                  あなた　{
-                    currentRoleDisplayName
-                  }
+              <div className="min-w-0 rounded-2xl border border-indigo-300 bg-white/75 p-2 shadow-lg ring-1 ring-indigo-100 backdrop-blur-sm">
+                <div className="mb-1.5 truncate px-1 text-center text-base font-black leading-tight text-slate-950 sm:text-lg">
+                  {myActiveAvatar.card.userName}
                 </div>
 
-                <div className="mt-1 flex items-end justify-center gap-2">
-                  <div className="flex min-w-0 flex-1 -translate-y-4 flex-col items-center justify-end">
-                    <div className="max-w-full -translate-y-3 truncate text-center text-xs font-black text-slate-950">
-                      {
-                        myActiveAvatar
-                          .card
-                          .userName
-                      }
-                    </div>
+                <div className="relative">
+                  <button
+                    type="button"
+                    onClick={() => setModalAvatar(myActiveAvatar)}
+                    className="relative block w-full overflow-hidden rounded-xl bg-white/55 text-left"
+                    aria-label={`${myActiveAvatar.card.userName} のステータス詳細を開く`}
+                  >
+                    <div ref={myActiveCardAnchorRef} className="relative h-[190px] w-full">
+                      <BattleCardReveal
+                        revealed={activeCardsRevealed}
+                        width={140}
+                        height={190}
+                        className="h-full w-full"
+                        colorHex={getBattleVisualColorHex(myActiveAvatar.card)}
+                      >
+                        <img
+                          src={myActiveAvatar.card.imageDataUrl}
+                          alt=""
+                          className="absolute inset-0 h-full w-full rounded-xl bg-white object-contain p-0.5"
+                        />
+                      </BattleCardReveal>
 
-                    <div className="mt-0.5 text-center -translate-y-3 text-[10px] font-black text-indigo-700">
-                      {
-                        currentMyClassScore
-                      }{' '}
-                      スコア
-                    </div>
-
-                    <button
-                      type="button"
-                      onClick={() =>
-                        setModalAvatar(
-                          myActiveAvatar,
-                        )
-                      }
-                      className="mt-1 block w-[92px] shrink-0"
-                    >
-                      <div ref={myActiveCardAnchorRef}>
-                        <BattleCardReveal
-                          revealed={
-                            activeCardsRevealed
-                          }
-                          width={92}
-                          height={112}
-                          className="mx-auto"
-                          colorHex={getBattleVisualColorHex(
-                            myActiveAvatar.card,
-                          )}
-                        >
-                          <img
-                            src={
-                              myActiveAvatar
-                                .card
-                                .imageDataUrl
-                            }
-                            alt=""
-                            className="h-full w-full rounded-2xl bg-white object-contain p-1"
-                          />
-                        </BattleCardReveal>
+                      <div className="absolute bottom-0 left-0 z-10 flex h-[118px] w-[118px] max-w-[82%] items-end justify-start overflow-hidden rounded-tr-2xl border-r border-t border-white/70 bg-white/55 p-0.5 shadow-[0_-4px_16px_rgba(15,23,42,0.12)] backdrop-blur-[2px] sm:h-[132px] sm:w-[132px]">
+                        <RadarChart
+                          baseStats={myActiveAvatar.baseStats || myActiveAvatar.card.stats}
+                          currentStats={getEffectiveStats(myActiveAvatar)}
+                          size={118}
+                          showLabels={false}
+                          showLegend={false}
+                        />
                       </div>
-                    </button>
-                  </div>
 
-                  <div className="translate-y-8">
-                    <VerticalScoreGauge
-                      label=""
-                      score={
-                        currentMyClassScore
-                      }
-                      side="self"
-                      active={myTurn}
-                      compact
-                      baseHeightPx={
-                        142
-                      }
-                    />
-                  </div>
+                      <div className="absolute bottom-1 right-1 top-1 z-20 w-5 overflow-hidden rounded border border-indigo-300/90 bg-indigo-50/90 shadow-md" aria-label={`自分のスコア ${currentMyClassScore}`} role="img">
+                        <div
+                          className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-indigo-700 to-indigo-400 transition-[height] duration-500"
+                          style={{ height: `${Math.min(100, Math.max(0, currentMyClassScore / 5000 * 100))}%` }}
+                        />
+                        <div className="absolute inset-0 z-10 flex flex-col justify-between py-1">
+                          {Array.from({ length: 11 }, (_, tick) => (
+                            <div key={`my-score-tick-${tick}`} className="h-px w-full bg-white/90 shadow-[0_0_1px_rgba(15,23,42,0.6)]" />
+                          ))}
+                        </div>
+                      </div>
+                    </div>
+                  </button>
                 </div>
-
-                <button
-                  type="button"
-                  onClick={() =>
-                    setModalAvatar(
-                      myActiveAvatar,
-                    )
-                  }
-                  className="mx-auto mt-1 block rounded-xl p-0.5 transition hover:bg-indigo-50"
-                  aria-label="自分のステータス詳細を開く"
-                >
-                  <RadarChart
-                    baseStats={
-                      myActiveAvatar.baseStats ||
-                      myActiveAvatar.card
-                        .stats
-                    }
-                    currentStats={getEffectiveStats(
-                      myActiveAvatar,
-                    )}
-                    size={104}
-                    showLabels={
-                      false
-                    }
-                    showLegend={
-                      false
-                    }
-                  />
-                </button>
               </div>
 
-              <div className="rounded-2xl border border-rose-300 bg-white/90 p-2.5 shadow-lg ring-1 ring-rose-100">
-                <div className="text-center text-[9px] font-black text-rose-600">
-                  相手　{
-                    currentRoleDisplayName
-                  }
+              <div className="min-w-0 rounded-2xl border border-rose-300 bg-white/75 p-2 shadow-lg ring-1 ring-rose-100 backdrop-blur-sm">
+                <div className="mb-1.5 truncate px-1 text-center text-base font-black leading-tight text-slate-950 sm:text-lg">
+                  {oppActiveAvatar.card.userName}
                 </div>
 
-                <div className="mt-1 flex items-end justify-center gap-2">
-                  <div className="flex min-w-0 flex-1 -translate-y-4 flex-col items-center justify-end">
-                    <div className="max-w-full -translate-y-3 truncate text-center text-xs font-black text-slate-950">
-                      {
-                        oppActiveAvatar
-                          .card
-                          .userName
-                      }
-                    </div>
+                <div className="relative">
+                  <button
+                    type="button"
+                    onClick={() => setModalAvatar(oppActiveAvatar)}
+                    className="relative block w-full overflow-hidden rounded-xl bg-white/55 text-left"
+                    aria-label={`${oppActiveAvatar.card.userName} のステータス詳細を開く`}
+                  >
+                    <div ref={opponentActiveCardAnchorRef} className="relative h-[190px] w-full">
+                      <BattleCardReveal
+                        revealed={activeCardsRevealed}
+                        width={140}
+                        height={190}
+                        className="h-full w-full"
+                        colorHex={getBattleVisualColorHex(oppActiveAvatar.card)}
+                      >
+                        <img
+                          src={oppActiveAvatar.card.imageDataUrl}
+                          alt=""
+                          className="absolute inset-0 h-full w-full rounded-xl bg-white object-contain p-0.5"
+                        />
+                      </BattleCardReveal>
 
-                    <div className="mt-0.5 text-center -translate-y-3 text-[10px] font-black text-rose-700">
-                      {
-                        currentOppClassScore
-                      }{' '}
-                      スコア
-                    </div>
-
-                    <button
-                      type="button"
-                      onClick={() =>
-                        setModalAvatar(
-                          oppActiveAvatar,
-                        )
-                      }
-                      className="mt-1 block w-[92px] shrink-0"
-                    >
-                      <div ref={opponentActiveCardAnchorRef}>
-                        <BattleCardReveal
-                          revealed={
-                            activeCardsRevealed
-                          }
-                          width={92}
-                          height={112}
-                          className="mx-auto"
-                          colorHex={getBattleVisualColorHex(
-                            oppActiveAvatar.card,
-                          )}
-                        >
-                          <img
-                            src={
-                              oppActiveAvatar
-                                .card
-                                .imageDataUrl
-                            }
-                            alt=""
-                            className="h-full w-full rounded-2xl bg-white object-contain p-1"
-                          />
-                        </BattleCardReveal>
+                      <div className="absolute bottom-0 left-0 z-10 flex h-[118px] w-[118px] max-w-[82%] items-end justify-start overflow-hidden rounded-tr-2xl border-r border-t border-white/70 bg-white/55 p-0.5 shadow-[0_-4px_16px_rgba(15,23,42,0.12)] backdrop-blur-[2px] sm:h-[132px] sm:w-[132px]">
+                        <RadarChart
+                          baseStats={oppActiveAvatar.baseStats || oppActiveAvatar.card.stats}
+                          currentStats={getEffectiveStats(oppActiveAvatar)}
+                          size={118}
+                          showLabels={false}
+                          showLegend={false}
+                        />
                       </div>
-                    </button>
-                  </div>
 
-                  <div className="translate-y-8">
-                    <VerticalScoreGauge
-                      label=""
-                      score={
-                        currentOppClassScore
-                      }
-                      side="opponent"
-                      active={
-                        !myTurn
-                      }
-                      compact
-                      baseHeightPx={
-                        142
-                      }
-                    />
-                  </div>
+                      <div className="absolute bottom-1 right-1 top-1 z-20 w-5 overflow-hidden rounded border border-rose-300/90 bg-rose-50/90 shadow-md" aria-label={`相手のスコア ${currentOppClassScore}`} role="img">
+                        <div
+                          className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-rose-700 to-rose-400 transition-[height] duration-500"
+                          style={{ height: `${Math.min(100, Math.max(0, currentOppClassScore / 5000 * 100))}%` }}
+                        />
+                        <div className="absolute inset-0 z-10 flex flex-col justify-between py-1">
+                          {Array.from({ length: 11 }, (_, tick) => (
+                            <div key={`opp-score-tick-${tick}`} className="h-px w-full bg-white/90 shadow-[0_0_1px_rgba(15,23,42,0.6)]" />
+                          ))}
+                        </div>
+                      </div>
+                    </div>
+                  </button>
                 </div>
-
-                <button
-                  type="button"
-                  onClick={() =>
-                    setModalAvatar(
-                      oppActiveAvatar,
-                    )
-                  }
-                  className="mx-auto mt-1 block rounded-xl p-0.5 transition hover:bg-rose-50"
-                  aria-label="相手のステータス詳細を開く"
-                >
-                  <RadarChart
-                    baseStats={
-                      oppActiveAvatar.baseStats ||
-                      oppActiveAvatar.card
-                        .stats
-                    }
-                    currentStats={getEffectiveStats(
-                      oppActiveAvatar,
-                    )}
-                    size={104}
-                    showLabels={
-                      false
-                    }
-                    showLegend={
-                      false
-                    }
-                  />
-                </button>
               </div>
             </div>
 
@@ -14163,47 +14084,21 @@ onClick={() => {
                     (
                       item,
                       index,
-                    ) => {
-                      const isWarning = /⚠️|失敗|エラー|できません/.test(item);
-                      const isCoin = /コイントス|先手|後手/.test(item);
-                      const isScore = /スコア|点/.test(item) && /[+＋−-]\s*\d/.test(item);
-                      const isOpponent = /相手|CPU/.test(item);
-                      const isSelf = /自分|あなた/.test(item);
-                      const actorLabel = isOpponent
-                        ? '相手'
-                        : isSelf
-                          ? '自分'
-                          : isCoin
-                            ? '進行'
-                            : '実況';
-                      const actorStyle = isWarning
-                        ? 'bg-rose-400/10 text-rose-200'
-                        : isScore
-                          ? 'bg-amber-300/10 text-amber-200'
-                          : isOpponent
-                            ? 'bg-violet-400/10 text-violet-200'
-                            : isSelf
-                              ? 'bg-pink-400/10 text-pink-200'
-                              : 'bg-white/5 text-slate-300';
-
-                      return (
-                        <div
-                          key={`${item}_${index}`}
-                          className={`flex items-start gap-2 border-b border-white/5 py-2 ${
-                            index === 0 ? 'font-bold' : 'opacity-85'
-                          }`}
-                        >
-                          <span className={`mt-0.5 shrink-0 rounded-md px-1.5 py-0.5 text-[9px] font-black ${actorStyle}`}>
-                            {actorLabel}
-                          </span>
-                          <span className={`min-w-0 flex-1 whitespace-pre-wrap break-words ${
-                            isWarning ? 'text-rose-100' : 'text-white'
-                          }`}>
-                            {item}
-                          </span>
-                        </div>
-                      );
-                    },
+                    ) => (
+                      <div
+                        key={`${item}_${index}`}
+                        className={`border-b border-white/5 pb-1.5 pt-1 ${
+                          index ===
+                          0
+                            ? 'font-black text-white'
+                            : 'text-white/65'
+                        }`}
+                      >
+                        {
+                          item
+                        }
+                      </div>
+                    ),
                   )
                 )}
               </div>
