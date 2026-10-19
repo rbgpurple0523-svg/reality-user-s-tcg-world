@@ -1217,10 +1217,6 @@ const [isCpuExitConfirmOpen, setIsCpuExitConfirmOpen] =
   const [log, setLog] =
     useState<string[]>([]);
 
-  // Firestore購読の再配信やReactの再実行で同じ実況が連続追加されるのを抑止する。
-  // 同じ文章でも少し時間が経ってから起きた別アクションは記録する。
-  const recentLogEntriesRef = useRef<Map<string, number>>(new Map());
-
   const [modalAvatar, setModalAvatar] =
     useState<BattleAvatar | null>(
       null,
@@ -1496,27 +1492,13 @@ const [classResultCountdown, setClassResultCountdown] =
   const opponentDisplayCardCacheRef =
     useRef<Record<string, AvatarCard>>({});
 
-  const addLog = (rawMessage: string) => {
-    const message = rawMessage
-      .replace(/あなた(?=\s*[+-]\d)/g, '自分')
-      .replace(/(自分|相手|CPU)\s+([+-])(\d[\d,]*)スコア/g, (_match, actor: string, sign: string, amount: string) =>
-        sign === '+'
-          ? `${actor}：獲得点 +${amount}点`
-          : `${actor}：減点 ${amount}点`,
-      );
-
-    const now = Date.now();
-    const lastSeen = recentLogEntriesRef.current.get(message) ?? 0;
-    if (now - lastSeen < 1500) return;
-
-    recentLogEntriesRef.current.set(message, now);
-    // Mapが際限なく増えないように古い重複判定キーを掃除する。
-    for (const [key, timestamp] of recentLogEntriesRef.current) {
-      if (now - timestamp > 10000) recentLogEntriesRef.current.delete(key);
-    }
-
-    setLog((prev) => [message, ...prev].slice(0, 120));
-  };
+  const addLog = (
+    message: string,
+  ) =>
+    setLog((prev) => [
+      message,
+      ...prev,
+    ]);
 
   type BattleVisualCard =
     AvatarCard & {
@@ -3821,6 +3803,12 @@ setDeckConfirmed(false);
                   0,
               );
 
+            addLog(
+              gainedScore > 0
+                ? `相手：「${lastSkillAction.skillName || '技'}」を使用！ スコア+${gainedScore}`
+                : `相手：「${lastSkillAction.skillName || '技'}」を使用！`,
+            );
+          
             // サーバーが確定したAction履歴から演出を再生する。
             // Roomのターンはすでに進んでいる可能性があるため、
             // ここでは現在のターンとの再照合を行わない。
@@ -3840,25 +3828,12 @@ setDeckConfirmed(false);
                 ? opponentAvatars[avatarIndex]
                 : undefined;
 
-            const opponentClassName =
-              opponentAvatar &&
-              typeof opponentAvatar.roleName === 'string' &&
-              opponentAvatar.roleName in roleDisplayNames
-                ? roleDisplayNames[opponentAvatar.roleName as RoleName]
-                : 'クラス不明';
-            const opponentCardName = opponentAvatar?.card?.userName || 'キャラクター不明';
-            addLog(
-              gainedScore > 0
-                ? `相手（${opponentClassName}／${opponentCardName}）が技「${lastSkillAction.skillName || '技'}」を使用しました。 相手 +${gainedScore}スコア`
-                : `相手（${opponentClassName}／${opponentCardName}）が技「${lastSkillAction.skillName || '技'}」を使用しました。`,
-            );
-
-if (process.env.NODE_ENV === 'development') console.debug('[DEBUG:相手技の色チェック]', {
-  card: opponentAvatar?.card,
-  rawColorHex: opponentAvatar?.card?.colorHex,
-  calculatedColorHex: opponentAvatar?.card
-    ? getBattleVisualColorHex(opponentAvatar.card)
-    : undefined,
+console.log('[相手技の色チェック]', {
+  card: opponentAvatar.card,
+  rawColorHex: opponentAvatar.card?.colorHex,
+  calculatedColorHex: getBattleVisualColorHex(
+    opponentAvatar.card,
+  ),
 });
 
             const skillId =
@@ -3890,7 +3865,7 @@ if (process.env.NODE_ENV === 'development') console.debug('[DEBUG:相手技の�
                   opponentSkillIndex >= 0
                 ) {
 
-if (process.env.NODE_ENV === 'development') console.debug('[DEBUG:相手カードの色データ確認]', {
+console.log('[相手カードの色データ確認]', {
   card: opponentAvatar.card,
   colorHex: opponentAvatar.card?.colorHex,
   keys: Object.keys(opponentAvatar.card ?? {}),
@@ -3977,23 +3952,8 @@ if (process.env.NODE_ENV === 'development') console.debug('[DEBUG:相手カー�
               );
             }
 
-            const supportAvatarIndex = Number(lastSupportAction.avatarIndex);
-            const supportActorAvatar = Array.isArray(currentOpponentPlayerData.avatars) &&
-              Number.isInteger(supportAvatarIndex) && supportAvatarIndex >= 0
-                ? currentOpponentPlayerData.avatars[supportAvatarIndex]
-                : undefined;
-            const supportActorRoleName =
-              supportActorAvatar &&
-              typeof supportActorAvatar.roleName === 'string' &&
-              supportActorAvatar.roleName in roleDisplayNames
-                ? roleDisplayNames[supportActorAvatar.roleName as RoleName]
-                : 'クラス不明';
-            const supportActorLabel = supportActorAvatar
-              ? `相手（${supportActorRoleName}／${supportActorAvatar.card?.userName || 'キャラクター不明'}）`
-              : '相手';
-
             addLog(
-              `${supportActorLabel}がサポートカード「${lastSupportAction.supportName || 'サポートカード'}」を使用しました。` +
+              `相手がサポート「${lastSupportAction.supportName || 'サポートカード'}」を使用しました。` +
                 (
                   scoreParts.length >
                   0
@@ -5451,7 +5411,7 @@ if (process.env.NODE_ENV === 'development') console.debug('[DEBUG:相手カー�
         );
 
         addLog(
-          `相手（${roleDisplayNames[oppActiveAvatar.roleName]}／${oppActiveAvatar.card.userName}）がサポートカード「${supportCard.name}」を使用しました。` +
+          `相手がサポート「${supportCard.name}」を使用しました。` +
             (
               supportCard.flavorText
                 ? `「${supportCard.flavorText}」`
@@ -5567,7 +5527,7 @@ if (process.env.NODE_ENV === 'development') console.debug('[DEBUG:相手カー�
         );
 
         addLog(
-          `相手が「${skill.name}」を使用しました。`,
+          `相手：「${skill.name}」を使用！`,
         );
       }
     };
@@ -6142,11 +6102,9 @@ const showClassResult =
     finalMyTotal: number,
     finalOpponentTotal: number,
   ) => {
-    if (process.env.NODE_ENV === 'development') {
-      console.debug('[DEBUG:CLASS] showClassResult実行', {
-        completedYear, finalMyScore, finalOpponentScore,
-      });
-    }
+    addLog(
+      `🔎 CLASS DEBUG: showClassResult実行 / 年${completedYear} / 自分${finalMyScore} / 相手${finalOpponentScore}`,
+    );
 
     setClassResult(
       {
@@ -6198,12 +6156,9 @@ const showClassResult =
       targetYear: number,
     ) => {
 
-if (process.env.NODE_ENV === 'development') {
-  console.debug('[DEBUG:CLASS] prepareClassStart開始', {
-    targetYear, currentYear, battlePhase,
-    transitionLock: classTransitionInProgressRef.current,
-  });
-}
+addLog(
+  `🔎 CLASS DEBUG: prepareClassStart開始 / targetYear=${targetYear} / currentYear=${currentYear} / battlePhase=${battlePhase} / transitionLock=${classTransitionInProgressRef.current}`,
+);
 
       if (
         targetYear < 1 ||
@@ -6302,20 +6257,18 @@ setMyDeckReady(
           );
         }
 } else {
-  if (process.env.NODE_ENV === 'development') {
-    console.debug('[DEBUG:CLASS] クラス開始・resetLocalSupportDeck実行前', { targetYear });
-  }
+  addLog(
+    `🔎 CLASS DEBUG: 年${targetYear} クラス開始・resetLocalSupportDeck実行前`,
+  );
 
   const resetResult =
     resetLocalSupportDeck(
       nextDeckDefinition,
     );
 
-  if (process.env.NODE_ENV === 'development') {
-    console.debug('[DEBUG:CLASS] resetLocalSupportDeck完了', {
-      targetYear, handCount: resetResult.hand.length, deckCount: resetResult.deck.length,
-    });
-  }
+  addLog(
+    `🔎 CLASS DEBUG: 年${targetYear} resetLocalSupportDeck完了 → 手札${resetResult.hand.length}枚 / 山札${resetResult.deck.length}枚`,
+  );
 }
       setUsedSkillsByClass(
         (prev) => {
@@ -6381,11 +6334,9 @@ setMyDeckReady(
         );
       }
 
-if (process.env.NODE_ENV === 'development') {
-  console.debug('[DEBUG:CLASS] prepareClassStart完了', {
-    targetYear, currentYear, battlePhase,
-  });
-}
+addLog(
+  `🔎 CLASS DEBUG: prepareClassStart完了 / targetYear=${targetYear} / currentYear=${currentYear} / battlePhase=${battlePhase}`,
+);
 
 
     };
@@ -6502,11 +6453,9 @@ useEffect(() => {
     classTransitionInProgressRef.current =
       true;
 
-if (process.env.NODE_ENV === 'development') {
-  console.debug('[DEBUG:CLASS] 再入室用prepareClassStart実行', {
-    currentYear, myClassReadyYear, battlePhase,
-  });
-}
+addLog(
+  `🔎 CLASS DEBUG: 再入室用prepareClassStart実行 / currentYear=${currentYear} / myClassReadyYear=${myClassReadyYear} / battlePhase=${battlePhase}`,
+);
 
     void prepareClassStart(
       currentYear,
@@ -6801,8 +6750,8 @@ if (
 
           addLog(
             gainedScore > 0
-              ? `自分（${roleDisplayNames[myActiveAvatar.roleName]}／${myActiveAvatar.card.userName}）が技「${skill.name}」を使用しました。 自分 +${gainedScore}スコア`
-              : `自分（${roleDisplayNames[myActiveAvatar.roleName]}／${myActiveAvatar.card.userName}）が技「${skill.name}」を使用しました。`,
+              ? `自分：「${skill.name}」を使用！ スコア+${gainedScore}`
+              : `自分：「${skill.name}」を使用！`,
           );
         } finally {
           skillSubmitInProgressRef.current =
@@ -7386,8 +7335,8 @@ if (
 
       addLog(
         gainedScore > 0
-          ? `自分（${roleDisplayNames[myActiveAvatar.roleName]}／${myActiveAvatar.card.userName}）が技「${skill.name}」を使用しました。 自分 +${gainedScore}スコア`
-          : `自分（${roleDisplayNames[myActiveAvatar.roleName]}／${myActiveAvatar.card.userName}）が技「${skill.name}」を使用しました。`,
+          ? `自分：「${skill.name}」を使用！ スコア+${gainedScore}`
+          : `自分：「${skill.name}」を使用！`,
       );
 
       if (
@@ -9034,7 +8983,7 @@ if (
               }
 
               addLog(
-                `CPU（${roleDisplayNames[workingCpu.roleName]}／${workingCpu.card.userName}）がサポートカード「${supportChoice.card.name}」を使用しました。` +
+                `CPUがサポート「${supportChoice.card.name}」を使用しました。` +
                   (
                     cpuSupportScoreParts.length >
                     0
@@ -9705,8 +9654,8 @@ if (
 
             addLog(
               gainedScore > 0
-                ? `CPU（${roleDisplayNames[workingCpu.roleName]}／${workingCpu.card.userName}）が技「${skill.name}」を使用しました。 CPU +${gainedScore}スコア`
-                : `CPU（${roleDisplayNames[workingCpu.roleName]}／${workingCpu.card.userName}）が技「${skill.name}」を使用しました。`,
+                ? `CPU：「${skill.name}」を使用！ スコア+${gainedScore}`
+                : `CPU：「${skill.name}」を使用！`,
             );
 
             const next =
@@ -10357,7 +10306,7 @@ if (
         }
 
         addLog(
-          `自分（${roleDisplayNames[myActiveAvatar.roleName]}／${myActiveAvatar.card.userName}）がサポートカード「${card.name}」を使用しました。` +
+          `サポート「${card.name}」を使用しました。` +
             (
               localSupportScoreParts.length >
               0
@@ -12621,18 +12570,18 @@ grouped.set(
                     className="relative block w-full overflow-hidden rounded-xl bg-white/55 text-left"
                     aria-label={`${myActiveAvatar.card.userName} のステータス詳細を開く`}
                   >
-                    <div ref={myActiveCardAnchorRef} className="relative h-[clamp(250px,38dvh,390px)] w-full">
+                    <div ref={myActiveCardAnchorRef} className="relative h-[250px] w-full">
                       <BattleCardReveal
                         revealed={activeCardsRevealed}
-                        width={180}
-                        height={300}
+                        width={150}
+                        height={250}
                         className="h-full w-full"
                         colorHex={getBattleVisualColorHex(myActiveAvatar.card)}
                       >
                         <img
                           src={myActiveAvatar.card.imageDataUrl}
                           alt=""
-                          className="absolute inset-0 h-full w-full rounded-xl bg-white object-cover p-0"
+                          className="absolute inset-0 h-full w-full rounded-xl bg-white object-contain p-0.5"
                         />
                       </BattleCardReveal>
 
@@ -12664,8 +12613,8 @@ grouped.set(
                       </div>
                     </div>
                   </button>
-                  <div className="pointer-events-none absolute bottom-2 right-5 z-30 rounded-lg border border-indigo-200/80 bg-white/85 px-2 py-1 text-[11px] font-black tabular-nums text-indigo-800 shadow-lg backdrop-blur-sm sm:text-sm" aria-label={`自分の現在点 ${currentMyClassScore}`}>
-                    現在点 {currentMyClassScore.toLocaleString()}
+                  <div className="mt-1 text-right text-xs font-black tabular-nums text-indigo-700" aria-label={`自分の獲得スコア ${currentMyClassScore}`}>
+                    {currentMyClassScore.toLocaleString()} 
                   </div>
                 </div>
               </div>
@@ -12682,18 +12631,18 @@ grouped.set(
                     className="relative block w-full overflow-hidden rounded-xl bg-white/55 text-left"
                     aria-label={`${oppActiveAvatar.card.userName} のステータス詳細を開く`}
                   >
-                    <div ref={opponentActiveCardAnchorRef} className="relative h-[clamp(250px,38dvh,390px)] w-full">
+                    <div ref={opponentActiveCardAnchorRef} className="relative h-[250px] w-full">
                       <BattleCardReveal
                         revealed={activeCardsRevealed}
-                        width={180}
-                        height={300}
+                        width={150}
+                        height={250}
                         className="h-full w-full"
                         colorHex={getBattleVisualColorHex(oppActiveAvatar.card)}
                       >
                         <img
                           src={oppActiveAvatar.card.imageDataUrl}
                           alt=""
-                          className="absolute inset-0 h-full w-full rounded-xl bg-white object-cover p-0"
+                          className="absolute inset-0 h-full w-full rounded-xl bg-white object-contain p-0.5"
                         />
                       </BattleCardReveal>
 
@@ -12726,8 +12675,8 @@ grouped.set(
 
                     </div>
                   </button>
-                  <div className="pointer-events-none absolute bottom-2 right-5 z-30 rounded-lg border border-rose-200/80 bg-white/85 px-2 py-1 text-[11px] font-black tabular-nums text-rose-800 shadow-lg backdrop-blur-sm sm:text-sm" aria-label={`${isOnline ? '相手' : 'CPU'}の現在点 ${currentOppClassScore}`}>
-                    現在点 {currentOppClassScore.toLocaleString()}
+                  <div className="mt-1 text-right text-xs font-black tabular-nums text-rose-700" aria-label={`${isOnline ? '相手' : 'CPU'}の獲得スコア ${currentOppClassScore}`}>
+                    {currentOppClassScore.toLocaleString()} 
                   </div>
 
                 </div>
@@ -14163,15 +14112,18 @@ onClick={() => {
                       <div
                         key={`${item}_${index}`}
                         className={`border-b border-white/5 pb-1.5 pt-1 ${
-                          index ===
-                          0
-                            ? 'font-black text-white'
-                            : 'text-white/65'
-                        }`}
+                          item.startsWith('自分：')
+                            ? 'text-sky-300'
+                            : item.startsWith('相手：')
+                              ? 'text-rose-300'
+                              : item.startsWith('CPU：')
+                                ? 'text-amber-300'
+                                : index === 0
+                                  ? 'font-black text-white'
+                                  : 'text-white/65'
+                        } ${index === 0 ? 'font-black' : ''}`}
                       >
-                        {
-                          item
-                        }
+                        {item}
                       </div>
                     ),
                   )
