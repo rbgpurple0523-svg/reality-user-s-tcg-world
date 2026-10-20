@@ -3828,14 +3828,6 @@ setDeckConfirmed(false);
                 ? opponentAvatars[avatarIndex]
                 : undefined;
 
-console.log('[相手技の色チェック]', {
-  card: opponentAvatar.card,
-  rawColorHex: opponentAvatar.card?.colorHex,
-  calculatedColorHex: getBattleVisualColorHex(
-    opponentAvatar.card,
-  ),
-});
-
             const skillId =
               lastSkillAction.skillId;
 
@@ -3864,12 +3856,6 @@ console.log('[相手技の色チェック]', {
                 if (
                   opponentSkillIndex >= 0
                 ) {
-
-console.log('[相手カードの色データ確認]', {
-  card: opponentAvatar.card,
-  colorHex: opponentAvatar.card?.colorHex,
-  keys: Object.keys(opponentAvatar.card ?? {}),
-});
 
                   void Promise.resolve()
                     .then(() =>
@@ -6125,10 +6111,6 @@ const showClassResult =
     finalMyTotal: number,
     finalOpponentTotal: number,
   ) => {
-    addLog(
-      `🔎 CLASS DEBUG: showClassResult実行 / 年${completedYear} / 自分${finalMyScore} / 相手${finalOpponentScore}`,
-    );
-
     setClassResult(
       {
         completedYear,
@@ -6178,10 +6160,6 @@ const showClassResult =
     async (
       targetYear: number,
     ) => {
-
-addLog(
-  `🔎 CLASS DEBUG: prepareClassStart開始 / targetYear=${targetYear} / currentYear=${currentYear} / battlePhase=${battlePhase} / transitionLock=${classTransitionInProgressRef.current}`,
-);
 
       if (
         targetYear < 1 ||
@@ -6280,18 +6258,11 @@ setMyDeckReady(
           );
         }
 } else {
-  addLog(
-    `🔎 CLASS DEBUG: 年${targetYear} クラス開始・resetLocalSupportDeck実行前`,
-  );
-
   const resetResult =
     resetLocalSupportDeck(
       nextDeckDefinition,
     );
 
-  addLog(
-    `🔎 CLASS DEBUG: 年${targetYear} resetLocalSupportDeck完了 → 手札${resetResult.hand.length}枚 / 山札${resetResult.deck.length}枚`,
-  );
 }
       setUsedSkillsByClass(
         (prev) => {
@@ -6356,10 +6327,6 @@ setMyDeckReady(
           targetYear,
         );
       }
-
-addLog(
-  `🔎 CLASS DEBUG: prepareClassStart完了 / targetYear=${targetYear} / currentYear=${currentYear} / battlePhase=${battlePhase}`,
-);
 
 
     };
@@ -6475,10 +6442,6 @@ useEffect(() => {
 
     classTransitionInProgressRef.current =
       true;
-
-addLog(
-  `🔎 CLASS DEBUG: 再入室用prepareClassStart実行 / currentYear=${currentYear} / myClassReadyYear=${myClassReadyYear} / battlePhase=${battlePhase}`,
-);
 
     void prepareClassStart(
       currentYear,
@@ -10088,6 +10051,10 @@ if (
               1,
           );
 
+        // CPU戦ではクライアント側が使用枚数を管理するため、
+        // 次の使用判定に反映されるようここで確定する。
+        setUsedSkillsByClass(nextUsedSkills);
+
         let nextHand =
           myHand.filter(
             (
@@ -12584,7 +12551,7 @@ grouped.set(
                   <button
                     type="button"
                     onClick={() => setModalAvatar(myActiveAvatar)}
-                    className="relative block w-full overflow-hidden rounded-xl bg-white/55 text-left"
+                    className="relative block w-full overflow-visible rounded-xl bg-white/55 text-left"
                     aria-label={`${myActiveAvatar.card.userName} のステータス詳細を開く`}
                   >
                     <div ref={myActiveCardAnchorRef} className="relative h-[200px] w-full">
@@ -12612,7 +12579,7 @@ grouped.set(
                         />
                       </div>
 
-                      <div className="absolute bottom-1 right-0 top-1 z-20 w-3 overflow-visible rounded border border-indigo-300/90 bg-indigo-50/90 shadow-md" aria-label={`自分のスコア ${currentMyClassScore}`} role="img">
+                      <div className="absolute bottom-1 right-0 top-1 z-30 w-3 overflow-visible rounded border border-indigo-300/90 bg-indigo-50/90 shadow-md" aria-label={`自分のスコア ${currentMyClassScore}`} role="img">
                         <div
                           className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-indigo-700 to-indigo-400 transition-[height] duration-500"
                           style={{ height: `${Math.max(0, currentMyClassScore / 5000 * 100)}%` }}
@@ -12645,7 +12612,7 @@ grouped.set(
                   <button
                     type="button"
                     onClick={() => setModalAvatar(oppActiveAvatar)}
-                    className="relative block w-full overflow-hidden rounded-xl bg-white/55 text-left"
+                    className="relative block w-full overflow-visible rounded-xl bg-white/55 text-left"
                     aria-label={`${oppActiveAvatar.card.userName} のステータス詳細を開く`}
                   >
                     <div ref={opponentActiveCardAnchorRef} className="relative h-[200px] w-full">
@@ -12673,7 +12640,7 @@ grouped.set(
                         />
                       </div>
 
-                      <div className="absolute bottom-1 right-0 top-1 z-20 w-3 overflow-visible rounded border border-rose-300/90 bg-rose-50/90 shadow-md" aria-label={`相手のスコア ${currentOppClassScore}`} role="img">
+                      <div className="absolute bottom-1 right-0 top-1 z-30 w-3 overflow-visible rounded border border-rose-300/90 bg-rose-50/90 shadow-md" aria-label={`相手のスコア ${currentOppClassScore}`} role="img">
                         <div
                           className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-rose-700 to-rose-400 transition-[height] duration-500"
                           style={{ height: `${Math.max(0, currentOppClassScore / 5000 * 100)}%` }}
