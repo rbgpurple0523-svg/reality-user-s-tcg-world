@@ -85,7 +85,7 @@ export default function BattleEffectLayer() {
   useEffect(() => {
     if (!effect) return;
 
-    const duration = effect.kind === 'skill' ? 4000 : 1500;
+    const duration = effect.kind === 'skill' ? 3000 : 1500;
     const timer = window.setTimeout(() => {
       const completedResolve = currentResolve;
       currentResolve = null;
