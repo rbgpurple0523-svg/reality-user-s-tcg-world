@@ -12,6 +12,7 @@ export type SkillPreResultEffectPayload = {
   dialogue?: string;
   colorHex?: string;
   side?: 'left' | 'right';
+  seKey?: 'skill123' | 'skill4';
 };
 
 export type SupportPreResultEffectPayload = {
@@ -84,7 +85,7 @@ export default function BattleEffectLayer() {
   useEffect(() => {
     if (!effect) return;
 
-    const duration = effect.kind === 'skill' ? 1600 : 1500;
+    const duration = effect.kind === 'skill' ? 4000 : 1500;
     const timer = window.setTimeout(() => {
       const completedResolve = currentResolve;
       currentResolve = null;
@@ -107,6 +108,7 @@ export default function BattleEffectLayer() {
           dialogue={effect.payload.dialogue}
           colorHex={effect.payload.colorHex}
           side={effect.payload.side}
+          seKey={effect.payload.seKey}
         />
       )}
 

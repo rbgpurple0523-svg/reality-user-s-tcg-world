@@ -3894,6 +3894,7 @@ console.log('[相手カードの色データ確認]', {
                           getBattleVisualColorHex(
                             opponentAvatar.card,
                           ),
+                        seKey: opponentSkillIndex === 3 ? 'skill4' : 'skill123',
                         side: 'right',
                       }),
                     )
@@ -5522,6 +5523,7 @@ console.log('[相手カードの色データ確認]', {
               getBattleVisualColorHex(
                 opponentAvatar.card,
               ),
+            seKey: opponentSkillIndex === 3 ? 'skill4' : 'skill123',
             side: 'right',
           },
         );
@@ -6695,6 +6697,7 @@ if (
                 getBattleVisualColorHex(
                   myActiveAvatar.card,
                 ),
+              seKey: skillIndex === 3 ? 'skill4' : 'skill123',
               side: 'left',
             },
           );
@@ -6734,12 +6737,6 @@ if (
 
             return;
           }
-
-          playSe(
-            skillIndex === 3
-              ? 'skill4'
-              : 'skill123',
-          );
 
           await skillEffectPromise;
 
@@ -7240,12 +7237,6 @@ if (
       const next =
         getNextTurnState();
 
-      playSe(
-        skillIndex === 3
-          ? 'skill4'
-          : 'skill123',
-      );
-
       await playSkillPreResultEffect(
         {
           effectKey:
@@ -7268,6 +7259,7 @@ if (
             getBattleVisualColorHex(
               myActiveAvatar.card,
             ),
+          seKey: skillIndex === 3 ? 'skill4' : 'skill123',
           side: 'left',
         },
       );
@@ -9531,6 +9523,7 @@ if (
                   getBattleVisualColorHex(
                     workingCpu.card,
                   ),
+                seKey: cpuSkillIndex === 3 ? 'skill4' : 'skill123',
                 side: 'right',
               },
             );
