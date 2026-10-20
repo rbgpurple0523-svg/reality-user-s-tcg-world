@@ -12615,7 +12615,7 @@ grouped.set(
                       <div className="absolute bottom-1 right-0 top-1 z-20 w-3 overflow-visible rounded border border-indigo-300/90 bg-indigo-50/90 shadow-md" aria-label={`自分のスコア ${currentMyClassScore}`} role="img">
                         <div
                           className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-indigo-700 to-indigo-400 transition-[height] duration-500"
-                          style={{ height: `${Math.min(100, Math.max(0, currentMyClassScore / 5000 * 100))}%` }}
+                          style={{ height: `${Math.max(0, currentMyClassScore / 5000 * 100)}%` }}
                         />
                         {Array.from({ length: 9 }, (_, index) => {
                           const tick = index + 1;
@@ -12676,7 +12676,7 @@ grouped.set(
                       <div className="absolute bottom-1 right-0 top-1 z-20 w-3 overflow-visible rounded border border-rose-300/90 bg-rose-50/90 shadow-md" aria-label={`相手のスコア ${currentOppClassScore}`} role="img">
                         <div
                           className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-rose-700 to-rose-400 transition-[height] duration-500"
-                          style={{ height: `${Math.min(100, Math.max(0, currentOppClassScore / 5000 * 100))}%` }}
+                          style={{ height: `${Math.max(0, currentOppClassScore / 5000 * 100)}%` }}
                         />
                         {Array.from({ length: 9 }, (_, index) => {
                           const tick = index + 1;
