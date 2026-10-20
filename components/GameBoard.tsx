@@ -3896,6 +3896,7 @@ console.log('[相手カードの色データ確認]', {
                           ),
                         seKey: opponentSkillIndex === 3 ? 'skill4' : 'skill123',
                         side: 'right',
+          cardRect: getSkillCardRect('right'),
                       }),
                     )
                     .catch((error) => {
@@ -4234,6 +4235,25 @@ console.log('[相手カードの色データ確認]', {
           950,
         );
     };
+
+  const getSkillCardRect = (
+    side: 'left' | 'right',
+  ) => {
+    const element =
+      side === 'left'
+        ? myActiveCardAnchorRef.current
+        : opponentActiveCardAnchorRef.current;
+
+    if (!element) return undefined;
+
+    const rect = element.getBoundingClientRect();
+    return {
+      left: rect.left,
+      top: rect.top,
+      width: rect.width,
+      height: rect.height,
+    };
+  };
 
   const getSupportTargetPositions =
     () => {
@@ -5525,6 +5545,7 @@ console.log('[相手カードの色データ確認]', {
               ),
             seKey: opponentSkillIndex === 3 ? 'skill4' : 'skill123',
             side: 'right',
+          cardRect: getSkillCardRect('right'),
           },
         );
 
@@ -6699,6 +6720,7 @@ if (
                 ),
               seKey: skillIndex === 3 ? 'skill4' : 'skill123',
               side: 'left',
+          cardRect: getSkillCardRect('left'),
             },
           );
 
@@ -7261,6 +7283,7 @@ if (
             ),
           seKey: skillIndex === 3 ? 'skill4' : 'skill123',
           side: 'left',
+          cardRect: getSkillCardRect('left'),
         },
       );
 
@@ -9525,6 +9548,7 @@ if (
                   ),
                 seKey: cpuSkillIndex === 3 ? 'skill4' : 'skill123',
                 side: 'right',
+          cardRect: getSkillCardRect('right'),
               },
             );
 

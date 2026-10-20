@@ -12,6 +12,7 @@ export type SkillPreResultEffectPayload = {
   dialogue?: string;
   colorHex?: string;
   side?: 'left' | 'right';
+  cardRect?: { left: number; top: number; width: number; height: number };
   seKey?: 'skill123' | 'skill4';
 };
 
@@ -108,6 +109,7 @@ export default function BattleEffectLayer() {
           dialogue={effect.payload.dialogue}
           colorHex={effect.payload.colorHex}
           side={effect.payload.side}
+          cardRect={effect.payload.cardRect}
           seKey={effect.payload.seKey}
         />
       )}

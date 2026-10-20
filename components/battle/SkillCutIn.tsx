@@ -15,14 +15,16 @@ interface SkillCutInProps {
   dialogue?: string;
   colorHex?: string;
   side?: 'left' | 'right';
+  cardRect?: { left: number; top: number; width: number; height: number };
   seKey?: SkillSeKey;
 }
 
 /**
  * Skill cut-in timeline (total 3 seconds):
  * 0.0s: show the empty panel
- * 0.5s: dialogue begins, each character fades in smoothly over 1.5s
- * 2.0s: character-card glow and golden skill-title flash + SE
+ * 0.5s: dialogue begins, each character fades in smoothly over 0.75s
+ * 1.25s: character-card glow and golden skill-title flash + SE
+ * 3.0s: cut-in ends
  */
 export default function SkillCutIn({
   visible,
@@ -31,6 +33,7 @@ export default function SkillCutIn({
   dialogue,
   colorHex,
   side = 'left',
+  cardRect,
   seKey = 'skill123',
 }: SkillCutInProps) {
   const [phase, setPhase] = useState(0);
@@ -46,7 +49,7 @@ export default function SkillCutIn({
     const titleTimer = window.setTimeout(() => {
       setPhase(2);
       playSe(seKey);
-    }, 2000);
+    }, 1250);
 
     return () => {
       window.clearTimeout(dialogueTimer);
@@ -59,7 +62,7 @@ export default function SkillCutIn({
   const accent = normalizeBattleColorHex(colorHex);
   const isLeft = side === 'left';
   const voice = dialogue ?? '';
-  const voiceDuration = 1500;
+  const voiceDuration = 750;
 
   return (
     <div
@@ -69,7 +72,7 @@ export default function SkillCutIn({
       style={{ '--skill-accent': accent } as React.CSSProperties}
     >
       {/* No full-screen dimming: preserve the normal battle scene. */}
-      <div className="absolute inset-0 flex items-center justify-center px-3 sm:px-6">
+      <div className="absolute inset-0 z-20 flex items-center justify-center px-3 sm:px-6">
         <div
           className={`skill-cutin-panel relative w-full max-w-3xl overflow-hidden rounded-[2rem] border ${isLeft ? 'skill-cutin-left' : 'skill-cutin-right'}`}
           style={{
@@ -111,7 +114,7 @@ export default function SkillCutIn({
                     className="skill-voice-character"
                     style={{
                       animationDelay: `${(index / Math.max(voice.length, 1)) * voiceDuration}ms`,
-                      animationDuration: `${Math.max(90, (voiceDuration / Math.max(voice.length, 1)) * 1.8)}ms`,
+                      animationDuration: `${Math.max(35, (voiceDuration / Math.max(voice.length, 1)) * 0.8)}ms`,
                     }}
                   >
                     {character === ' ' ? '\u00a0' : character}
@@ -131,10 +134,19 @@ export default function SkillCutIn({
         </div>
       </div>
 
-      {/* A clear frame and burst are aligned with the active side of the battle board. */}
+      {/* Frame uses the exact active-card DOM rectangle captured by GameBoard. */}
       <div
-        className={`skill-card-highlight ${isLeft ? 'skill-card-highlight-left' : 'skill-card-highlight-right'} ${phase >= 2 ? 'skill-card-highlight-active' : ''}`}
-        style={{ borderColor: `${accent}ff`, '--skill-accent': accent } as React.CSSProperties}
+        className={`skill-card-highlight ${phase >= 2 ? 'skill-card-highlight-active' : ''}`}
+        style={{
+          left: cardRect?.left ?? (isLeft ? 10 : undefined),
+          right: cardRect ? undefined : (isLeft ? undefined : 10),
+          top: cardRect?.top ?? '50%',
+          width: cardRect?.width ?? 'clamp(150px, 22vw, 310px)',
+          height: cardRect?.height ?? 'clamp(220px, 43vh, 430px)',
+          transform: cardRect ? 'none' : 'translateY(-50%) scale(.94)',
+          borderColor: `${accent}ff`,
+          '--skill-accent': accent,
+        } as React.CSSProperties}
         aria-hidden="true"
       >
         <span className="skill-card-highlight-corner skill-card-highlight-corner-tl" />
@@ -159,21 +171,15 @@ export default function SkillCutIn({
         }
         .skill-title-reveal { animation: skill-title-flash 650ms ease-out both; }
         .skill-card-highlight {
-          position: absolute;
-          top: 50%;
-          width: clamp(150px, 22vw, 310px);
-          height: clamp(220px, 43vh, 430px);
+          position: fixed;
+          z-index: 10;
           border: 2px solid transparent;
-          border-radius: 22px;
+          border-radius: 14px;
           opacity: 0;
-          transform: translateY(-50%) scale(.94);
           transition: opacity 180ms ease, transform 220ms ease;
         }
-        .skill-card-highlight-left { left: clamp(10px, 5vw, 90px); }
-        .skill-card-highlight-right { right: clamp(10px, 5vw, 90px); }
         .skill-card-highlight-active {
           opacity: 1;
-          transform: translateY(-50%) scale(1);
           box-shadow: 0 0 0 3px rgba(255,255,255,.88), 0 0 18px 8px #fff6a5, 0 0 48px 18px var(--skill-accent), inset 0 0 30px rgba(255,245,170,.45);
           animation: skill-card-burst 850ms ease-out both;
         }
@@ -204,11 +210,6 @@ export default function SkillCutIn({
           0% { filter: brightness(1); }
           25% { filter: brightness(1.8); }
           100% { filter: brightness(1); }
-        }
-        @media (max-width: 640px) {
-          .skill-card-highlight { width: clamp(120px, 32vw, 190px); height: clamp(180px, 34vh, 300px); }
-          .skill-card-highlight-left { left: 2px; }
-          .skill-card-highlight-right { right: 2px; }
         }
         @media (prefers-reduced-motion: reduce) {
           .skill-voice-character, .skill-title-reveal, .skill-card-highlight-active { animation-duration: 1ms !important; }
