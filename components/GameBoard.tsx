@@ -1449,6 +1449,9 @@ const [classResultCountdown, setClassResultCountdown] =
   const turnProgressionTimerRef =
     useRef<number | null>(null);
 
+  const classTransitionDelayRef =
+    useRef(false);
+
   const initializedRef =
     useRef(false);
 
@@ -3399,6 +3402,9 @@ setDeckConfirmed(false);
             lastObservedBattlePhaseRef.current ===
             'battle';
 
+          const classTransitionAlreadyPending =
+            classTransitionDelayRef.current;
+
           const completedIndex =
             observedPhase ===
             'setup'
@@ -3407,7 +3413,7 @@ setDeckConfirmed(false);
               : observedYear -
                 1;
 
-          if (
+          const isClassTransitionSnapshot =
             wasBattle &&
             (
               (
@@ -3419,11 +3425,10 @@ setDeckConfirmed(false);
               observedPhase ===
                 'finished'
             ) &&
-            completedIndex >=
-              0 &&
-            completedIndex <
-              3
-          ) {
+            completedIndex >= 0 &&
+            completedIndex < 3;
+
+          if (isClassTransitionSnapshot) {
             const hostScores =
               Array.isArray(
                 data.hostClassScores,
@@ -3521,64 +3526,64 @@ setDeckConfirmed(false);
           lastObservedTurnIndexRef.current =
             observedTurnIndex;
 
-          if (
-            wasBattle &&
-            (observedPhase === 'setup' || observedPhase === 'finished') &&
-            completedIndex >= 0 &&
-            completedIndex < 3
-          ) {
-            // クラス最終ターンの演出を見届けてから画面を切り替える。
+          if (isClassTransitionSnapshot) {
+            // 最終ターンの演出待機中は、次クラスの phase/year/turnIndex を
+            // 先に反映しない。先に反映すると準備処理が走り、次クラスの
+            // キャラクターがリザルト画面の前に一瞬表示されてしまう。
+            classTransitionDelayRef.current = true;
             window.setTimeout(() => {
               setBattlePhase(
                 (data.battlePhase as typeof battlePhase) ||
                   'setup',
               );
+              setCurrentYear(observedYear);
+              setTurnIndex(observedTurnIndex);
+
+              if (turnProgressionTimerRef.current !== null) {
+                window.clearTimeout(turnProgressionTimerRef.current);
+                turnProgressionTimerRef.current = null;
+              }
+              pendingTurnIndexRef.current = null;
+              classTransitionDelayRef.current = false;
             }, 3500);
+          } else if (classTransitionAlreadyPending) {
+            // 待機中にFirestoreの別フィールドが更新されても、次クラスの
+            // 状態を先行反映しない。
           } else {
             setBattlePhase(
               (data.battlePhase as typeof battlePhase) ||
                 'setup',
             );
-          }
+            setCurrentYear(observedYear);
 
-          setCurrentYear(
-            Number(
-              data.currentYear ||
-                1,
-            ),
-          );
+            if (delayTurnProgression || maintainPendingTurnProgression) {
+              // オンライン対戦ではFirestoreのターン更新が演出より先に届く。
+              // 固定待機を入れて、技カットインが終わる前に次の手番へ移らないようにする。
+              pendingTurnIndexRef.current = observedTurnIndex;
 
-          if (delayTurnProgression || maintainPendingTurnProgression) {
-            // オンライン対戦ではFirestoreのターン更新が演出より先に届く。
-            // 固定待機を入れて、技カットインが終わる前に次の手番へ移らないようにする。
-            pendingTurnIndexRef.current =
-              observedTurnIndex;
+              if (turnProgressionTimerRef.current === null) {
+                turnProgressionTimerRef.current =
+                  window.setTimeout(() => {
+                    const pendingTurnIndex = pendingTurnIndexRef.current;
 
-            if (turnProgressionTimerRef.current === null) {
-              turnProgressionTimerRef.current =
-                window.setTimeout(() => {
-                  const pendingTurnIndex =
-                    pendingTurnIndexRef.current;
+                    if (pendingTurnIndex !== null) {
+                      setTurnIndex(pendingTurnIndex);
+                    }
 
-                  if (pendingTurnIndex !== null) {
-                    setTurnIndex(pendingTurnIndex);
-                  }
+                    pendingTurnIndexRef.current = null;
+                    turnProgressionTimerRef.current = null;
+                  }, 3500);
+              }
+            } else {
+              // クラス切替・対戦終了など、通常の手番進行以外では保留中の値を残さない。
+              if (turnProgressionTimerRef.current !== null) {
+                window.clearTimeout(turnProgressionTimerRef.current);
+                turnProgressionTimerRef.current = null;
+              }
 
-                  pendingTurnIndexRef.current = null;
-                  turnProgressionTimerRef.current = null;
-                }, 3500);
+              pendingTurnIndexRef.current = null;
+              setTurnIndex(observedTurnIndex);
             }
-          } else {
-            // クラス切替・対戦終了など、通常の手番進行以外では保留中の値を残さない。
-            if (turnProgressionTimerRef.current !== null) {
-              window.clearTimeout(
-                turnProgressionTimerRef.current,
-              );
-              turnProgressionTimerRef.current = null;
-            }
-
-            pendingTurnIndexRef.current = null;
-            setTurnIndex(observedTurnIndex);
           }
 
           setFirstPlayer(
@@ -10527,6 +10532,9 @@ if (
 
       lastObservedTurnIndexRef.current =
         0;
+
+      classTransitionDelayRef.current =
+        false;
 
       if (turnProgressionTimerRef.current !== null) {
         window.clearTimeout(
