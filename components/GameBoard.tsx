@@ -3478,22 +3478,26 @@ setDeckConfirmed(false);
                 0,
               );
 
-            showClassResult(
-              completedIndex +
-                1,
-              Number(
-                myScores[
-                  completedIndex
-                ] || 0,
-              ),
-              Number(
-                opponentScores[
-                  completedIndex
-                ] || 0,
-              ),
-              myTotal,
-              opponentTotal,
-            );
+            // 8ターン目の技・サポート演出が終わる前に
+            // クラス結果画面へ切り替わらないよう、結果表示を遅らせる。
+            window.setTimeout(() => {
+              showClassResult(
+                completedIndex +
+                  1,
+                Number(
+                  myScores[
+                    completedIndex
+                  ] || 0,
+                ),
+                Number(
+                  opponentScores[
+                    completedIndex
+                  ] || 0,
+                ),
+                myTotal,
+                opponentTotal,
+              );
+            }, 3500);
           }
 
           const delayTurnProgression =
@@ -3517,10 +3521,25 @@ setDeckConfirmed(false);
           lastObservedTurnIndexRef.current =
             observedTurnIndex;
 
-          setBattlePhase(
-            (data.battlePhase as typeof battlePhase) ||
-              'setup',
-          );
+          if (
+            wasBattle &&
+            (observedPhase === 'setup' || observedPhase === 'finished') &&
+            completedIndex >= 0 &&
+            completedIndex < 3
+          ) {
+            // クラス最終ターンの演出を見届けてから画面を切り替える。
+            window.setTimeout(() => {
+              setBattlePhase(
+                (data.battlePhase as typeof battlePhase) ||
+                  'setup',
+              );
+            }, 3500);
+          } else {
+            setBattlePhase(
+              (data.battlePhase as typeof battlePhase) ||
+                'setup',
+            );
+          }
 
           setCurrentYear(
             Number(

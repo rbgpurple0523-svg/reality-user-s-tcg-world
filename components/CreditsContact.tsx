@@ -194,7 +194,7 @@ export default function CreditsContact() {
 
               <section>
                 <div className="mt-3 leading-6 text-gray-700">
-                  <p>バージョン：pre-20261017</p>
+                  <p>バージョン：pre-20261025</p>
                 </div>
               </section>
 
