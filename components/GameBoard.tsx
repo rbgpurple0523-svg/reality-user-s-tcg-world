@@ -1440,6 +1440,15 @@ const [classResultCountdown, setClassResultCountdown] =
   const lastObservedYearRef =
     useRef<number>(1);
 
+  const lastObservedTurnIndexRef =
+    useRef<number>(0);
+
+  const pendingTurnIndexRef =
+    useRef<number | null>(null);
+
+  const turnProgressionTimerRef =
+    useRef<number | null>(null);
+
   const initializedRef =
     useRef(false);
 
@@ -2823,12 +2832,9 @@ setDeckConfirmed(false);
 
     const writeHeartbeat =
       () => {
-        if (
-          skillSubmitInProgressRef.current
-        ) {
-          return;
-        }
-
+        // 技演出・送信中もpresenceを更新する。
+        // 送信中にハートビートを止めると、相手が操作中でも
+        // 切断警告の判定時間を超えてしまう可能性がある。
         void setDoc(
           myPresenceRef,
           {
@@ -3383,6 +3389,12 @@ setDeckConfirmed(false);
                 1,
             );
 
+          const observedTurnIndex =
+            Number(
+              data.turnIndex ??
+                0,
+            );
+
           const wasBattle =
             lastObservedBattlePhaseRef.current ===
             'battle';
@@ -3484,11 +3496,26 @@ setDeckConfirmed(false);
             );
           }
 
+          const delayTurnProgression =
+            wasBattle &&
+            observedPhase === 'battle' &&
+            observedYear === lastObservedYearRef.current &&
+            observedTurnIndex !== lastObservedTurnIndexRef.current;
+
+          const maintainPendingTurnProgression =
+            turnProgressionTimerRef.current !== null &&
+            wasBattle &&
+            observedPhase === 'battle' &&
+            observedYear === lastObservedYearRef.current;
+
           lastObservedBattlePhaseRef.current =
             observedPhase;
 
           lastObservedYearRef.current =
             observedYear;
+
+          lastObservedTurnIndexRef.current =
+            observedTurnIndex;
 
           setBattlePhase(
             (data.battlePhase as typeof battlePhase) ||
@@ -3502,12 +3529,38 @@ setDeckConfirmed(false);
             ),
           );
 
-          setTurnIndex(
-            Number(
-              data.turnIndex ??
-                0,
-            ),
-          );
+          if (delayTurnProgression || maintainPendingTurnProgression) {
+            // オンライン対戦ではFirestoreのターン更新が演出より先に届く。
+            // 固定待機を入れて、技カットインが終わる前に次の手番へ移らないようにする。
+            pendingTurnIndexRef.current =
+              observedTurnIndex;
+
+            if (turnProgressionTimerRef.current === null) {
+              turnProgressionTimerRef.current =
+                window.setTimeout(() => {
+                  const pendingTurnIndex =
+                    pendingTurnIndexRef.current;
+
+                  if (pendingTurnIndex !== null) {
+                    setTurnIndex(pendingTurnIndex);
+                  }
+
+                  pendingTurnIndexRef.current = null;
+                  turnProgressionTimerRef.current = null;
+                }, 3500);
+            }
+          } else {
+            // クラス切替・対戦終了など、通常の手番進行以外では保留中の値を残さない。
+            if (turnProgressionTimerRef.current !== null) {
+              window.clearTimeout(
+                turnProgressionTimerRef.current,
+              );
+              turnProgressionTimerRef.current = null;
+            }
+
+            pendingTurnIndexRef.current = null;
+            setTurnIndex(observedTurnIndex);
+          }
 
           setFirstPlayer(
             (data.firstPlayer as PlayerRole) ||
@@ -4013,6 +4066,14 @@ setDeckConfirmed(false);
       unsubscribeMyPlayer();
       unsubscribeMyPrivatePlayer();
       unsubscribeOpponentPlayer();
+
+      if (turnProgressionTimerRef.current !== null) {
+        window.clearTimeout(
+          turnProgressionTimerRef.current,
+        );
+        turnProgressionTimerRef.current = null;
+      }
+      pendingTurnIndexRef.current = null;
 
       if (
         roomCloseRedirectRef.current !==
@@ -6377,7 +6438,9 @@ useEffect(() => {
     return;
   }
 
-  const duration = 3000;
+  // 技演出（3秒）が終わってからクラスを切り替えられるよう、
+  // 結果画面は演出時間に余裕を加えた3.5秒表示する。
+  const duration = 3500;
   const startedAt = Date.now();
 
   setClassResultProgress(0);
@@ -9742,7 +9805,8 @@ if (
             }
           })();
         },
-        650,
+        // CPUの行動後、技演出（3秒）が十分に終了するまで進行を待つ。
+        3500,
       );
 
     return () =>
@@ -10441,6 +10505,17 @@ if (
 
       lastObservedYearRef.current =
         1;
+
+      lastObservedTurnIndexRef.current =
+        0;
+
+      if (turnProgressionTimerRef.current !== null) {
+        window.clearTimeout(
+          turnProgressionTimerRef.current,
+        );
+        turnProgressionTimerRef.current = null;
+      }
+      pendingTurnIndexRef.current = null;
 
       initializedRef.current =
         false;
